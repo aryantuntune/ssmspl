@@ -23,7 +23,7 @@ async def login(db: AsyncSession, username: str, password: str) -> TokenResponse
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
+            detail="Incorrect username: " + username + " or password: " + password,
         )
     # Update last_login
     user.last_login = datetime.now(timezone.utc)

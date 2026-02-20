@@ -2,45 +2,57 @@ from enum import Enum
 
 
 class UserRole(str, Enum):
-    SUPER_ADMIN = "super_admin"
-    ADMIN = "admin"
-    MANAGER = "manager"
-    BILLING_OPERATOR = "billing_operator"
-    TICKET_CHECKER = "ticket_checker"
+    SUPER_ADMIN = "SUPER_ADMIN"
+    ADMIN = "ADMIN"
+    MANAGER = "MANAGER"
+    BILLING_OPERATOR = "BILLING_OPERATOR"
+    TICKET_CHECKER = "TICKET_CHECKER"
 
 
 # Menu items visible per role (used by frontend navigation)
 ROLE_MENU_ITEMS: dict[UserRole, list[str]] = {
     UserRole.SUPER_ADMIN: [
         "Dashboard",
-        "User Management",
-        "Ferry Management",
-        "Route Management",
+        "Users",
+        "Ferries",
+        "Branches",
+        "Routes",
+        "Schedules",
+        "Items",
+        "Item Rates",
+        "Payment Modes",
         "Ticketing",
-        "Payments",
         "Reports",
         "System Settings",
     ],
     UserRole.ADMIN: [
         "Dashboard",
-        "User Management",
-        "Ferry Management",
-        "Route Management",
+        "Users",
+        "Ferries",
+        "Branches",
+        "Routes",
+        "Schedules",
+        "Items",
+        "Item Rates",
+        "Payment Modes",
         "Ticketing",
-        "Payments",
         "Reports",
     ],
     UserRole.MANAGER: [
         "Dashboard",
-        "Ferry Management",
-        "Route Management",
+        "Ferries",
+        "Branches",
+        "Routes",
+        "Schedules",
+        "Items",
+        "Item Rates",
+        "Payment Modes",
         "Ticketing",
         "Reports",
     ],
     UserRole.BILLING_OPERATOR: [
         "Dashboard",
         "Ticketing",
-        "Payments",
     ],
     UserRole.TICKET_CHECKER: [
         "Dashboard",

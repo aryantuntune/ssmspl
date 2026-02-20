@@ -4,10 +4,10 @@ gunicorn==23.0.0
 sqlalchemy[asyncio]==2.0.36
 asyncpg==0.30.0
 alembic==1.14.0
-pydantic==2.10.3
+pydantic==2.11.5
 pydantic-settings==2.6.1
 python-jose[cryptography]==3.3.0
-passlib[bcrypt]==1.7.4
+bcrypt==5.0
 python-multipart==0.0.18
 python-dotenv==1.0.1
 razorpay==1.4.1

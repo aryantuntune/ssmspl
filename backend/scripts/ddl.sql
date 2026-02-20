@@ -20,11 +20,11 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 -- ============================================================
 DO $$ BEGIN
     CREATE TYPE user_role_enum AS ENUM (
-        'super_admin',
-        'admin',
-        'manager',
-        'billing_operator',
-        'ticket_checker'
+        'SUPER_ADMIN',
+        'ADMIN',
+        'MANAGER',
+        'BILLING_OPERATOR',
+        'TICKET_CHECKER'
     );
 EXCEPTION
     WHEN duplicate_object THEN NULL;
@@ -41,7 +41,8 @@ CREATE TABLE IF NOT EXISTS users (
     username        VARCHAR(100) NOT NULL UNIQUE,
     full_name       VARCHAR(255) NOT NULL,
     hashed_password VARCHAR(255) NOT NULL,
-    role            user_role_enum NOT NULL DEFAULT 'ticket_checker',
+    role            user_role_enum NOT NULL DEFAULT 'TICKET_CHECKER',
+    route_id        INTEGER REFERENCES routes(id),
     is_active       BOOLEAN NOT NULL DEFAULT TRUE,
     is_verified     BOOLEAN NOT NULL DEFAULT FALSE,
     last_login      TIMESTAMPTZ,
@@ -59,6 +60,52 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Boats table (ferry/vessel management)
+CREATE TABLE IF NOT EXISTS boats (
+    id                  INTEGER PRIMARY KEY,
+    name                VARCHAR(255) NOT NULL UNIQUE,
+    no                  VARCHAR(100) NOT NULL UNIQUE,
+    is_active           BOOLEAN DEFAULT TRUE
+);
+
+-- Branches table (jetty/location management)
+CREATE TABLE IF NOT EXISTS branches (
+    id                  INTEGER PRIMARY KEY,
+    name                VARCHAR(15) NOT NULL UNIQUE,
+    address             VARCHAR(255) NOT NULL,
+    contact_nos         VARCHAR(255),
+    latitude            NUMERIC(21,15),
+    longitude           NUMERIC(21,15),
+    sf_after            TIME WITHOUT TIME ZONE,
+    sf_before           TIME WITHOUT TIME ZONE,
+    is_active           BOOLEAN DEFAULT TRUE
+);
+
+-- Routes table (connects two branches)
+CREATE TABLE IF NOT EXISTS routes (
+    id                  INTEGER PRIMARY KEY,
+    branch_id_one       INTEGER NOT NULL REFERENCES branches(id),
+    branch_id_two       INTEGER NOT NULL REFERENCES branches(id),
+    is_active           BOOLEAN DEFAULT TRUE
+);
+
+-- Items table (ticket item types)
+CREATE TABLE IF NOT EXISTS items (
+    id                  INTEGER PRIMARY KEY,
+    name                VARCHAR(60) NOT NULL UNIQUE,
+    short_name          VARCHAR(30) NOT NULL UNIQUE,
+    online_visiblity    BOOLEAN,
+    is_active           BOOLEAN DEFAULT TRUE
+);
+
+-- Ferry schedules table (branch-wise departure times)
+CREATE TABLE IF NOT EXISTS ferry_schedules (
+    id                  INTEGER PRIMARY KEY,
+    branch_id           INTEGER NOT NULL REFERENCES branches(id),
+    departure           TIME NOT NULL,
+    CONSTRAINT uq_ferry_schedules_branch_departure UNIQUE (branch_id, departure)
+);
+
 -- ============================================================
 -- INDEXES
 -- ============================================================
@@ -67,6 +114,15 @@ CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
 CREATE INDEX IF NOT EXISTS idx_users_role     ON users(role);
 CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_id ON refresh_tokens(user_id);
 CREATE INDEX IF NOT EXISTS idx_refresh_tokens_token_hash ON refresh_tokens(token_hash);
+CREATE INDEX IF NOT EXISTS idx_boats_name ON boats(name);
+CREATE INDEX IF NOT EXISTS idx_boats_no ON boats(no);
+CREATE INDEX IF NOT EXISTS idx_branches_name ON branches(name);
+CREATE INDEX IF NOT EXISTS idx_routes_branch_one ON routes(branch_id_one);
+CREATE INDEX IF NOT EXISTS idx_routes_branch_two ON routes(branch_id_two);
+CREATE INDEX IF NOT EXISTS idx_items_name ON items(name);
+CREATE INDEX IF NOT EXISTS idx_items_short_name ON items(short_name);
+
+CREATE INDEX IF NOT EXISTS idx_ferry_schedules_branch ON ferry_schedules(branch_id);
 
 -- ============================================================
 -- FUNCTIONS & TRIGGERS

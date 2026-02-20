@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Enum as SAEnum, String, func
+from sqlalchemy import Boolean, DateTime, Enum as SAEnum, ForeignKey, Integer, String, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -21,6 +21,9 @@ class User(Base):
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[UserRole] = mapped_column(
         SAEnum(UserRole, name="user_role_enum"), nullable=False, default=UserRole.TICKET_CHECKER
+    )
+    route_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("routes.id"), nullable=True
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)

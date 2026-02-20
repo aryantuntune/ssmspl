@@ -5,6 +5,7 @@ from app.database import get_db
 from app.schemas.auth import LoginRequest, TokenResponse, RefreshRequest
 from app.schemas.user import UserMeResponse
 from app.services import auth_service
+from app.services.user_service import _resolve_route_name, _resolve_route_branches
 from app.dependencies import get_current_user
 from app.core.rbac import ROLE_MENU_ITEMS
 from app.models.user import User
@@ -50,10 +51,14 @@ async def refresh(body: RefreshRequest, db: AsyncSession = Depends(get_db)):
         401: {"description": "Missing or invalid Bearer token"},
     },
 )
-async def me(current_user: User = Depends(get_current_user)):
+async def me(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     menu = ROLE_MENU_ITEMS.get(current_user.role, [])
+    route_name = await _resolve_route_name(db, current_user.route_id)
+    route_branches = await _resolve_route_branches(db, current_user.route_id)
     data = UserMeResponse.model_validate(current_user)
     data.menu_items = menu
+    data.route_name = route_name
+    data.route_branches = route_branches
     return data
 
 

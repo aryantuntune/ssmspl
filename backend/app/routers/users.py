@@ -4,9 +4,10 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.dependencies import require_roles
+from app.dependencies import get_current_user, require_roles
 from app.core.rbac import UserRole
-from app.schemas.user import UserCreate, UserRead, UserUpdate
+from app.models.user import User
+from app.schemas.user import ChangePassword, UserCreate, UserRead, UserUpdate
 from app.services import user_service
 
 router = APIRouter(prefix="/api/users", tags=["Users"])
@@ -15,11 +16,31 @@ router = APIRouter(prefix="/api/users", tags=["Users"])
 _admin_roles = require_roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
 
 
+@router.post(
+    "/me/change-password",
+    response_model=dict,
+    summary="Change own password",
+    description="Allows the currently logged-in user to change their password. Requires current password verification.",
+    responses={
+        200: {"description": "Password changed successfully"},
+        400: {"description": "Current password is incorrect"},
+        401: {"description": "Not authenticated"},
+    },
+)
+async def change_password(
+    body: ChangePassword,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    await user_service.change_password(db, current_user, body.current_password, body.new_password)
+    return {"message": "Password changed successfully"}
+
+
 @router.get(
     "/",
     response_model=list[UserRead],
     summary="List all users",
-    description="Paginated list of all users. Requires **Super Admin** or **Admin** role.",
+    description="Paginated list of all users with filtering, sorting, and search. Requires **Super Admin** or **Admin** role.",
     responses={
         200: {"description": "List of users returned"},
         401: {"description": "Not authenticated"},
@@ -28,11 +49,43 @@ _admin_roles = require_roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
 )
 async def list_users(
     skip: int = Query(0, ge=0, description="Number of records to skip"),
-    limit: int = Query(50, ge=1, le=200, description="Maximum number of records to return"),
+    limit: int = Query(5, ge=1, le=200, description="Maximum number of records to return"),
+    sort_by: str = Query("created_at", description="Column to sort by (id, username, email, full_name, role, is_active, created_at)"),
+    sort_order: str = Query("desc", description="Sort direction (asc or desc)"),
+    search: str | None = Query(None, description="Search by username, email, or full name (case-insensitive)"),
+    search_column: str = Query("all", description="Column to search: all, username, email, or full_name"),
+    match_type: str = Query("contains", description="Match type: contains, starts_with, or ends_with"),
+    role_filter: str | None = Query(None, description="Filter by role (SUPER_ADMIN, ADMIN, MANAGER, BILLING_OPERATOR, TICKET_CHECKER)"),
+    status: str | None = Query(None, description="Filter by status: active, inactive, or all (default all)"),
     db: AsyncSession = Depends(get_db),
     _=Depends(_admin_roles),
 ):
-    return await user_service.get_all_users(db, skip, limit)
+    return await user_service.get_all_users(
+        db, skip, limit, sort_by, sort_order, search, status, search_column, match_type, role_filter
+    )
+
+
+@router.get(
+    "/count",
+    response_model=int,
+    summary="Get total user count",
+    description="Returns the total number of users matching filters. Requires **Super Admin** or **Admin** role.",
+    responses={
+        200: {"description": "Total count returned"},
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient role permissions"},
+    },
+)
+async def count_users(
+    search: str | None = Query(None, description="Search by username, email, or full name (case-insensitive)"),
+    search_column: str = Query("all", description="Column to search: all, username, email, or full_name"),
+    match_type: str = Query("contains", description="Match type: contains, starts_with, or ends_with"),
+    role_filter: str | None = Query(None, description="Filter by role"),
+    status: str | None = Query(None, description="Filter by status: active, inactive, or all (default all)"),
+    db: AsyncSession = Depends(get_db),
+    _=Depends(_admin_roles),
+):
+    return await user_service.count_users(db, search, status, search_column, match_type, role_filter)
 
 
 @router.post(
@@ -86,6 +139,7 @@ async def get_user(
         401: {"description": "Not authenticated"},
         403: {"description": "Insufficient role permissions"},
         404: {"description": "User not found"},
+        409: {"description": "Email already registered"},
     },
 )
 async def update_user(

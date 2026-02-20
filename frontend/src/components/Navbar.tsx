@@ -36,6 +36,12 @@ export default function Navbar({ user }: NavbarProps) {
           <p className="text-xs text-blue-300">{ROLE_LABELS[user.role] || user.role}</p>
         </div>
         <button
+          onClick={() => router.push("/dashboard/change-password")}
+          className="bg-blue-600 hover:bg-blue-500 text-white text-sm px-4 py-1.5 rounded-lg transition"
+        >
+          Change Password
+        </button>
+        <button
           onClick={handleLogout}
           className="bg-blue-600 hover:bg-blue-500 text-white text-sm px-4 py-1.5 rounded-lg transition"
         >

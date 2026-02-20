@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.routers import auth, users
+from app.routers import auth, users, boats, branches, routes, items, item_rates, ferry_schedules, payment_modes, tickets
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -35,6 +35,38 @@ app = FastAPI(
             "name": "Users",
             "description": "User management — requires **Super Admin** or **Admin** role.",
         },
+        {
+            "name": "Boats",
+            "description": "Ferry/boat management — requires **Super Admin**, **Admin**, or **Manager** role.",
+        },
+        {
+            "name": "Branches",
+            "description": "Branch management — requires **Super Admin**, **Admin**, or **Manager** role.",
+        },
+        {
+            "name": "Routes",
+            "description": "Route management — requires **Super Admin**, **Admin**, or **Manager** role.",
+        },
+        {
+            "name": "Items",
+            "description": "Item management — requires **Super Admin**, **Admin**, or **Manager** role.",
+        },
+        {
+            "name": "Item Rates",
+            "description": "Item rate management — requires **Super Admin**, **Admin**, or **Manager** role.",
+        },
+        {
+            "name": "Ferry Schedules",
+            "description": "Ferry schedule management — requires **Super Admin**, **Admin**, or **Manager** role.",
+        },
+        {
+            "name": "Payment Modes",
+            "description": "Payment mode management — requires **Super Admin**, **Admin**, or **Manager** role.",
+        },
+        {
+            "name": "Tickets",
+            "description": "Ticket creation, lookup, and management — requires **Super Admin**, **Admin**, **Manager**, or **Billing Operator** role.",
+        },
     ],
     contact={
         "name": "SSMSPL Engineering",
@@ -55,6 +87,14 @@ app.add_middleware(
 
 app.include_router(auth.router)
 app.include_router(users.router)
+app.include_router(boats.router)
+app.include_router(branches.router)
+app.include_router(routes.router)
+app.include_router(items.router)
+app.include_router(item_rates.router)
+app.include_router(ferry_schedules.router)
+app.include_router(payment_modes.router)
+app.include_router(tickets.router)
 
 
 @app.get("/health", tags=["Health"])
