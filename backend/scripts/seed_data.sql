@@ -131,9 +131,22 @@ VALUES
 ON CONFLICT ON CONSTRAINT uq_ferry_schedules_branch_departure DO NOTHING;
 
 -- ============================================================
+-- PORTAL USERS SEED DATA (Customer accounts)
+-- Default password for ALL seed portal users: Password@123
+-- ============================================================
+
+INSERT INTO portal_users (id, first_name, last_name, email, password, mobile, created_at)
+VALUES
+    (1, 'Rajesh', 'Naik', 'rajesh.naik@example.com', '$2b$12$40jxkhNDTRR7btlgX0mTIuom3jXuB3r5OT0J2dh0ep5Q3iK3YDUD.', '+919876543210', NOW()),
+    (2, 'Priya', 'Desai', 'priya.desai@example.com', '$2b$12$40jxkhNDTRR7btlgX0mTIuom3jXuB3r5OT0J2dh0ep5Q3iK3YDUD.', '+919876543211', NOW()),
+    (3, 'Amit', 'Prabhu', 'amit.prabhu@example.com', '$2b$12$40jxkhNDTRR7btlgX0mTIuom3jXuB3r5OT0J2dh0ep5Q3iK3YDUD.', '+919876543212', NOW())
+ON CONFLICT ON CONSTRAINT portal_users_unique_email DO NOTHING;
+
+-- ============================================================
 -- VERIFICATION QUERIES
 -- ============================================================
 SELECT id, username, email, role, is_active FROM users ORDER BY role;
 SELECT id, name, no, is_active FROM boats ORDER BY name;
 SELECT id, name, address, contact_nos, is_active FROM branches ORDER BY name;
 SELECT fs.id, b.name AS branch, fs.departure FROM ferry_schedules fs JOIN branches b ON b.id = fs.branch_id ORDER BY b.name, fs.departure;
+SELECT id, first_name, last_name, email, mobile FROM portal_users ORDER BY id;

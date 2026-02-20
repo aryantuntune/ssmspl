@@ -6,7 +6,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.dependencies import require_roles
 from app.core.rbac import UserRole
-from app.schemas.ticket import TicketCreate, TicketRead, TicketUpdate, RateLookupResponse
+from app.models.user import User
+from app.schemas.ticket import (
+    TicketCreate, TicketRead, TicketUpdate, RateLookupResponse,
+    MultiTicketCreate, MultiTicketInitResponse,
+)
 from app.services import ticket_service
 
 router = APIRouter(prefix="/api/tickets", tags=["Tickets"])
@@ -115,6 +119,47 @@ async def departure_options(
     _=Depends(_ticket_roles),
 ):
     return await ticket_service.get_departure_options(db, branch_id)
+
+
+@router.get(
+    "/multi-ticket-init",
+    response_model=MultiTicketInitResponse,
+    summary="Get multi-ticket form initialization data",
+    description="Returns route, branch, items with rates, payment modes, and ferry time window for the logged-in user.",
+    responses={
+        200: {"description": "Form initialization data returned"},
+        400: {"description": "User has no assigned route"},
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient role permissions"},
+    },
+)
+async def multi_ticket_init(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(_ticket_roles),
+):
+    return await ticket_service.get_multi_ticket_init(db, current_user)
+
+
+@router.post(
+    "/batch",
+    response_model=list[TicketRead],
+    status_code=201,
+    summary="Create multiple tickets in a single transaction",
+    description="Creates all provided tickets atomically. Only available outside ferry schedule hours.",
+    responses={
+        201: {"description": "All tickets created successfully"},
+        400: {"description": "Validation error, amount mismatch, or not off-hours"},
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient role permissions"},
+        404: {"description": "Referenced entity not found"},
+    },
+)
+async def create_multi_tickets(
+    body: MultiTicketCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(_ticket_roles),
+):
+    return await ticket_service.create_multi_tickets(db, body, current_user)
 
 
 @router.post(

@@ -8,6 +8,7 @@ from app.core.security import decode_token
 from app.core.rbac import UserRole
 from app.database import get_db
 from app.models.user import User
+from app.models.portal_user import PortalUser
 
 bearer_scheme = HTTPBearer()
 
@@ -34,6 +35,34 @@ async def get_current_user(
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if user is None or not user.is_active:
+        raise credentials_exception
+    return user
+
+
+async def get_current_portal_user(
+    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
+    db: AsyncSession = Depends(get_db),
+) -> PortalUser:
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = decode_token(credentials.credentials)
+        if payload.get("type") != "access":
+            raise credentials_exception
+        user_id: str = payload.get("sub")
+        if user_id is None:
+            raise credentials_exception
+        if payload.get("role") != "PORTAL_USER":
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
+
+    result = await db.execute(select(PortalUser).where(PortalUser.id == int(user_id)))
+    user = result.scalar_one_or_none()
+    if user is None:
         raise credentials_exception
     return user
 

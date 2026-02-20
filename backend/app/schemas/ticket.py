@@ -43,6 +43,31 @@ class TicketItemRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
+# ── Ticket Payment schemas ──
+
+class TicketPayementCreate(BaseModel):
+    payment_mode_id: int = Field(..., description="Payment mode ID (e.g. CASH, UPI)")
+    amount: float = Field(..., gt=0, description="Payment amount")
+    ref_no: str | None = Field(None, max_length=30, description="Reference/transaction ID (for UPI payments)")
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [{"payment_mode_id": 1, "amount": 320.00, "ref_no": None}]
+        }
+    }
+
+
+class TicketPayementRead(BaseModel):
+    id: int = Field(..., description="Unique ticket payment identifier")
+    ticket_id: int = Field(..., description="Parent ticket ID")
+    payment_mode_id: int = Field(..., description="Payment mode ID")
+    amount: float = Field(..., description="Payment amount")
+    ref_no: str | None = Field(None, description="Reference/transaction ID")
+    payment_mode_name: str | None = Field(None, description="Payment mode description for display")
+
+    model_config = {"from_attributes": True}
+
+
 # ── Ticket schemas ──
 
 class TicketCreate(BaseModel):
@@ -55,6 +80,7 @@ class TicketCreate(BaseModel):
     amount: float = Field(..., ge=0, description="Total amount (sum of item amounts)")
     net_amount: float = Field(..., ge=0, description="Net amount (amount - discount)")
     items: list[TicketItemCreate] = Field(..., min_length=1, description="Ticket items (at least 1)")
+    payments: list[TicketPayementCreate] | None = Field(None, description="Payment rows (optional, at least 1 if provided)")
 
     model_config = {
         "json_schema_extra": {
@@ -70,6 +96,9 @@ class TicketCreate(BaseModel):
                     "net_amount": 320.00,
                     "items": [
                         {"item_id": 1, "rate": 150.00, "levy": 10.00, "quantity": 2, "vehicle_no": None}
+                    ],
+                    "payments": [
+                        {"payment_mode_id": 1, "amount": 320.00, "ref_no": None}
                     ],
                 }
             ]
@@ -113,6 +142,7 @@ class TicketRead(BaseModel):
     route_name: str | None = Field(None, description="Route display name")
     payment_mode_name: str | None = Field(None, description="Payment mode description")
     items: list[TicketItemRead] | None = Field(None, description="Ticket items (only in detail view)")
+    payments: list[TicketPayementRead] | None = Field(None, description="Ticket payments (only in detail view)")
 
     model_config = {"from_attributes": True}
 
@@ -123,3 +153,32 @@ class RateLookupResponse(BaseModel):
     rate: float = Field(..., description="Current rate for the item")
     levy: float = Field(..., description="Current levy for the item")
     item_rate_id: int = Field(..., description="Item rate record ID")
+
+
+# ── Multi-ticket schemas ──
+
+class MultiTicketInitItem(BaseModel):
+    id: int
+    name: str
+    short_name: str
+    is_vehicle: bool
+    rate: float
+    levy: float
+
+class MultiTicketInitPaymentMode(BaseModel):
+    id: int
+    description: str
+
+class MultiTicketInitResponse(BaseModel):
+    route_id: int
+    route_name: str
+    branch_id: int
+    branch_name: str
+    items: list[MultiTicketInitItem]
+    payment_modes: list[MultiTicketInitPaymentMode]
+    first_ferry_time: str | None = Field(None, description="HH:MM of earliest ferry")
+    last_ferry_time: str | None = Field(None, description="HH:MM of latest ferry")
+    is_off_hours: bool = Field(..., description="True if current time is outside ferry schedule")
+
+class MultiTicketCreate(BaseModel):
+    tickets: list[TicketCreate] = Field(..., min_length=1, description="Array of tickets to create atomically")

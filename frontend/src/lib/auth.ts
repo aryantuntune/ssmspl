@@ -5,9 +5,11 @@ const REFRESH_TOKEN_KEY = "ssmspl_refresh_token";
 const BRANCH_ID_KEY = "ssmspl_branch_id";
 const BRANCH_NAME_KEY = "ssmspl_branch_name";
 
+const isSecure = typeof window !== "undefined" && window.location.protocol === "https:";
+
 export function setTokens(accessToken: string, refreshToken: string): void {
-  Cookies.set(ACCESS_TOKEN_KEY, accessToken, { secure: true, sameSite: "strict" });
-  Cookies.set(REFRESH_TOKEN_KEY, refreshToken, { secure: true, sameSite: "strict", expires: 7 });
+  Cookies.set(ACCESS_TOKEN_KEY, accessToken, { secure: isSecure, sameSite: "strict", expires: 1 });
+  Cookies.set(REFRESH_TOKEN_KEY, refreshToken, { secure: isSecure, sameSite: "strict", expires: 7 });
 }
 
 export function getAccessToken(): string | undefined {
@@ -30,8 +32,8 @@ export function isAuthenticated(): boolean {
 }
 
 export function setSelectedBranch(branchId: number, branchName: string): void {
-  Cookies.set(BRANCH_ID_KEY, String(branchId), { secure: true, sameSite: "strict" });
-  Cookies.set(BRANCH_NAME_KEY, branchName, { secure: true, sameSite: "strict" });
+  Cookies.set(BRANCH_ID_KEY, String(branchId), { secure: isSecure, sameSite: "strict" });
+  Cookies.set(BRANCH_NAME_KEY, branchName, { secure: isSecure, sameSite: "strict" });
 }
 
 export function getSelectedBranchId(): number | null {

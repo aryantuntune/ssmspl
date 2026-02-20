@@ -19,6 +19,7 @@ const MENU_ROUTES: Record<string, string> = {
   "Item Rates": "/dashboard/item-rates",
   "Payment Modes": "/dashboard/payment-modes",
   Ticketing: "/dashboard/ticketing",
+  "Multi-Ticketing": "/dashboard/multiticketing",
   Reports: "/dashboard/reports",
   "System Settings": "/dashboard/settings",
   "Ticket Verification": "/dashboard/verify",

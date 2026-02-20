@@ -9,8 +9,8 @@ from app.services import ferry_schedule_service
 
 router = APIRouter(prefix="/api/ferry-schedules", tags=["Ferry Schedules"])
 
-# Read access: SUPER_ADMIN, ADMIN, MANAGER
-_read_roles = require_roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER)
+# Read access includes BILLING_OPERATOR (for ticket form departure dropdown)
+_read_roles = require_roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.BILLING_OPERATOR)
 
 
 @router.get(

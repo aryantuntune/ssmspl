@@ -136,6 +136,7 @@ export interface Item {
   name: string;
   short_name: string;
   online_visibility: boolean | null;
+  is_vehicle: boolean | null;
   is_active: boolean | null;
 }
 
@@ -143,12 +144,14 @@ export interface ItemCreate {
   name: string;
   short_name: string;
   online_visibility?: boolean;
+  is_vehicle?: boolean;
 }
 
 export interface ItemUpdate {
   name?: string;
   short_name?: string;
   online_visibility?: boolean;
+  is_vehicle?: boolean;
   is_active?: boolean;
 }
 
@@ -246,6 +249,23 @@ export interface TicketItemUpdate {
   is_cancelled: boolean;
 }
 
+// ── Ticket Payment types ──
+
+export interface TicketPayement {
+  id: number;
+  ticket_id: number;
+  payment_mode_id: number;
+  amount: number;
+  ref_no: string | null;
+  payment_mode_name: string | null;
+}
+
+export interface TicketPayementCreate {
+  payment_mode_id: number;
+  amount: number;
+  ref_no?: string | null;
+}
+
 export interface Ticket {
   id: number;
   branch_id: number;
@@ -262,6 +282,7 @@ export interface Ticket {
   route_name: string | null;
   payment_mode_name: string | null;
   items: TicketItem[] | null;
+  payments: TicketPayement[] | null;
 }
 
 export interface TicketCreate {
@@ -274,6 +295,7 @@ export interface TicketCreate {
   amount: number;
   net_amount: number;
   items: TicketItemCreate[];
+  payments?: TicketPayementCreate[];
 }
 
 export interface TicketUpdate {
@@ -296,4 +318,32 @@ export interface RateLookupResponse {
 export interface DepartureOption {
   id: number;
   departure: string;
+}
+
+// ── Multi-ticket types ──
+
+export interface MultiTicketInitItem {
+  id: number;
+  name: string;
+  short_name: string;
+  is_vehicle: boolean;
+  rate: number;
+  levy: number;
+}
+
+export interface MultiTicketInitPaymentMode {
+  id: number;
+  description: string;
+}
+
+export interface MultiTicketInit {
+  route_id: number;
+  route_name: string;
+  branch_id: number;
+  branch_name: string;
+  items: MultiTicketInitItem[];
+  payment_modes: MultiTicketInitPaymentMode[];
+  first_ferry_time: string | null;
+  last_ferry_time: string | null;
+  is_off_hours: boolean;
 }

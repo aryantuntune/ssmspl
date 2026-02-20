@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_, text
 
 from app.models.ticket import Ticket, TicketItem
+from app.models.ticket_payement import TicketPayement
 from app.models.branch import Branch
 from app.models.route import Route
 from app.models.item import Item
@@ -89,6 +90,18 @@ async def _enrich_ticket_item(db: AsyncSession, ti: TicketItem) -> dict:
     }
 
 
+async def _enrich_ticket_payement(db: AsyncSession, tp: TicketPayement) -> dict:
+    pm_name = await _get_payment_mode_name(db, tp.payment_mode_id)
+    return {
+        "id": tp.id,
+        "ticket_id": tp.ticket_id,
+        "payment_mode_id": tp.payment_mode_id,
+        "amount": float(tp.amount) if tp.amount is not None else 0,
+        "ref_no": tp.ref_no,
+        "payment_mode_name": pm_name,
+    }
+
+
 async def _enrich_ticket(db: AsyncSession, ticket: Ticket, include_items: bool = False) -> dict:
     branch_name = await _get_branch_name(db, ticket.branch_id)
     route_name = await _get_route_display_name(db, ticket.route_id)
@@ -117,8 +130,15 @@ async def _enrich_ticket(db: AsyncSession, ticket: Ticket, include_items: bool =
         )
         items = result.scalars().all()
         data["items"] = [await _enrich_ticket_item(db, ti) for ti in items]
+
+        pay_result = await db.execute(
+            select(TicketPayement).where(TicketPayement.ticket_id == ticket.id)
+        )
+        payments = pay_result.scalars().all()
+        data["payments"] = [await _enrich_ticket_payement(db, tp) for tp in payments]
     else:
         data["items"] = None
+        data["payments"] = None
 
     return data
 
@@ -217,6 +237,144 @@ async def get_departure_options(db: AsyncSession, branch_id: int) -> list[dict]:
         {"id": s.id, "departure": _format_time(s.departure)}
         for s in schedules
     ]
+
+
+async def get_multi_ticket_init(db: AsyncSession, user) -> dict:
+    """Return all data needed to populate the multi-ticket form."""
+    if not user.route_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User has no assigned route. Cannot use multi-ticketing.",
+        )
+
+    # Get route info
+    route_result = await db.execute(select(Route).where(Route.id == user.route_id))
+    route = route_result.scalar_one_or_none()
+    if not route:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assigned route not found")
+
+    route_name = await _get_route_display_name(db, route.id)
+
+    # Determine branch: use branch_id_one as the user's operating branch
+    branch_id = route.branch_id_one
+    branch_name = await _get_branch_name(db, branch_id)
+
+    # Get ferry time window for this branch
+    first_result = await db.execute(
+        select(func.min(FerrySchedule.departure)).where(FerrySchedule.branch_id == branch_id)
+    )
+    first_ferry = first_result.scalar_one_or_none()
+
+    last_result = await db.execute(
+        select(func.max(FerrySchedule.departure)).where(FerrySchedule.branch_id == branch_id)
+    )
+    last_ferry = last_result.scalar_one_or_none()
+
+    # Determine if off-hours
+    now = datetime.datetime.now().time()
+    if first_ferry and last_ferry:
+        is_off_hours = now < first_ferry or now > last_ferry
+    else:
+        # No ferry schedules — always off-hours
+        is_off_hours = True
+
+    # Get active items with their current rates for this route
+    today = datetime.date.today()
+    items_result = await db.execute(
+        select(Item).where(Item.is_active == True).order_by(Item.id)
+    )
+    items = items_result.scalars().all()
+
+    items_with_rates = []
+    for item in items:
+        rate_result = await db.execute(
+            select(ItemRate)
+            .where(
+                ItemRate.item_id == item.id,
+                ItemRate.route_id == user.route_id,
+                ItemRate.is_active == True,
+                ItemRate.applicable_from_date.is_not(None),
+                ItemRate.applicable_from_date <= today,
+            )
+            .order_by(ItemRate.applicable_from_date.desc())
+            .limit(1)
+        )
+        ir = rate_result.scalar_one_or_none()
+        if ir:
+            items_with_rates.append({
+                "id": item.id,
+                "name": item.name,
+                "short_name": item.short_name,
+                "is_vehicle": bool(item.is_vehicle),
+                "rate": float(ir.rate) if ir.rate is not None else 0,
+                "levy": float(ir.levy) if ir.levy is not None else 0,
+            })
+
+    # Get active payment modes
+    pm_result = await db.execute(
+        select(PaymentMode).where(PaymentMode.is_active == True).order_by(PaymentMode.id)
+    )
+    payment_modes = pm_result.scalars().all()
+
+    return {
+        "route_id": route.id,
+        "route_name": route_name or "",
+        "branch_id": branch_id,
+        "branch_name": branch_name or "",
+        "items": items_with_rates,
+        "payment_modes": [{"id": pm.id, "description": pm.description} for pm in payment_modes],
+        "first_ferry_time": _format_time(first_ferry),
+        "last_ferry_time": _format_time(last_ferry),
+        "is_off_hours": is_off_hours,
+    }
+
+
+async def _validate_off_hours(db: AsyncSession, branch_id: int) -> None:
+    """Raise 400 if current time is within ferry schedule hours."""
+    first_result = await db.execute(
+        select(func.min(FerrySchedule.departure)).where(FerrySchedule.branch_id == branch_id)
+    )
+    first_ferry = first_result.scalar_one_or_none()
+
+    last_result = await db.execute(
+        select(func.max(FerrySchedule.departure)).where(FerrySchedule.branch_id == branch_id)
+    )
+    last_ferry = last_result.scalar_one_or_none()
+
+    if first_ferry and last_ferry:
+        now = datetime.datetime.now().time()
+        if first_ferry <= now <= last_ferry:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Multi-ticketing is only available outside ferry hours ({_format_time(first_ferry)} - {_format_time(last_ferry)}). Current time: {_format_time(now)}",
+            )
+
+
+async def create_multi_tickets(db: AsyncSession, data, user) -> list[dict]:
+    """Create multiple tickets in a single transaction."""
+    if not user.route_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User has no assigned route.",
+        )
+
+    # Determine branch from user's route
+    route_result = await db.execute(select(Route).where(Route.id == user.route_id))
+    route = route_result.scalar_one_or_none()
+    if not route:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assigned route not found")
+
+    branch_id = route.branch_id_one
+
+    # Validate off-hours
+    await _validate_off_hours(db, branch_id)
+
+    created_tickets = []
+    for ticket_data in data.tickets:
+        result = await create_ticket(db, ticket_data)
+        created_tickets.append(result)
+
+    return created_tickets
 
 
 def _apply_filters(
@@ -382,6 +540,29 @@ async def create_ticket(db: AsyncSession, data: TicketCreate) -> dict:
         next_item_id += 1
 
     branch.last_ticket_no = next_ticket_no
+
+    # Insert ticket_payement rows
+    if data.payments:
+        pay_id_result = await db.execute(select(func.coalesce(func.max(TicketPayement.id), 0)))
+        next_pay_id = pay_id_result.scalar() + 1
+
+        for pay_data in data.payments:
+            # Validate payment_mode_id exists
+            pm_check = await db.execute(select(PaymentMode.id).where(PaymentMode.id == pay_data.payment_mode_id))
+            if not pm_check.scalar_one_or_none():
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Payment Mode ID {pay_data.payment_mode_id} not found",
+                )
+            tp = TicketPayement(
+                id=next_pay_id,
+                ticket_id=next_ticket_id,
+                payment_mode_id=pay_data.payment_mode_id,
+                amount=pay_data.amount,
+                ref_no=pay_data.ref_no,
+            )
+            db.add(tp)
+            next_pay_id += 1
 
     await db.flush()
     return await _enrich_ticket(db, ticket, include_items=True)

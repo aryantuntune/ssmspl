@@ -11,6 +11,7 @@ class Item(Base):
     name: Mapped[str] = mapped_column(String(60), unique=True, nullable=False)
     short_name: Mapped[str] = mapped_column(String(30), unique=True, nullable=False)
     online_visibility: Mapped[bool | None] = mapped_column("online_visiblity", Boolean, default=True, nullable=True)
+    is_vehicle: Mapped[bool | None] = mapped_column(Boolean, default=False, nullable=True)
     is_active: Mapped[bool | None] = mapped_column(Boolean, default=True, nullable=True)
 
     def __repr__(self) -> str:

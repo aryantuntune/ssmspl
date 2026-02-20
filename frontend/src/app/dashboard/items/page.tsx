@@ -12,10 +12,11 @@ interface ItemFormData {
   name: string;
   short_name: string;
   online_visibility: boolean;
+  is_vehicle: boolean;
   is_active: boolean;
 }
 
-const emptyForm: ItemFormData = { name: "", short_name: "", online_visibility: false, is_active: true };
+const emptyForm: ItemFormData = { name: "", short_name: "", online_visibility: false, is_vehicle: false, is_active: true };
 const PAGE_SIZE_OPTIONS = [5, 10, 25, 50, 100];
 
 export default function ItemsPage() {
@@ -44,6 +45,7 @@ export default function ItemsPage() {
   const [idOp, setIdOp] = useState("eq");
   const [statusFilter, setStatusFilter] = useState("");
   const [visibilityFilter, setVisibilityFilter] = useState("");
+  const [vehicleFilter, setVehicleFilter] = useState("");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const idDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const idEndDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -80,8 +82,9 @@ export default function ItemsPage() {
       }
       if (statusFilter) params.set("status", statusFilter);
       if (visibilityFilter) params.set("online_visibility", visibilityFilter);
+      if (vehicleFilter) params.set("is_vehicle", vehicleFilter);
 
-      const filterKeys = ["search", "search_column", "match_type", "id_filter", "id_op", "id_filter_end", "status", "online_visibility"];
+      const filterKeys = ["search", "search_column", "match_type", "id_filter", "id_op", "id_filter_end", "status", "online_visibility", "is_vehicle"];
       const countParams = new URLSearchParams(
         Object.fromEntries([...params].filter(([k]) => filterKeys.includes(k)))
       );
@@ -98,7 +101,7 @@ export default function ItemsPage() {
     } finally {
       setTableLoading(false);
     }
-  }, [page, pageSize, sortBy, sortOrder, search, searchColumn, matchType, idFilter, idOp, idFilterEnd, statusFilter, visibilityFilter]);
+  }, [page, pageSize, sortBy, sortOrder, search, searchColumn, matchType, idFilter, idOp, idFilterEnd, statusFilter, visibilityFilter, vehicleFilter]);
 
   useEffect(() => {
     if (!isAuthenticated()) {
@@ -128,6 +131,7 @@ export default function ItemsPage() {
       name: item.name,
       short_name: item.short_name,
       online_visibility: item.online_visibility ?? false,
+      is_vehicle: item.is_vehicle ?? false,
       is_active: item.is_active ?? true,
     });
     setFormError("");
@@ -153,12 +157,15 @@ export default function ItemsPage() {
         if (form.short_name !== editingItem.short_name) update.short_name = form.short_name;
         if (form.online_visibility !== (editingItem.online_visibility ?? false))
           update.online_visibility = form.online_visibility;
+        if (form.is_vehicle !== (editingItem.is_vehicle ?? false))
+          update.is_vehicle = form.is_vehicle;
         if (form.is_active !== (editingItem.is_active ?? true))
           update.is_active = form.is_active;
         await api.patch(`/api/items/${editingItem.id}`, update);
       } else {
         const create: ItemCreate = { name: form.name, short_name: form.short_name };
         if (form.online_visibility) create.online_visibility = form.online_visibility;
+        if (form.is_vehicle) create.is_vehicle = form.is_vehicle;
         await api.post("/api/items/", create);
       }
       closeModal();
@@ -356,6 +363,20 @@ export default function ItemsPage() {
               </select>
             </div>
 
+            {/* Vehicle filter */}
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Vehicle</label>
+              <select
+                value={vehicleFilter}
+                onChange={(e) => { setVehicleFilter(e.target.value); setPage(1); }}
+                className="border border-gray-300 rounded-lg px-3 py-2 text-black text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">All</option>
+                <option value="yes">Yes</option>
+                <option value="no">No</option>
+              </select>
+            </div>
+
             {/* Status filter */}
             <div>
               <label className="block text-xs font-medium text-gray-500 mb-1">Status</label>
@@ -371,13 +392,13 @@ export default function ItemsPage() {
             </div>
 
             {/* Clear filters */}
-            {(searchInput || statusFilter || visibilityFilter || searchColumn !== "all" || matchType !== "contains" || idInput || idEndInput || idOp !== "eq") && (
+            {(searchInput || statusFilter || visibilityFilter || vehicleFilter || searchColumn !== "all" || matchType !== "contains" || idInput || idEndInput || idOp !== "eq") && (
               <button
                 onClick={() => {
                   setSearchInput(""); setSearch(""); setSearchColumn("all");
                   setMatchType("contains"); setIdInput(""); setIdFilter("");
                   setIdEndInput(""); setIdFilterEnd(""); setIdOp("eq");
-                  setStatusFilter(""); setVisibilityFilter(""); setPage(1);
+                  setStatusFilter(""); setVisibilityFilter(""); setVehicleFilter(""); setPage(1);
                 }}
                 className="text-sm text-gray-500 hover:text-gray-700 underline pb-2"
               >
@@ -395,6 +416,7 @@ export default function ItemsPage() {
                   <th onClick={() => handleSort("name")} className="text-left px-6 py-3 font-semibold text-gray-600 cursor-pointer select-none hover:text-blue-700">Name{sortIndicator("name")}</th>
                   <th onClick={() => handleSort("short_name")} className="text-left px-6 py-3 font-semibold text-gray-600 cursor-pointer select-none hover:text-blue-700">Short Name{sortIndicator("short_name")}</th>
                   <th onClick={() => handleSort("online_visibility")} className="text-left px-6 py-3 font-semibold text-gray-600 cursor-pointer select-none hover:text-blue-700">Online{sortIndicator("online_visibility")}</th>
+                  <th onClick={() => handleSort("is_vehicle")} className="text-left px-6 py-3 font-semibold text-gray-600 cursor-pointer select-none hover:text-blue-700">Vehicle{sortIndicator("is_vehicle")}</th>
                   <th onClick={() => handleSort("is_active")} className="text-left px-6 py-3 font-semibold text-gray-600 cursor-pointer select-none hover:text-blue-700">Status{sortIndicator("is_active")}</th>
                   <th className="text-right px-6 py-3 font-semibold text-gray-600">Actions</th>
                 </tr>
@@ -402,13 +424,13 @@ export default function ItemsPage() {
               <tbody>
                 {tableLoading ? (
                   <tr>
-                    <td colSpan={6} className="text-center py-8 text-gray-400">
+                    <td colSpan={7} className="text-center py-8 text-gray-400">
                       Loading items...
                     </td>
                   </tr>
                 ) : items.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="text-center py-8 text-gray-400">
+                    <td colSpan={7} className="text-center py-8 text-gray-400">
                       No items found. Click &quot;+ Add Item&quot; to create one.
                     </td>
                   </tr>
@@ -430,6 +452,17 @@ export default function ItemsPage() {
                           }`}
                         >
                           {item.online_visibility ? "Visible" : "Hidden"}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span
+                          className={`inline-block text-xs font-semibold px-2.5 py-1 rounded-full ${
+                            item.is_vehicle
+                              ? "bg-orange-50 text-orange-700"
+                              : "bg-gray-100 text-gray-500"
+                          }`}
+                        >
+                          {item.is_vehicle ? "Yes" : "No"}
                         </span>
                       </td>
                       <td className="px-6 py-4">
@@ -552,6 +585,18 @@ export default function ItemsPage() {
                     </span>
                   </div>
                   <div className="flex justify-between">
+                    <span className="text-sm font-medium text-gray-500">Vehicle</span>
+                    <span
+                      className={`inline-block text-xs font-semibold px-2.5 py-1 rounded-full ${
+                        viewItem.is_vehicle
+                          ? "bg-orange-50 text-orange-700"
+                          : "bg-gray-100 text-gray-500"
+                      }`}
+                    >
+                      {viewItem.is_vehicle ? "Yes" : "No"}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
                     <span className="text-sm font-medium text-gray-500">Status</span>
                     <span
                       className={`inline-block text-xs font-semibold px-2.5 py-1 rounded-full ${
@@ -633,6 +678,31 @@ export default function ItemsPage() {
                       <span
                         className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${
                           form.online_visibility ? "translate-x-6" : "translate-x-1"
+                        }`}
+                      />
+                    </button>
+                  </div>
+
+                  {/* Vehicle toggle */}
+                  <div className="flex items-center justify-between py-2">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">
+                        Vehicle
+                      </label>
+                      <p className="text-xs text-gray-400">
+                        Whether this item is a vehicle type
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setForm({ ...form, is_vehicle: !form.is_vehicle })}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${
+                        form.is_vehicle ? "bg-orange-500" : "bg-gray-300"
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${
+                          form.is_vehicle ? "translate-x-6" : "translate-x-1"
                         }`}
                       />
                     </button>

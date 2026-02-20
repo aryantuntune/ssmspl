@@ -22,6 +22,7 @@ ROLE_MENU_ITEMS: dict[UserRole, list[str]] = {
         "Item Rates",
         "Payment Modes",
         "Ticketing",
+        "Multi-Ticketing",
         "Reports",
         "System Settings",
     ],
@@ -36,6 +37,7 @@ ROLE_MENU_ITEMS: dict[UserRole, list[str]] = {
         "Item Rates",
         "Payment Modes",
         "Ticketing",
+        "Multi-Ticketing",
         "Reports",
     ],
     UserRole.MANAGER: [
@@ -48,11 +50,13 @@ ROLE_MENU_ITEMS: dict[UserRole, list[str]] = {
         "Item Rates",
         "Payment Modes",
         "Ticketing",
+        "Multi-Ticketing",
         "Reports",
     ],
     UserRole.BILLING_OPERATOR: [
         "Dashboard",
         "Ticketing",
+        "Multi-Ticketing",
     ],
     UserRole.TICKET_CHECKER: [
         "Dashboard",

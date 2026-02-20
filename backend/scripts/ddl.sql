@@ -95,6 +95,7 @@ CREATE TABLE IF NOT EXISTS items (
     name                VARCHAR(60) NOT NULL UNIQUE,
     short_name          VARCHAR(30) NOT NULL UNIQUE,
     online_visiblity    BOOLEAN,
+    is_vehicle          BOOLEAN DEFAULT FALSE,
     is_active           BOOLEAN DEFAULT TRUE
 );
 
@@ -105,6 +106,29 @@ CREATE TABLE IF NOT EXISTS ferry_schedules (
     departure           TIME NOT NULL,
     CONSTRAINT uq_ferry_schedules_branch_departure UNIQUE (branch_id, departure)
 );
+
+-- Portal users table (customer-facing authentication)
+CREATE TABLE IF NOT EXISTS portal_users (
+    id                  INTEGER PRIMARY KEY,
+    first_name          VARCHAR(60) NOT NULL,
+    last_name           VARCHAR(60) NOT NULL,
+    email               VARCHAR(90) NOT NULL,
+    password            VARCHAR(60) NOT NULL,
+    mobile              VARCHAR(60) NOT NULL,
+    remember_token      VARCHAR(100),
+    created_at          TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW(),
+    updated_at          TIMESTAMP WITHOUT TIME ZONE,
+    profile_pic         BYTEA,
+    CONSTRAINT portal_users_unique_email UNIQUE (email)
+);
+
+-- ============================================================
+-- SEQUENCES
+-- ============================================================
+CREATE SEQUENCE IF NOT EXISTS portal_users_id_seq
+    START WITH 1 INCREMENT BY 1 NO MINVALUE NO MAXVALUE CACHE 1;
+
+ALTER TABLE portal_users ALTER COLUMN id SET DEFAULT nextval('portal_users_id_seq');
 
 -- ============================================================
 -- INDEXES
@@ -123,6 +147,8 @@ CREATE INDEX IF NOT EXISTS idx_items_name ON items(name);
 CREATE INDEX IF NOT EXISTS idx_items_short_name ON items(short_name);
 
 CREATE INDEX IF NOT EXISTS idx_ferry_schedules_branch ON ferry_schedules(branch_id);
+CREATE INDEX IF NOT EXISTS idx_portal_users_email ON portal_users(email);
+CREATE INDEX IF NOT EXISTS idx_portal_users_mobile ON portal_users(mobile);
 
 -- ============================================================
 -- FUNCTIONS & TRIGGERS
@@ -140,6 +166,12 @@ $$ LANGUAGE plpgsql;
 DROP TRIGGER IF EXISTS set_users_updated_at ON users;
 CREATE TRIGGER set_users_updated_at
     BEFORE UPDATE ON users
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS set_portal_users_updated_at ON portal_users;
+CREATE TRIGGER set_portal_users_updated_at
+    BEFORE UPDATE ON portal_users
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 

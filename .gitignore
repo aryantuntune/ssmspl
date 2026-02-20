@@ -39,3 +39,21 @@ Thumbs.db
 
 # Alembic
 alembic/versions/*.pyc
+
+# Claude Code local config
+.claude/
+
+# Dev scratchpad & scraping artifacts
+misc/
+
+# AI prompts / scaffolding
+prompts/
+
+# Database dumps & backups
+backup.sql
+ssmspl_db_dev_back.sql
+data/ssmspl_db.sql
+
+# Throwaway / generated files
+tsc_output.txt
+ssmspl_project_structure.txt

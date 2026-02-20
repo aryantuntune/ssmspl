@@ -11,12 +11,13 @@ import {
   TicketUpdate,
   TicketItemCreate,
   TicketItemUpdate,
+  TicketPayementCreate,
   Branch,
   Route,
   Item,
   PaymentMode,
+  FerrySchedule,
   RateLookupResponse,
-  DepartureOption,
 } from "@/types";
 import Navbar from "@/components/Navbar";
 import Sidebar from "@/components/Sidebar";
@@ -88,6 +89,21 @@ export default function TicketingPage() {
   // View modal
   const [viewTicket, setViewTicket] = useState<Ticket | null>(null);
 
+  // Payment confirmation modal
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [paymentRows, setPaymentRows] = useState<
+    { tempId: string; payment_mode_id: number; amount: number; amountStr: string; reference_id: string }[]
+  >([]);
+  const [paymentError, setPaymentError] = useState("");
+
+  // Last ticket info (fetched from API each time payment modal opens)
+  const [lastTicketInfo, setLastTicketInfo] = useState<{
+    paymentModes: string[];
+    amount: number;
+    repayment: number;
+    refNo: string | null;
+  } | null>(null);
+
   // Master form fields
   const [formBranchId, setFormBranchId] = useState(0);
   const [formRouteId, setFormRouteId] = useState(0);
@@ -95,19 +111,32 @@ export default function TicketingPage() {
   const [formDeparture, setFormDeparture] = useState("");
   const [formPaymentModeId, setFormPaymentModeId] = useState(0);
   const [formDiscount, setFormDiscount] = useState(0);
+  const [discountStr, setDiscountStr] = useState("0.00");
 
   // Detail items
   const [formItems, setFormItems] = useState<FormItem[]>([]);
 
-  // Departure options
-  const [departureOptions, setDepartureOptions] = useState<DepartureOption[]>([]);
+  // All ferry schedules (loaded once)
+  const [ferrySchedules, setFerrySchedules] = useState<FerrySchedule[]>([]);
 
   // Computed amounts
   const [formAmount, setFormAmount] = useState(0);
   const [formNetAmount, setFormNetAmount] = useState(0);
 
-  // Filtered routes based on selected branch
-  const [filteredRoutes, setFilteredRoutes] = useState<Route[]>([]);
+  // Filtered branches based on selected route
+  const [filteredBranches, setFilteredBranches] = useState<Branch[]>([]);
+
+  // Departure select ref for auto-focus
+  const departureRef = useRef<HTMLSelectElement>(null);
+  const modalRef = useRef<HTMLDivElement>(null);
+  const submitRef = useRef<HTMLButtonElement>(null);
+
+  // Auto-focus departure when modal opens
+  useEffect(() => {
+    if (showModal) {
+      setTimeout(() => departureRef.current?.focus(), 50);
+    }
+  }, [showModal]);
 
   // Amount recalculation
   useEffect(() => {
@@ -197,16 +226,18 @@ export default function TicketingPage() {
         setUser(data);
         // Fetch dropdown data in parallel
         try {
-          const [branchRes, routeRes, itemRes, pmRes] = await Promise.all([
+          const [branchRes, routeRes, itemRes, pmRes, schedRes] = await Promise.all([
             api.get<Branch[]>("/api/branches/?limit=200&status=active"),
             api.get<Route[]>("/api/routes/?limit=200&status=active"),
             api.get<Item[]>("/api/items/?limit=200&status=active"),
             api.get<PaymentMode[]>("/api/payment-modes/?limit=200&status=active"),
+            api.get<FerrySchedule[]>("/api/ferry-schedules/?limit=200"),
           ]);
           setBranches(branchRes.data);
           setAllRoutes(routeRes.data);
           setItems(itemRes.data);
           setPaymentModes(pmRes.data);
+          setFerrySchedules(schedRes.data);
         } catch {
           /* dropdown load failure is non-fatal */
         }
@@ -216,29 +247,42 @@ export default function TicketingPage() {
       .finally(() => setLoading(false));
   }, [router, fetchTickets]);
 
-  // Branch change handler for modal
-  const handleBranchChange = async (branchId: number) => {
-    setFormBranchId(branchId);
-    setFormRouteId(0);
+  // Whether the user is locked to their assigned route
+  const isRouteRestricted = user?.route_id != null;
+
+  // Route change handler for modal (unrestricted users)
+  const handleRouteChange = (routeId: number) => {
+    setFormRouteId(routeId);
+    setFormBranchId(0);
     setFormDeparture("");
-    const filtered = allRoutes.filter(
-      (r) => r.branch_id_one === branchId || r.branch_id_two === branchId
-    );
-    setFilteredRoutes(filtered);
-    try {
-      const res = await api.get<DepartureOption[]>(
-        `/api/tickets/departure-options?branch_id=${branchId}`
-      );
-      setDepartureOptions(res.data);
-    } catch {
-      setDepartureOptions([]);
+    if (routeId) {
+      const route = allRoutes.find((r) => r.id === routeId);
+      if (route) {
+        setFilteredBranches(
+          branches.filter(
+            (b) => b.id === route.branch_id_one || b.id === route.branch_id_two
+          )
+        );
+      }
+    } else {
+      setFilteredBranches([]);
     }
+  };
+
+  // Branch change handler
+  const handleBranchChange = (branchId: number) => {
+    setFormBranchId(branchId);
+    setFormDeparture(branchId ? getNextDeparture(branchId) : "");
   };
 
   // Item change handler for detail rows
   const handleItemChange = async (tempId: string, itemId: number) => {
+    const selectedItem = items.find((i) => i.id === itemId);
+    const vehicleNo = selectedItem?.is_vehicle ? undefined : "";
     const updated = formItems.map((fi) =>
-      fi.tempId === tempId ? { ...fi, item_id: itemId, rate: 0, levy: 0 } : fi
+      fi.tempId === tempId
+        ? { ...fi, item_id: itemId, rate: 0, levy: 0, ...(vehicleNo !== undefined ? { vehicle_no: vehicleNo } : {}) }
+        : fi
     );
     setFormItems(updated);
     if (formRouteId) {
@@ -260,7 +304,7 @@ export default function TicketingPage() {
   };
 
   // Add item row
-  const handleAddItem = () => {
+  const handleAddItem = useCallback(() => {
     setFormItems((prev) => [
       ...prev,
       {
@@ -274,7 +318,59 @@ export default function TicketingPage() {
         is_cancelled: false,
       },
     ]);
-  };
+  }, []);
+
+  // Alt+A to add item row, Alt+D to cancel/remove focused row
+  useEffect(() => {
+    if (!showModal) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.altKey && e.code === "KeyA") {
+        e.preventDefault();
+        e.stopPropagation();
+        handleAddItem();
+        setTimeout(() => {
+          const input = modalRef.current?.querySelector<HTMLInputElement>(
+            'tbody tr:last-child td:first-child input[type="number"]'
+          );
+          input?.focus();
+        }, 50);
+      }
+      if (e.altKey && e.code === "KeyS") {
+        e.preventDefault();
+        e.stopPropagation();
+        submitRef.current?.click();
+      }
+      if (e.altKey && e.code === "KeyD") {
+        e.preventDefault();
+        e.stopPropagation();
+        const row = (document.activeElement as HTMLElement)?.closest("tbody tr");
+        if (!row) return;
+        const rows = Array.from(modalRef.current?.querySelectorAll("tbody tr") || []);
+        const rowIdx = rows.indexOf(row);
+        if (rowIdx === -1) return;
+        setFormItems((prev) => {
+          const fi = prev[rowIdx];
+          if (!fi || fi.is_cancelled) return prev;
+          if (editingTicket && fi.id) {
+            return prev.map((item, i) =>
+              i === rowIdx ? { ...item, is_cancelled: true } : item
+            );
+          }
+          return prev.filter((_, i) => i !== rowIdx);
+        });
+        // Move focus to previous row's first input, or next row
+        setTimeout(() => {
+          const remainingRows = modalRef.current?.querySelectorAll("tbody tr");
+          if (!remainingRows || remainingRows.length === 0) return;
+          const targetIdx = Math.min(rowIdx, remainingRows.length - 1);
+          const input = remainingRows[targetIdx]?.querySelector<HTMLInputElement>('input[type="number"]');
+          input?.focus();
+        }, 50);
+      }
+    };
+    window.addEventListener("keydown", handler, true);
+    return () => window.removeEventListener("keydown", handler, true);
+  }, [showModal, handleAddItem, editingTicket]);
 
   // Cancel / remove item row
   const handleCancelItem = (tempId: string) => {
@@ -306,36 +402,78 @@ export default function TicketingPage() {
     );
   };
 
+  // Find the next departure time relative to now; wraps to first if past all
+  const getNextDeparture = (branchId: number): string => {
+    const branchSchedules = ferrySchedules
+      .filter((fs) => fs.branch_id === branchId)
+      .map((fs) => fs.departure)
+      .sort();
+    if (branchSchedules.length === 0) return "";
+    const now = new Date();
+    const nowStr = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+    const next = branchSchedules.find((d) => d >= nowStr);
+    return next || branchSchedules[0];
+  };
+
   // Open create modal
   const openCreateModal = async () => {
     setEditingTicket(null);
     setFormTicketDate(new Date().toISOString().split("T")[0]);
     setFormDeparture("");
-    setFormPaymentModeId(0);
+    setFormPaymentModeId(paymentModes.length > 0 ? paymentModes[0].id : 0);
     setFormDiscount(0);
-    setFormItems([]);
+    setDiscountStr("0.00");
+    setFormItems([{
+      tempId: crypto.randomUUID(),
+      id: null,
+      item_id: 0,
+      rate: 0,
+      levy: 0,
+      quantity: 1,
+      vehicle_no: "",
+      is_cancelled: false,
+    }]);
     setFormError("");
 
-    // Auto-fill branch and route from user profile / login selection
-    const selectedBranchId = getSelectedBranchId();
-    if (user?.route_id && selectedBranchId) {
-      setFormBranchId(selectedBranchId);
-      setFormRouteId(user.route_id);
-      setFilteredRoutes(allRoutes);
-      // Fetch departure options for the selected branch
-      try {
-        const res = await api.get<DepartureOption[]>(
-          `/api/tickets/departure-options?branch_id=${selectedBranchId}`
-        );
-        setDepartureOptions(res.data);
-      } catch {
-        setDepartureOptions([]);
+    if (isRouteRestricted) {
+      // Restricted user: lock route and branch
+      const selectedBranchId = getSelectedBranchId();
+      setFormRouteId(user!.route_id!);
+      setFormBranchId(selectedBranchId || 0);
+      setFilteredBranches([]);
+      if (selectedBranchId) {
+        setFormDeparture(getNextDeparture(selectedBranchId));
       }
     } else {
-      setFormBranchId(0);
+      // Unrestricted user: start with empty selections
       setFormRouteId(0);
-      setFilteredRoutes([]);
-      setDepartureOptions([]);
+      setFormBranchId(0);
+      setFilteredBranches([]);
+    }
+
+    // Fetch last ticket info from API
+    setLastTicketInfo(null);
+    try {
+      const listRes = await api.get<Ticket[]>("/api/tickets/?limit=1&sort_by=id&sort_order=desc");
+      if (listRes.data.length > 0) {
+        const lastId = listRes.data[0].id;
+        const detailRes = await api.get<Ticket>(`/api/tickets/${lastId}`);
+        const t = detailRes.data;
+        const totalPaid = (t.payments || []).reduce((s, p) => s + p.amount, 0);
+        const change = Math.round((totalPaid - t.net_amount) * 100) / 100;
+        const modes = [...new Set((t.payments || []).map((p) => p.payment_mode_name || "-"))];
+        const upiPayment = (t.payments || []).find(
+          (p) => p.payment_mode_name?.toUpperCase() === "UPI"
+        );
+        setLastTicketInfo({
+          paymentModes: modes.length > 0 ? modes : [t.payment_mode_name || "-"],
+          amount: t.net_amount,
+          repayment: change,
+          refNo: upiPayment?.ref_no || null,
+        });
+      }
+    } catch {
+      /* non-fatal */
     }
 
     setShowModal(true);
@@ -351,9 +489,9 @@ export default function TicketingPage() {
     setFormDeparture("");
     setFormPaymentModeId(0);
     setFormDiscount(0);
+    setDiscountStr("0.00");
     setFormItems([]);
-    setFilteredRoutes([]);
-    setDepartureOptions([]);
+    setFilteredBranches([]);
     setFormError("");
   };
 
@@ -373,24 +511,32 @@ export default function TicketingPage() {
       const res = await api.get<Ticket>(`/api/tickets/${ticket.id}`);
       const t = res.data;
       setEditingTicket(t);
-      setFormBranchId(t.branch_id);
-      setFormRouteId(t.route_id);
       setFormTicketDate(t.ticket_date);
       setFormDeparture(t.departure || "");
       setFormPaymentModeId(t.payment_mode_id);
       setFormDiscount(t.discount || 0);
-      const filtered = allRoutes.filter(
-        (r) => r.branch_id_one === t.branch_id || r.branch_id_two === t.branch_id
-      );
-      setFilteredRoutes(filtered);
-      try {
-        const dr = await api.get<DepartureOption[]>(
-          `/api/tickets/departure-options?branch_id=${t.branch_id}`
-        );
-        setDepartureOptions(dr.data);
-      } catch {
-        setDepartureOptions([]);
+      setDiscountStr((t.discount || 0).toFixed(2));
+
+      if (isRouteRestricted) {
+        // Restricted user: lock to assigned route and login branch
+        const selectedBranchId = getSelectedBranchId();
+        setFormRouteId(user!.route_id!);
+        setFormBranchId(selectedBranchId || t.branch_id);
+        setFilteredBranches([]);
+      } else {
+        // Unrestricted user: pre-fill from ticket, filter branches by route
+        setFormRouteId(t.route_id);
+        setFormBranchId(t.branch_id);
+        const route = allRoutes.find((r) => r.id === t.route_id);
+        if (route) {
+          setFilteredBranches(
+            branches.filter(
+              (b) => b.id === route.branch_id_one || b.id === route.branch_id_two
+            )
+          );
+        }
       }
+
       setFormItems(
         (t.items || []).map((ti) => ({
           tempId: crypto.randomUUID(),
@@ -420,8 +566,8 @@ export default function TicketingPage() {
       setFormError("At least one active item is required.");
       return;
     }
-    if (!formBranchId || !formRouteId || !formPaymentModeId) {
-      setFormError("Branch, Route, and Payment Mode are required.");
+    if (!formBranchId || !formRouteId) {
+      setFormError("Branch and Route are required.");
       return;
     }
     if (activeItems.some((fi) => !fi.item_id)) {
@@ -429,9 +575,10 @@ export default function TicketingPage() {
       return;
     }
 
-    setSubmitting(true);
-    try {
-      if (editingTicket) {
+    if (editingTicket) {
+      // Edit mode: save directly
+      setSubmitting(true);
+      try {
         const update: TicketUpdate = {};
         if (formDeparture !== (editingTicket.departure || ""))
           update.departure = formDeparture || null;
@@ -452,33 +599,194 @@ export default function TicketingPage() {
           is_cancelled: fi.is_cancelled,
         }));
         await api.patch(`/api/tickets/${editingTicket.id}`, update);
-      } else {
-        const create: TicketCreate = {
-          branch_id: formBranchId,
-          ticket_date: formTicketDate,
-          departure: formDeparture || null,
-          route_id: formRouteId,
-          payment_mode_id: formPaymentModeId,
-          discount: formDiscount || 0,
-          amount: formAmount,
-          net_amount: formNetAmount,
-          items: activeItems.map((fi): TicketItemCreate => ({
-            item_id: fi.item_id,
-            rate: fi.rate,
-            levy: fi.levy,
-            quantity: fi.quantity,
-            vehicle_no: fi.vehicle_no || null,
-          })),
-        };
-        await api.post("/api/tickets/", create);
+        closeModal();
+        await fetchTickets();
+      } catch (err: unknown) {
+        const msg =
+          (err as { response?: { data?: { detail?: string } } })?.response?.data
+            ?.detail || "Operation failed.";
+        setFormError(msg);
+      } finally {
+        setSubmitting(false);
       }
+    } else {
+      // Create mode: show payment confirmation modal
+      const cashMode = paymentModes.find((pm) => pm.description.toUpperCase() === "CASH");
+      setPaymentRows([
+        {
+          tempId: crypto.randomUUID(),
+          payment_mode_id: cashMode?.id || (paymentModes.length > 0 ? paymentModes[0].id : 0),
+          amount: formNetAmount,
+          amountStr: formNetAmount.toFixed(2),
+          reference_id: "",
+        },
+      ]);
+      setPaymentError("");
+      setShowPaymentModal(true);
+    }
+  };
+
+  // Computed received amount from payment rows
+  const receivedAmount = paymentRows.reduce((sum, pr) => sum + pr.amount, 0);
+  const receivedAmountRounded = Math.round(receivedAmount * 100) / 100;
+
+  // Save and print handler (called from payment modal)
+  const handleSaveAndPrint = async () => {
+    // Validate payment rows
+    if (paymentRows.length === 0) {
+      setPaymentError("At least one payment row is required.");
+      return;
+    }
+    if (paymentRows.some((pr) => !pr.payment_mode_id)) {
+      setPaymentError("All payment rows must have a payment mode selected.");
+      return;
+    }
+    if (paymentRows.some((pr) => pr.amount <= 0)) {
+      setPaymentError("All payment amounts must be greater than zero.");
+      return;
+    }
+    // Check UPI rows have reference_id
+    const upiMode = paymentModes.find((pm) => pm.description.toUpperCase() === "UPI");
+    if (upiMode && paymentRows.some((pr) => pr.payment_mode_id === upiMode.id && !pr.reference_id.trim())) {
+      setPaymentError("Reference ID is required for UPI payments.");
+      return;
+    }
+    if (receivedAmountRounded < formNetAmount) {
+      setPaymentError("Total received amount cannot be less than net amount.");
+      return;
+    }
+    setPaymentError("");
+    setSubmitting(true);
+    try {
+      const activeItems = formItems.filter((fi) => !fi.is_cancelled);
+      const create: TicketCreate = {
+        branch_id: formBranchId,
+        ticket_date: formTicketDate,
+        departure: formDeparture || null,
+        route_id: formRouteId,
+        payment_mode_id: formPaymentModeId,
+        discount: formDiscount || 0,
+        amount: formAmount,
+        net_amount: formNetAmount,
+        items: activeItems.map((fi): TicketItemCreate => ({
+          item_id: fi.item_id,
+          rate: fi.rate,
+          levy: fi.levy,
+          quantity: fi.quantity,
+          vehicle_no: fi.vehicle_no || null,
+        })),
+        payments: paymentRows.map((pr): TicketPayementCreate => ({
+          payment_mode_id: pr.payment_mode_id,
+          amount: pr.amount,
+          ref_no: pr.reference_id.trim() || null,
+        })),
+      };
+      const res = await api.post<Ticket>("/api/tickets/", create);
+      const savedTicket = res.data;
+
+      // Build print content
+      const routeName = allRoutes.find((r) => r.id === formRouteId);
+      const branchName = branches.find((b) => b.id === formBranchId)?.name || "";
+      const repayment = Math.round((receivedAmountRounded - formNetAmount) * 100) / 100;
+      const itemRows = activeItems
+        .map((fi) => {
+          const itemName = items.find((i) => i.id === fi.item_id)?.name || `Item #${fi.item_id}`;
+          const lineAmt = (fi.quantity * (fi.rate + fi.levy)).toFixed(2);
+          return `<tr>
+            <td style="padding:4px 8px;border-bottom:1px solid #eee;">${itemName}</td>
+            <td style="padding:4px 8px;border-bottom:1px solid #eee;text-align:right;">${fi.rate.toFixed(2)}</td>
+            <td style="padding:4px 8px;border-bottom:1px solid #eee;text-align:right;">${fi.levy.toFixed(2)}</td>
+            <td style="padding:4px 8px;border-bottom:1px solid #eee;text-align:center;">${fi.quantity}</td>
+            <td style="padding:4px 8px;border-bottom:1px solid #eee;">${fi.vehicle_no || "-"}</td>
+            <td style="padding:4px 8px;border-bottom:1px solid #eee;text-align:right;">${lineAmt}</td>
+          </tr>`;
+        })
+        .join("");
+
+      const paymentPrintRows = paymentRows
+        .map((pr) => {
+          const modeName = paymentModes.find((pm) => pm.id === pr.payment_mode_id)?.description || "-";
+          return `<tr>
+            <td style="padding:4px 8px;border-bottom:1px solid #eee;">${modeName}</td>
+            <td style="padding:4px 8px;border-bottom:1px solid #eee;text-align:right;">${pr.amount.toFixed(2)}</td>
+            <td style="padding:4px 8px;border-bottom:1px solid #eee;">${pr.reference_id || "-"}</td>
+          </tr>`;
+        })
+        .join("");
+
+      const printHtml = `<!DOCTYPE html>
+<html><head><title>Ticket #${savedTicket.ticket_no || savedTicket.id}</title>
+<style>
+  body { font-family: Arial, sans-serif; margin: 20px; color: #333; }
+  .header { text-align: center; margin-bottom: 16px; }
+  .header h2 { margin: 0 0 4px; font-size: 18px; }
+  .header p { margin: 0; font-size: 12px; color: #666; }
+  .info { display: flex; flex-wrap: wrap; gap: 8px 24px; margin-bottom: 12px; font-size: 13px; }
+  .info span { font-weight: 600; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 12px; }
+  th { background: #f5f5f5; padding: 6px 8px; text-align: left; border-bottom: 2px solid #ddd; }
+  .totals { text-align: right; font-size: 13px; margin-top: 8px; }
+  .totals div { margin-bottom: 4px; }
+  .totals .net { font-size: 15px; font-weight: 700; }
+  .section-title { font-size: 13px; font-weight: 700; margin: 12px 0 6px; }
+  @media print { body { margin: 0; } }
+</style></head><body>
+<div class="header">
+  <h2>SSMSPL - Ferry Ticket</h2>
+  <p>Suvarnadurga Shipping & Marine Services Pvt. Ltd.</p>
+</div>
+<div class="info">
+  <div>Ticket No: <span>${savedTicket.ticket_no || savedTicket.id}</span></div>
+  <div>Date: <span>${formTicketDate}</span></div>
+  <div>Branch: <span>${branchName}</span></div>
+  <div>Route: <span>${routeName ? `${routeName.branch_one_name} - ${routeName.branch_two_name}` : ""}</span></div>
+  <div>Departure: <span>${formDeparture || "-"}</span></div>
+</div>
+<table>
+  <thead><tr>
+    <th>Item</th><th style="text-align:right;">Rate</th><th style="text-align:right;">Levy</th>
+    <th style="text-align:center;">Qty</th><th>Vehicle</th><th style="text-align:right;">Amount</th>
+  </tr></thead>
+  <tbody>${itemRows}</tbody>
+</table>
+<div class="totals">
+  <div>Amount: ${formAmount.toFixed(2)}</div>
+  <div>Discount: ${(formDiscount || 0).toFixed(2)}</div>
+  <div class="net">Net Amount: ${formNetAmount.toFixed(2)}</div>
+</div>
+<div class="section-title">Payment Details</div>
+<table>
+  <thead><tr>
+    <th>Payment Mode</th><th style="text-align:right;">Amount</th><th>Reference ID</th>
+  </tr></thead>
+  <tbody>${paymentPrintRows}</tbody>
+  <tfoot><tr>
+    <td style="padding:4px 8px;font-weight:700;">Total Received</td>
+    <td style="padding:4px 8px;text-align:right;font-weight:700;">${receivedAmountRounded.toFixed(2)}</td>
+    <td></td>
+  </tr></tfoot>
+</table>
+<div class="totals">
+  <div>Return Change: ${repayment.toFixed(2)}</div>
+</div>
+</body></html>`;
+
+      const printWindow = window.open("", "_blank", "width=600,height=700");
+      if (printWindow) {
+        printWindow.document.write(printHtml);
+        printWindow.document.close();
+        printWindow.focus();
+        printWindow.print();
+      }
+
+      setShowPaymentModal(false);
       closeModal();
       await fetchTickets();
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { detail?: string } } })?.response?.data
           ?.detail || "Operation failed.";
-      setFormError(msg);
+      setPaymentError(msg);
     } finally {
       setSubmitting(false);
     }
@@ -828,12 +1136,7 @@ export default function TicketingPage() {
                   >
                     Net Amount{sortIndicator("net_amount")}
                   </th>
-                  <th
-                    onClick={() => handleSort("payment_mode_id")}
-                    className="text-left px-6 py-3 font-semibold text-gray-600 cursor-pointer select-none hover:text-blue-700"
-                  >
-                    Payment Mode{sortIndicator("payment_mode_id")}
-                  </th>
+                  {/* Payment Mode column hidden for now */}
                   <th
                     onClick={() => handleSort("is_cancelled")}
                     className="text-left px-6 py-3 font-semibold text-gray-600 cursor-pointer select-none hover:text-blue-700"
@@ -848,13 +1151,13 @@ export default function TicketingPage() {
               <tbody>
                 {tableLoading ? (
                   <tr>
-                    <td colSpan={12} className="text-center py-8 text-gray-400">
+                    <td colSpan={11} className="text-center py-8 text-gray-400">
                       Loading tickets...
                     </td>
                   </tr>
                 ) : tickets.length === 0 ? (
                   <tr>
-                    <td colSpan={12} className="text-center py-8 text-gray-400">
+                    <td colSpan={11} className="text-center py-8 text-gray-400">
                       No tickets found. Click &quot;+ New Ticket&quot; to create one.
                     </td>
                   </tr>
@@ -887,9 +1190,7 @@ export default function TicketingPage() {
                       <td className="px-6 py-4 text-right font-medium text-gray-800">
                         {ticket.net_amount.toFixed(2)}
                       </td>
-                      <td className="px-6 py-4 text-gray-600">
-                        {ticket.payment_mode_name || ticket.payment_mode_id}
-                      </td>
+                      {/* Payment Mode cell hidden for now */}
                       <td className="px-6 py-4">
                         <span
                           className={`inline-block text-xs font-semibold px-2.5 py-1 rounded-full ${
@@ -908,12 +1209,14 @@ export default function TicketingPage() {
                         >
                           View
                         </button>
-                        <button
-                          onClick={() => handleEdit(ticket)}
-                          className="text-blue-600 hover:text-blue-800 font-medium text-sm transition"
-                        >
-                          Edit
-                        </button>
+                        {(user?.role === "SUPER_ADMIN" || user?.role === "ADMIN") && (
+                          <button
+                            onClick={() => handleEdit(ticket)}
+                            className="text-blue-600 hover:text-blue-800 font-medium text-sm transition"
+                          >
+                            Edit
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))
@@ -1084,14 +1387,7 @@ export default function TicketingPage() {
                       {viewTicket.net_amount.toFixed(2)}
                     </span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm font-medium text-gray-500">
-                      Payment Mode
-                    </span>
-                    <span className="text-sm text-gray-800">
-                      {viewTicket.payment_mode_name || viewTicket.payment_mode_id}
-                    </span>
-                  </div>
+                  {/* Payment Mode hidden for now */}
                   <div className="flex justify-between">
                     <span className="text-sm font-medium text-gray-500">Status</span>
                     <span
@@ -1196,10 +1492,288 @@ export default function TicketingPage() {
             </div>
           )}
 
+          {/* Payment Confirmation Modal */}
+          {showPaymentModal && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl mx-4 p-6 max-h-[90vh] overflow-y-auto">
+                <h3 className="text-lg font-bold text-gray-800 mb-6">
+                  Payment Confirmation
+                </h3>
+
+                <div className="space-y-4">
+                  {/* Net Amount (display only) */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-600 mb-1">
+                      Net Amount
+                    </label>
+                    <div className="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-gray-800 text-right font-semibold text-lg bg-gray-50">
+                      {formNetAmount.toFixed(2)}
+                    </div>
+                  </div>
+
+                  {/* Payment Table */}
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="block text-sm font-medium text-gray-600">
+                        Payment Details
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const cashMode = paymentModes.find((pm) => pm.description.toUpperCase() === "CASH");
+                          setPaymentRows((prev) => [
+                            ...prev,
+                            {
+                              tempId: crypto.randomUUID(),
+                              payment_mode_id: cashMode?.id || (paymentModes.length > 0 ? paymentModes[0].id : 0),
+                              amount: 0,
+                              amountStr: "0.00",
+                              reference_id: "",
+                            },
+                          ]);
+                        }}
+                        className="text-xs bg-blue-700 hover:bg-blue-800 text-white font-semibold px-3 py-1.5 rounded-lg transition"
+                      >
+                        + Add Row
+                      </button>
+                    </div>
+                    <div className="border border-gray-200 rounded-lg overflow-hidden">
+                      <table className="w-full text-sm">
+                        <thead className="bg-gray-50 border-b border-gray-200">
+                          <tr>
+                            <th className="text-left px-3 py-2 font-semibold text-gray-600 w-[150px]">
+                              Payment Mode
+                            </th>
+                            <th className="text-right px-3 py-2 font-semibold text-gray-600 w-[140px]">
+                              Amount
+                            </th>
+                            <th className="text-left px-3 py-2 font-semibold text-gray-600">
+                              Reference ID
+                            </th>
+                            <th className="text-center px-3 py-2 font-semibold text-gray-600 w-[70px]">
+                              Action
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {paymentRows.length === 0 ? (
+                            <tr>
+                              <td colSpan={4} className="text-center py-4 text-gray-400">
+                                No payment rows. Click &quot;+ Add Row&quot; to add one.
+                              </td>
+                            </tr>
+                          ) : (
+                            paymentRows.map((pr) => {
+                              const selectedMode = paymentModes.find((pm) => pm.id === pr.payment_mode_id);
+                              const isUpi = selectedMode?.description.toUpperCase() === "UPI";
+                              return (
+                                <tr key={pr.tempId} className="border-b border-gray-100">
+                                  <td className="px-3 py-2">
+                                    <select
+                                      value={pr.payment_mode_id}
+                                      onChange={(e) => {
+                                        const modeId = Number(e.target.value);
+                                        setPaymentRows((prev) =>
+                                          prev.map((row) =>
+                                            row.tempId === pr.tempId
+                                              ? { ...row, payment_mode_id: modeId, reference_id: "" }
+                                              : row
+                                          )
+                                        );
+                                      }}
+                                      className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-black text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    >
+                                      <option value={0}>-- Select --</option>
+                                      {paymentModes.map((pm) => (
+                                        <option key={pm.id} value={pm.id}>
+                                          {pm.description}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </td>
+                                  <td className="px-3 py-2">
+                                    <input
+                                      type="text"
+                                      inputMode="decimal"
+                                      autoFocus={paymentRows.length === 1 && paymentRows[0].tempId === pr.tempId}
+                                      value={pr.amountStr}
+                                      onChange={(e) => {
+                                        const val = e.target.value;
+                                        if (val === "" || /^\d*\.?\d{0,2}$/.test(val)) {
+                                          setPaymentRows((prev) =>
+                                            prev.map((row) =>
+                                              row.tempId === pr.tempId
+                                                ? { ...row, amountStr: val, amount: parseFloat(val) || 0 }
+                                                : row
+                                            )
+                                          );
+                                        }
+                                      }}
+                                      onFocus={(e) => e.target.select()}
+                                      onBlur={() =>
+                                        setPaymentRows((prev) =>
+                                          prev.map((row) =>
+                                            row.tempId === pr.tempId
+                                              ? { ...row, amountStr: row.amount.toFixed(2) }
+                                              : row
+                                          )
+                                        )
+                                      }
+                                      onKeyDown={(e) => {
+                                        if (e.key === "Enter") {
+                                          e.preventDefault();
+                                          handleSaveAndPrint();
+                                        }
+                                      }}
+                                      className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-black text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    />
+                                  </td>
+                                  <td className="px-3 py-2">
+                                    <input
+                                      type="text"
+                                      disabled={!isUpi}
+                                      placeholder={isUpi ? "Transaction ID" : "-"}
+                                      value={pr.reference_id}
+                                      onChange={(e) =>
+                                        setPaymentRows((prev) =>
+                                          prev.map((row) =>
+                                            row.tempId === pr.tempId
+                                              ? { ...row, reference_id: e.target.value }
+                                              : row
+                                          )
+                                        )
+                                      }
+                                      onKeyDown={(e) => {
+                                        if (e.key === "Enter") {
+                                          e.preventDefault();
+                                          handleSaveAndPrint();
+                                        }
+                                      }}
+                                      className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-black text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed disabled:text-gray-400"
+                                    />
+                                  </td>
+                                  <td className="px-3 py-2 text-center">
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setPaymentRows((prev) =>
+                                          prev.filter((row) => row.tempId !== pr.tempId)
+                                        )
+                                      }
+                                      className="text-red-600 hover:text-red-800 font-medium text-xs transition"
+                                    >
+                                      Remove
+                                    </button>
+                                  </td>
+                                </tr>
+                              );
+                            })
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* Received Amount (computed from payment rows) */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-600 mb-1">
+                      Received Amount
+                    </label>
+                    <div
+                      className={`w-full border border-gray-200 rounded-lg px-4 py-2.5 text-right font-semibold text-lg bg-gray-50 ${
+                        receivedAmountRounded >= formNetAmount
+                          ? "text-gray-800"
+                          : "text-red-600"
+                      }`}
+                    >
+                      {receivedAmountRounded.toFixed(2)}
+                    </div>
+                  </div>
+
+                  {/* Re-Payment / Change Amount (display only) */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-600 mb-1">
+                      Re-Payment Amount (Change)
+                    </label>
+                    <div
+                      className={`w-full border border-gray-200 rounded-lg px-4 py-2.5 text-right font-semibold text-lg bg-gray-50 ${
+                        receivedAmountRounded >= formNetAmount
+                          ? "text-green-700"
+                          : "text-red-600"
+                      }`}
+                    >
+                      {(Math.round((receivedAmountRounded - formNetAmount) * 100) / 100).toFixed(2)}
+                    </div>
+                  </div>
+                </div>
+
+                {paymentError && (
+                  <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg p-2 mt-4">
+                    {paymentError}
+                  </p>
+                )}
+
+                <div className="flex justify-end gap-3 mt-6">
+                  <button
+                    type="button"
+                    onClick={() => setShowPaymentModal(false)}
+                    className="px-4 py-2 text-gray-600 hover:text-gray-800 font-medium text-sm transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveAndPrint}
+                    disabled={submitting || receivedAmountRounded < formNetAmount}
+                    className="bg-blue-700 hover:bg-blue-800 text-white font-semibold px-5 py-2 rounded-lg transition disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    {submitting ? "Saving..." : "Save & Print"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Create/Edit Modal */}
           {showModal && (
-            <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-              <div className="bg-white rounded-2xl shadow-xl w-full max-w-5xl mx-4 p-6 max-h-[90vh] overflow-y-auto">
+            <div className="fixed inset-0 z-50">
+              <div
+                ref={modalRef}
+                className="bg-white w-full h-full p-6 overflow-y-auto"
+                onFocusCapture={(e) => {
+                  const el = e.target;
+                  if (el instanceof HTMLInputElement && (el.type === "text" || el.type === "number" || el.type === "date")) {
+                    el.select();
+                  }
+                }}
+                onKeyDownCapture={(e) => {
+                  if ((e.key === "ArrowUp" || e.key === "ArrowDown") && (e.target as HTMLElement)?.tagName === "INPUT" && (e.target as HTMLInputElement).type === "number") {
+                    e.preventDefault();
+                  }
+                }}
+                onWheelCapture={(e) => {
+                  if ((e.target as HTMLElement)?.tagName === "INPUT" && (e.target as HTMLInputElement).type === "number") {
+                    (e.target as HTMLInputElement).blur();
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key !== "Tab") return;
+                  e.preventDefault();
+                  const container = e.currentTarget;
+                  const focusable = Array.from(
+                    container.querySelectorAll<HTMLElement>(
+                      'input:not([disabled]):not([readonly]):not([tabindex="-1"]), select:not([disabled]):not([tabindex="-1"])'
+                    )
+                  );
+                  if (focusable.length === 0) return;
+                  const idx = focusable.indexOf(document.activeElement as HTMLElement);
+                  if (e.shiftKey) {
+                    focusable[idx <= 0 ? focusable.length - 1 : idx - 1].focus();
+                  } else {
+                    focusable[idx === -1 || idx >= focusable.length - 1 ? 0 : idx + 1].focus();
+                  }
+                }}
+              >
                 <h3 className="text-lg font-bold text-gray-800 mb-4">
                   {editingTicket
                     ? `Edit Ticket #${editingTicket.id}`
@@ -1208,63 +1782,91 @@ export default function TicketingPage() {
                 <form onSubmit={handleSubmit}>
                   {/* Master section */}
                   <div className="grid grid-cols-2 gap-4 mb-6">
-                    {/* Branch */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Branch *
-                      </label>
-                      <select
-                        required
-                        value={formBranchId}
-                        onChange={(e) => handleBranchChange(Number(e.target.value))}
-                        className="w-full border border-gray-300 rounded-lg px-4 py-2 text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      >
-                        <option value={0}>-- Select Branch --</option>
-                        {branches.map((b) => (
-                          <option key={b.id} value={b.id}>
-                            {b.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
                     {/* Route */}
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
                         Route *
                       </label>
-                      <select
-                        required
-                        value={formRouteId}
-                        onChange={async (e) => {
-                          const newRouteId = Number(e.target.value);
-                          setFormRouteId(newRouteId);
-                          if (newRouteId) {
-                            const updatedItems = await Promise.all(
-                              formItems.map(async (fi) => {
-                                if (!fi.item_id || fi.is_cancelled) return fi;
-                                try {
-                                  const res = await api.get<RateLookupResponse>(
-                                    `/api/tickets/rate-lookup?item_id=${fi.item_id}&route_id=${newRouteId}`
-                                  );
-                                  return { ...fi, rate: res.data.rate, levy: res.data.levy };
-                                } catch {
-                                  return { ...fi, rate: 0, levy: 0 };
-                                }
-                              })
-                            );
-                            setFormItems(updatedItems);
+                      {isRouteRestricted || editingTicket ? (
+                        <input
+                          type="text"
+                          readOnly
+                          value={
+                            allRoutes.find((r) => r.id === formRouteId)
+                              ? `${allRoutes.find((r) => r.id === formRouteId)!.branch_one_name} - ${allRoutes.find((r) => r.id === formRouteId)!.branch_two_name}`
+                              : `Route #${formRouteId}`
                           }
-                        }}
-                        className="w-full border border-gray-300 rounded-lg px-4 py-2 text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      >
-                        <option value={0}>-- Select Route --</option>
-                        {filteredRoutes.map((r) => (
-                          <option key={r.id} value={r.id}>
-                            {r.branch_one_name} - {r.branch_two_name}
-                          </option>
-                        ))}
-                      </select>
+                          tabIndex={-1}
+                          className="w-full border border-gray-300 rounded-lg px-4 py-2 text-black bg-gray-100 cursor-not-allowed focus:outline-none"
+                        />
+                      ) : (
+                        <select
+                          required
+                          value={formRouteId}
+                          onChange={async (e) => {
+                            const newRouteId = Number(e.target.value);
+                            handleRouteChange(newRouteId);
+                            if (newRouteId && formItems.length > 0) {
+                              const updatedItems = await Promise.all(
+                                formItems.map(async (fi) => {
+                                  if (!fi.item_id || fi.is_cancelled) return fi;
+                                  try {
+                                    const res = await api.get<RateLookupResponse>(
+                                      `/api/tickets/rate-lookup?item_id=${fi.item_id}&route_id=${newRouteId}`
+                                    );
+                                    return { ...fi, rate: res.data.rate, levy: res.data.levy };
+                                  } catch {
+                                    return { ...fi, rate: 0, levy: 0 };
+                                  }
+                                })
+                              );
+                              setFormItems(updatedItems);
+                            }
+                          }}
+                          className="w-full border border-gray-300 rounded-lg px-4 py-2 text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                          <option value={0}>-- Select Route --</option>
+                          {allRoutes.map((r) => (
+                            <option key={r.id} value={r.id}>
+                              {r.branch_one_name} - {r.branch_two_name}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+
+                    {/* Branch */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Branch *
+                      </label>
+                      {isRouteRestricted || editingTicket ? (
+                        <input
+                          type="text"
+                          readOnly
+                          value={
+                            branches.find((b) => b.id === formBranchId)?.name ||
+                            getSelectedBranchName() ||
+                            `Branch #${formBranchId}`
+                          }
+                          tabIndex={-1}
+                          className="w-full border border-gray-300 rounded-lg px-4 py-2 text-black bg-gray-100 cursor-not-allowed focus:outline-none"
+                        />
+                      ) : (
+                        <select
+                          required
+                          value={formBranchId}
+                          onChange={(e) => handleBranchChange(Number(e.target.value))}
+                          className="w-full border border-gray-300 rounded-lg px-4 py-2 text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                          <option value={0}>-- Select Branch --</option>
+                          {filteredBranches.map((b) => (
+                            <option key={b.id} value={b.id}>
+                              {b.name}
+                            </option>
+                          ))}
+                        </select>
+                      )}
                     </div>
 
                     {/* Ticket Date */}
@@ -1275,9 +1877,15 @@ export default function TicketingPage() {
                       <input
                         type="date"
                         required
+                        readOnly={user?.role === "BILLING_OPERATOR"}
+                        tabIndex={user?.role === "BILLING_OPERATOR" ? -1 : undefined}
                         value={formTicketDate}
                         onChange={(e) => setFormTicketDate(e.target.value)}
-                        className="w-full border border-gray-300 rounded-lg px-4 py-2 text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className={`w-full border border-gray-300 rounded-lg px-4 py-2 text-black focus:outline-none ${
+                          user?.role === "BILLING_OPERATOR"
+                            ? "bg-gray-100 cursor-not-allowed"
+                            : "focus:ring-2 focus:ring-blue-500"
+                        }`}
                       />
                     </div>
 
@@ -1287,83 +1895,23 @@ export default function TicketingPage() {
                         Departure
                       </label>
                       <select
+                        ref={departureRef}
                         value={formDeparture}
                         onChange={(e) => setFormDeparture(e.target.value)}
                         className="w-full border border-gray-300 rounded-lg px-4 py-2 text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
                       >
                         <option value="">-- Select Departure --</option>
-                        {departureOptions.map((d) => (
-                          <option key={d.id} value={d.departure}>
-                            {d.departure}
-                          </option>
-                        ))}
+                        {ferrySchedules
+                          .filter((fs) => !formBranchId || fs.branch_id === formBranchId)
+                          .map((fs) => (
+                            <option key={fs.id} value={fs.departure}>
+                              {fs.departure}
+                            </option>
+                          ))}
                       </select>
                     </div>
 
-                    {/* Payment Mode */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Payment Mode *
-                      </label>
-                      <select
-                        required
-                        value={formPaymentModeId}
-                        onChange={(e) =>
-                          setFormPaymentModeId(Number(e.target.value))
-                        }
-                        className="w-full border border-gray-300 rounded-lg px-4 py-2 text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      >
-                        <option value={0}>-- Select Payment Mode --</option>
-                        {paymentModes.map((pm) => (
-                          <option key={pm.id} value={pm.id}>
-                            {pm.description}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {/* Discount */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Discount
-                      </label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        value={formDiscount}
-                        onChange={(e) =>
-                          setFormDiscount(parseFloat(e.target.value) || 0)
-                        }
-                        className="w-full border border-gray-300 rounded-lg px-4 py-2 text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-
-                    {/* Amount (read-only) */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Amount
-                      </label>
-                      <input
-                        type="text"
-                        readOnly
-                        value={formAmount.toFixed(2)}
-                        className="w-full border border-gray-300 rounded-lg px-4 py-2 text-black bg-gray-100 cursor-not-allowed focus:outline-none"
-                      />
-                    </div>
-
-                    {/* Net Amount (read-only) */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Net Amount
-                      </label>
-                      <input
-                        type="text"
-                        readOnly
-                        value={formNetAmount.toFixed(2)}
-                        className="w-full border border-gray-300 rounded-lg px-4 py-2 text-black bg-gray-100 cursor-not-allowed focus:outline-none"
-                      />
-                    </div>
+                    {/* Payment Mode hidden for now */}
 
                     {/* Ticket No (read-only, edit mode only) */}
                     {editingTicket && (
@@ -1374,6 +1922,7 @@ export default function TicketingPage() {
                         <input
                           type="text"
                           readOnly
+                          tabIndex={-1}
                           value={editingTicket.ticket_no}
                           className="w-full border border-gray-300 rounded-lg px-4 py-2 text-black bg-gray-100 cursor-not-allowed focus:outline-none"
                         />
@@ -1383,40 +1932,40 @@ export default function TicketingPage() {
 
                   {/* Detail section - Ticket Items */}
                   <div className="mb-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <h4 className="text-sm font-bold text-gray-700">Ticket Items</h4>
-                      <button
-                        type="button"
-                        onClick={handleAddItem}
-                        className="text-sm bg-blue-700 hover:bg-blue-800 text-white font-semibold px-3 py-1.5 rounded-lg transition"
-                      >
-                        + Add Item
-                      </button>
-                    </div>
                     <div className="border border-gray-200 rounded-lg overflow-hidden">
                       <table className="w-full text-sm">
                         <thead className="bg-gray-50 border-b border-gray-200">
                           <tr>
-                            <th className="text-left px-4 py-2 font-semibold text-gray-600">
+                            <th className="text-left px-3 py-2 font-semibold text-gray-600 w-[70px]">
+                              ID
+                            </th>
+                            <th className="text-left px-3 py-2 font-semibold text-gray-600 w-[30%]">
                               Item
                             </th>
-                            <th className="text-right px-4 py-2 font-semibold text-gray-600">
+                            <th className="text-right px-3 py-2 font-semibold text-gray-600 w-[100px]">
                               Rate
                             </th>
-                            <th className="text-right px-4 py-2 font-semibold text-gray-600">
+                            <th className="text-right px-3 py-2 font-semibold text-gray-600 w-[100px]">
                               Levy
                             </th>
-                            <th className="text-right px-4 py-2 font-semibold text-gray-600 w-20">
+                            <th className="text-right px-3 py-2 font-semibold text-gray-600 w-[70px]">
                               Qty
                             </th>
-                            <th className="text-left px-4 py-2 font-semibold text-gray-600">
+                            <th className="text-left px-3 py-2 font-semibold text-gray-600 w-[140px]">
                               Vehicle No
                             </th>
-                            <th className="text-right px-4 py-2 font-semibold text-gray-600">
+                            <th className="text-right px-3 py-2 font-semibold text-gray-600 w-[110px]">
                               Amount
                             </th>
-                            <th className="text-center px-4 py-2 font-semibold text-gray-600">
-                              Actions
+                            <th className="text-center px-3 py-2 w-[100px]">
+                              <button
+                                type="button"
+                                tabIndex={-1}
+                                onClick={handleAddItem}
+                                className="text-xs bg-blue-700 hover:bg-blue-800 text-white font-semibold px-3 py-1.5 rounded-lg transition"
+                              >
+                                + Add Item
+                              </button>
                             </th>
                           </tr>
                         </thead>
@@ -1424,7 +1973,7 @@ export default function TicketingPage() {
                           {formItems.length === 0 ? (
                             <tr>
                               <td
-                                colSpan={7}
+                                colSpan={8}
                                 className="text-center py-4 text-gray-400"
                               >
                                 No items added. Click &quot;+ Add Item&quot; to add one.
@@ -1432,6 +1981,8 @@ export default function TicketingPage() {
                             </tr>
                           ) : (
                             formItems.map((fi) => {
+                              const selectedItem = items.find((i) => i.id === fi.item_id);
+                              const isVehicle = selectedItem?.is_vehicle === true;
                               const rowAmount = fi.is_cancelled
                                 ? 0
                                 : fi.quantity * (fi.rate + fi.levy);
@@ -1442,8 +1993,36 @@ export default function TicketingPage() {
                                     fi.is_cancelled ? "opacity-40 bg-gray-50" : ""
                                   }`}
                                 >
-                                  <td className="px-4 py-2">
+                                  <td className="px-3 py-2">
+                                    <input
+                                      type="number"
+                                      min="1"
+                                      disabled={fi.is_cancelled}
+                                      value={fi.item_id || ""}
+                                      placeholder="ID"
+                                      onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }}
+                                      onChange={(e) => {
+                                        const id = parseInt(e.target.value) || 0;
+                                        if (id && items.some((i) => i.id === id)) {
+                                          handleItemChange(fi.tempId, id);
+                                        } else {
+                                          setFormItems((prev) =>
+                                            prev.map((item) =>
+                                              item.tempId === fi.tempId
+                                                ? { ...item, item_id: id, rate: 0, levy: 0 }
+                                                : item
+                                            )
+                                          );
+                                        }
+                                      }}
+
+                                      className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-black text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                                    />
+                                  </td>
+                                  <td className="px-3 py-2">
                                     <select
+                                      id={`item-sel-${fi.tempId}`}
+                                      tabIndex={fi.item_id && items.some((i) => i.id === fi.item_id) ? -1 : 0}
                                       value={fi.item_id}
                                       disabled={fi.is_cancelled}
                                       onChange={(e) =>
@@ -1462,28 +2041,32 @@ export default function TicketingPage() {
                                       ))}
                                     </select>
                                   </td>
-                                  <td className="px-4 py-2">
+                                  <td className="px-3 py-2">
                                     <input
+                                      tabIndex={-1}
                                       type="text"
                                       readOnly
                                       value={fi.rate.toFixed(2)}
                                       className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-black text-sm text-right bg-gray-100 cursor-not-allowed focus:outline-none"
                                     />
                                   </td>
-                                  <td className="px-4 py-2">
+                                  <td className="px-3 py-2">
                                     <input
+                                      tabIndex={-1}
                                       type="text"
                                       readOnly
                                       value={fi.levy.toFixed(2)}
                                       className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-black text-sm text-right bg-gray-100 cursor-not-allowed focus:outline-none"
                                     />
                                   </td>
-                                  <td className="px-4 py-2">
+                                  <td className="px-3 py-2">
                                     <input
+                                      id={`qty-${fi.tempId}`}
                                       type="number"
                                       min="1"
                                       disabled={fi.is_cancelled}
                                       value={fi.quantity}
+                                      onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }}
                                       onChange={(e) =>
                                         setFormItems((prev) =>
                                           prev.map((item) =>
@@ -1500,11 +2083,14 @@ export default function TicketingPage() {
                                       className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-black text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
                                     />
                                   </td>
-                                  <td className="px-4 py-2">
+                                  <td className="px-3 py-2">
                                     <input
                                       type="text"
-                                      disabled={fi.is_cancelled}
+                                      disabled={fi.is_cancelled || !isVehicle}
+                                      readOnly={!isVehicle}
+                                      tabIndex={!isVehicle ? -1 : undefined}
                                       value={fi.vehicle_no}
+                                      onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }}
                                       onChange={(e) =>
                                         setFormItems((prev) =>
                                           prev.map((item) =>
@@ -1517,22 +2103,24 @@ export default function TicketingPage() {
                                           )
                                         )
                                       }
-                                      placeholder="Optional"
+                                      placeholder={isVehicle ? "Vehicle No" : ""}
                                       className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-black text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
                                     />
                                   </td>
-                                  <td className="px-4 py-2">
+                                  <td className="px-3 py-2">
                                     <input
+                                      tabIndex={-1}
                                       type="text"
                                       readOnly
                                       value={rowAmount.toFixed(2)}
                                       className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-black text-sm text-right bg-gray-100 cursor-not-allowed focus:outline-none"
                                     />
                                   </td>
-                                  <td className="px-4 py-2 text-center">
+                                  <td className="px-3 py-2 text-center">
                                     {fi.is_cancelled ? (
                                       <button
                                         type="button"
+                                        tabIndex={-1}
                                         onClick={() => handleRestoreItem(fi.tempId)}
                                         className="text-green-600 hover:text-green-800 font-medium text-xs transition"
                                       >
@@ -1541,6 +2129,7 @@ export default function TicketingPage() {
                                     ) : (
                                       <button
                                         type="button"
+                                        tabIndex={-1}
                                         onClick={() => handleCancelItem(fi.tempId)}
                                         className="text-red-600 hover:text-red-800 font-medium text-xs transition"
                                       >
@@ -1553,6 +2142,61 @@ export default function TicketingPage() {
                             })
                           )}
                         </tbody>
+                        <tfoot className="border-t border-gray-200">
+                          <tr>
+                            <td colSpan={6} className="px-3 py-2 text-right text-sm font-medium text-gray-600">
+                              Amount
+                            </td>
+                            <td className="px-3 py-2">
+                              <input
+                                type="text"
+                                readOnly
+                                tabIndex={-1}
+                                value={formAmount.toFixed(2)}
+                                className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-black text-sm text-right bg-gray-100 cursor-not-allowed focus:outline-none"
+                              />
+                            </td>
+                            <td></td>
+                          </tr>
+                          <tr>
+                            <td colSpan={6} className="px-3 py-2 text-right text-sm font-medium text-gray-600">
+                              Discount
+                            </td>
+                            <td className="px-3 py-2">
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                tabIndex={-1}
+                                value={discountStr}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  if (val === "" || /^\d*\.?\d{0,2}$/.test(val)) {
+                                    setDiscountStr(val);
+                                    setFormDiscount(parseFloat(val) || 0);
+                                  }
+                                }}
+                                onBlur={() => setDiscountStr(formDiscount.toFixed(2))}
+                                className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-black text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              />
+                            </td>
+                            <td></td>
+                          </tr>
+                          <tr>
+                            <td colSpan={6} className="px-3 py-2 text-right text-sm font-semibold text-gray-800">
+                              Net Amount
+                            </td>
+                            <td className="px-3 py-2">
+                              <input
+                                type="text"
+                                readOnly
+                                tabIndex={-1}
+                                value={formNetAmount.toFixed(2)}
+                                className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-black text-sm text-right font-semibold bg-gray-100 cursor-not-allowed focus:outline-none"
+                              />
+                            </td>
+                            <td></td>
+                          </tr>
+                        </tfoot>
                       </table>
                     </div>
                   </div>
@@ -1563,25 +2207,53 @@ export default function TicketingPage() {
                     </p>
                   )}
 
-                  <div className="flex justify-end gap-3 pt-2">
-                    <button
-                      type="button"
-                      onClick={closeModal}
-                      className="px-4 py-2 text-gray-600 hover:text-gray-800 font-medium text-sm transition"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={submitting}
-                      className="bg-blue-700 hover:bg-blue-800 text-white font-semibold px-5 py-2 rounded-lg transition disabled:opacity-60"
-                    >
+                  <div className="flex items-center justify-between pt-2">
+                    {/* Last ticket quick info */}
+                    {!editingTicket && lastTicketInfo ? (
+                      <div className="flex items-center gap-5 px-3 py-2 text-sm text-gray-600 border border-blue-200 rounded-lg bg-blue-50">
+                        <span className="font-bold text-blue-700 uppercase tracking-wide">Last Ticket:</span>
+                        <span>
+                          Mode: <span className="font-bold text-gray-900">{lastTicketInfo.paymentModes.join(", ")}</span>
+                        </span>
+                        <span>
+                          Amt: <span className="font-bold text-gray-900">{lastTicketInfo.amount.toFixed(2)}</span>
+                        </span>
+                        <span>
+                          Change: <span className="font-bold text-gray-900">{lastTicketInfo.repayment.toFixed(2)}</span>
+                        </span>
+                        {lastTicketInfo.refNo && (
+                          <span>
+                            Ref: <span className="font-bold text-gray-900">{lastTicketInfo.refNo}</span>
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <div />
+                    )}
+
+                    <div className="flex gap-3">
+                      <button
+                        type="button"
+                        tabIndex={-1}
+                        onClick={closeModal}
+                        className="px-4 py-2 text-gray-600 hover:text-gray-800 font-medium text-sm transition"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        ref={submitRef}
+                        type="submit"
+                        tabIndex={-1}
+                        disabled={submitting}
+                        className="bg-blue-700 hover:bg-blue-800 text-white font-semibold px-5 py-2 rounded-lg transition disabled:opacity-60"
+                      >
                       {submitting
                         ? "Saving..."
                         : editingTicket
                           ? "Update Ticket"
                           : "Create Ticket"}
-                    </button>
+                      </button>
+                    </div>
                   </div>
                 </form>
               </div>

@@ -24,6 +24,7 @@ def _apply_filters(
     id_op: str = "eq",
     id_filter_end: int | None = None,
     online_visibility: str | None = None,
+    is_vehicle: str | None = None,
 ):
     if id_filter is not None:
         if id_op == "between" and id_filter_end is not None:
@@ -63,6 +64,11 @@ def _apply_filters(
     elif online_visibility == "hidden":
         query = query.where(or_(Item.online_visibility == False, Item.online_visibility.is_(None)))
 
+    if is_vehicle == "yes":
+        query = query.where(Item.is_vehicle == True)
+    elif is_vehicle == "no":
+        query = query.where(or_(Item.is_vehicle == False, Item.is_vehicle.is_(None)))
+
     return query
 
 
@@ -70,10 +76,10 @@ async def count_items(
     db: AsyncSession, search: str | None = None, status: str | None = None,
     search_column: str = "all", match_type: str = "contains",
     id_filter: int | None = None, id_op: str = "eq", id_filter_end: int | None = None,
-    online_visibility: str | None = None,
+    online_visibility: str | None = None, is_vehicle: str | None = None,
 ) -> int:
     query = select(func.count()).select_from(Item)
-    query = _apply_filters(query, search, status, search_column, match_type, id_filter, id_op, id_filter_end, online_visibility)
+    query = _apply_filters(query, search, status, search_column, match_type, id_filter, id_op, id_filter_end, online_visibility, is_vehicle)
     result = await db.execute(query)
     return result.scalar()
 
@@ -83,6 +89,7 @@ SORTABLE_COLUMNS = {
     "name": Item.name,
     "short_name": Item.short_name,
     "online_visibility": Item.online_visibility,
+    "is_vehicle": Item.is_vehicle,
     "is_active": Item.is_active,
 }
 
@@ -92,12 +99,12 @@ async def get_all_items(
     search: str | None = None, status: str | None = None,
     search_column: str = "all", match_type: str = "contains",
     id_filter: int | None = None, id_op: str = "eq", id_filter_end: int | None = None,
-    online_visibility: str | None = None,
+    online_visibility: str | None = None, is_vehicle: str | None = None,
 ) -> list[Item]:
     column = SORTABLE_COLUMNS.get(sort_by, Item.id)
     order = column.desc() if sort_order == "desc" else column.asc()
     query = select(Item)
-    query = _apply_filters(query, search, status, search_column, match_type, id_filter, id_op, id_filter_end, online_visibility)
+    query = _apply_filters(query, search, status, search_column, match_type, id_filter, id_op, id_filter_end, online_visibility, is_vehicle)
     result = await db.execute(
         query.order_by(order).offset(skip).limit(limit)
     )
@@ -134,6 +141,7 @@ async def create_item(db: AsyncSession, item_in: ItemCreate) -> Item:
         name=item_in.name,
         short_name=item_in.short_name,
         online_visibility=item_in.online_visibility,
+        is_vehicle=item_in.is_vehicle,
         is_active=True,
     )
     db.add(item)

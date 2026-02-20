@@ -28,7 +28,7 @@ _item_roles = require_roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAG
 async def list_items(
     skip: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(5, ge=1, le=200, description="Maximum number of records to return"),
-    sort_by: str = Query("id", description="Column to sort by (id, name, short_name, online_visibility, is_active)"),
+    sort_by: str = Query("id", description="Column to sort by (id, name, short_name, online_visibility, is_vehicle, is_active)"),
     sort_order: str = Query("asc", description="Sort direction (asc or desc)"),
     search: str | None = Query(None, description="Search by item name or short name (case-insensitive)"),
     search_column: str = Query("all", description="Column to search: all, name, or short_name"),
@@ -38,10 +38,11 @@ async def list_items(
     id_filter_end: int | None = Query(None, ge=1, description="Range end for between operator"),
     status: str | None = Query(None, description="Filter by status: active, inactive, or all (default all)"),
     online_visibility: str | None = Query(None, description="Filter by online visibility: visible, hidden, or all (default all)"),
+    is_vehicle: str | None = Query(None, description="Filter by vehicle type: yes, no, or all (default all)"),
     db: AsyncSession = Depends(get_db),
     _=Depends(_item_read_roles),
 ):
-    return await item_service.get_all_items(db, skip, limit, sort_by, sort_order, search, status, search_column, match_type, id_filter, id_op, id_filter_end, online_visibility)
+    return await item_service.get_all_items(db, skip, limit, sort_by, sort_order, search, status, search_column, match_type, id_filter, id_op, id_filter_end, online_visibility, is_vehicle)
 
 
 @router.get(
@@ -64,10 +65,11 @@ async def count_items(
     id_filter_end: int | None = Query(None, ge=1, description="Range end for between operator"),
     status: str | None = Query(None, description="Filter by status: active, inactive, or all (default all)"),
     online_visibility: str | None = Query(None, description="Filter by online visibility: visible, hidden, or all (default all)"),
+    is_vehicle: str | None = Query(None, description="Filter by vehicle type: yes, no, or all (default all)"),
     db: AsyncSession = Depends(get_db),
     _=Depends(_item_read_roles),
 ):
-    return await item_service.count_items(db, search, status, search_column, match_type, id_filter, id_op, id_filter_end, online_visibility)
+    return await item_service.count_items(db, search, status, search_column, match_type, id_filter, id_op, id_filter_end, online_visibility, is_vehicle)
 
 
 @router.post(
