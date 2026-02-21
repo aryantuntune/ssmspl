@@ -27,15 +27,6 @@ const formatDate = (dateString: string) => {
   });
 };
 
-const formatTime = (dateString: string) => {
-  if (!dateString) return "";
-  const date = new Date(dateString);
-  return date.toLocaleTimeString("en-IN", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-};
-
 const formatCurrency = (amount: number) => {
   return new Intl.NumberFormat("en-IN", {
     maximumFractionDigits: 2,
@@ -58,7 +49,7 @@ const StatusBadge = ({ status }: { status?: string }) => {
       }`}
     >
       {status
-        ? status.charAt(0).toUpperCase() + status.slice(1)
+        ? status.charAt(0).toUpperCase() + status.slice(1).toLowerCase()
         : "Unknown"}
     </span>
   );
@@ -66,29 +57,29 @@ const StatusBadge = ({ status }: { status?: string }) => {
 
 interface BookingItem {
   item_name?: string;
-  description?: string;
-  qty?: number;
   quantity?: number;
 }
 
 interface Booking {
   id: number;
-  booking_reference?: string;
-  status?: string;
-  from_branch?: { branch_name?: string };
-  to_branch?: { branch_name?: string };
+  booking_no: number;
+  status: string;
+  branch_name?: string;
+  route_name?: string;
   travel_date?: string;
+  departure?: string;
+  net_amount: number;
+  is_cancelled: boolean;
   created_at?: string;
-  total_amount?: number;
   items?: BookingItem[];
 }
 
 interface PaginatedBookings {
   data: Booking[];
-  current_page: number;
-  last_page: number;
-  prev_page_url?: string | null;
-  next_page_url?: string | null;
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
 }
 
 export default function HistoryPage() {
@@ -99,7 +90,7 @@ export default function HistoryPage() {
   useEffect(() => {
     setLoading(true);
     api
-      .get(`/api/portal/bookings?page=${currentPage}`)
+      .get(`/api/portal/bookings?page=${currentPage}&page_size=10`)
       .then((res) => {
         setBookings(res.data);
         setLoading(false);
@@ -111,7 +102,7 @@ export default function HistoryPage() {
   }, [currentPage]);
 
   const bookingData = bookings?.data || [];
-  const lastPage = bookings?.last_page || 1;
+  const totalPages = bookings?.total_pages || 1;
 
   return (
     <CustomerLayout>
@@ -141,117 +132,135 @@ export default function HistoryPage() {
           </div>
         ) : bookingData.length > 0 ? (
           <div className="space-y-6">
-            {bookingData.map((booking) => (
-              <Link
-                key={booking.id}
-                href={`/customer/history/${booking.id}`}
-                className="block bg-white rounded-3xl shadow-lg border border-sky-100 overflow-hidden hover:shadow-xl transition-shadow"
-              >
-                <div className="p-6">
-                  <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-                    {/* Booking Info */}
-                    <div className="flex-1">
-                      <div className="flex items-center gap-4 mb-4">
-                        <div className="w-12 h-12 rounded-2xl bg-sky-100 flex items-center justify-center">
-                          <Ticket className="w-6 h-6 text-sky-600" />
-                        </div>
-                        <div>
-                          <p className="font-mono text-sm text-slate-500">
-                            #{booking.booking_reference || booking.id}
-                          </p>
-                          <StatusBadge status={booking.status} />
-                        </div>
-                      </div>
+            {bookingData.map((booking) => {
+              const [fromName, toName] = (booking.route_name || "").split(" - ");
 
-                      {/* Route */}
-                      <div className="flex items-center gap-3 mb-4">
-                        <MapPin className="w-5 h-5 text-sky-600" />
-                        <span className="font-semibold text-slate-800">
-                          {booking.from_branch?.branch_name || "Unknown"}
-                        </span>
-                        <ArrowRight className="w-4 h-4 text-slate-400" />
-                        <span className="font-semibold text-amber-600">
-                          {booking.to_branch?.branch_name || "Unknown"}
-                        </span>
-                      </div>
+              return (
+                <Link
+                  key={booking.id}
+                  href={`/customer/history/${booking.id}`}
+                  className="block bg-white rounded-3xl shadow-lg border border-sky-100 overflow-hidden hover:shadow-xl transition-shadow"
+                >
+                  <div className="p-6">
+                    <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+                      {/* Booking Info */}
+                      <div className="flex-1">
+                        <div className="flex items-center gap-4 mb-4">
+                          <div className="w-12 h-12 rounded-2xl bg-sky-100 flex items-center justify-center">
+                            <Ticket className="w-6 h-6 text-sky-600" />
+                          </div>
+                          <div>
+                            <p className="font-mono text-sm text-slate-500">
+                              #{booking.booking_no}
+                            </p>
+                            <StatusBadge status={booking.status} />
+                          </div>
+                        </div>
 
-                      {/* Date & Time */}
-                      <div className="flex flex-wrap gap-4 text-sm text-slate-600">
-                        <div className="flex items-center gap-2">
-                          <Calendar className="w-4 h-4 text-slate-400" />
-                          <span>
-                            {formatDate(
-                              booking.travel_date || booking.created_at || ""
-                            )}
+                        {/* Route */}
+                        <div className="flex items-center gap-3 mb-4">
+                          <MapPin className="w-5 h-5 text-sky-600" />
+                          <span className="font-semibold text-slate-800">
+                            {fromName || "Unknown"}
+                          </span>
+                          <ArrowRight className="w-4 h-4 text-slate-400" />
+                          <span className="font-semibold text-amber-600">
+                            {toName || "Unknown"}
                           </span>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <Clock className="w-4 h-4 text-slate-400" />
-                          <span>{formatTime(booking.created_at || "")}</span>
-                        </div>
-                      </div>
 
-                      {/* Items Summary */}
-                      {booking.items && booking.items.length > 0 && (
-                        <div className="mt-4 flex flex-wrap gap-2">
-                          {booking.items.slice(0, 3).map((item, idx) => (
-                            <span
-                              key={idx}
-                              className="px-3 py-1 rounded-full bg-slate-100 text-slate-700 text-xs font-medium"
-                            >
-                              {item.item_name || item.description} x
-                              {item.qty || item.quantity}
+                        {/* Date & Time */}
+                        <div className="flex flex-wrap gap-4 text-sm text-slate-600">
+                          <div className="flex items-center gap-2">
+                            <Calendar className="w-4 h-4 text-slate-400" />
+                            <span>
+                              {formatDate(booking.travel_date || "")}
                             </span>
-                          ))}
-                          {booking.items.length > 3 && (
-                            <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-700 text-xs font-medium">
-                              +{booking.items.length - 3} more
-                            </span>
-                          )}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Clock className="w-4 h-4 text-slate-400" />
+                            <span>{booking.departure || "-"}</span>
+                          </div>
                         </div>
-                      )}
-                    </div>
 
-                    {/* Amount & Actions */}
-                    <div className="flex flex-col items-end gap-4">
-                      <div className="text-right">
-                        <p className="text-sm text-slate-500 mb-1">
-                          Total Amount
-                        </p>
-                        <p className="text-2xl font-bold text-sky-600">
-                          ₹{formatCurrency(booking.total_amount || 0)}
-                        </p>
-                      </div>
-
-                      <div className="flex gap-2">
-                        {booking.status?.toLowerCase() === "confirmed" && (
-                          <button
-                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-sky-50 text-sky-700 font-medium hover:bg-sky-100 transition-colors"
-                          >
-                            <QrCode className="w-4 h-4" />
-                            <span>View QR</span>
-                          </button>
+                        {/* Items Summary */}
+                        {booking.items && booking.items.length > 0 && (
+                          <div className="mt-4 flex flex-wrap gap-2">
+                            {booking.items.slice(0, 3).map((item, idx) => (
+                              <span
+                                key={idx}
+                                className="px-3 py-1 rounded-full bg-slate-100 text-slate-700 text-xs font-medium"
+                              >
+                                {item.item_name} x{item.quantity}
+                              </span>
+                            ))}
+                            {booking.items.length > 3 && (
+                              <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-700 text-xs font-medium">
+                                +{booking.items.length - 3} more
+                              </span>
+                            )}
+                          </div>
                         )}
-                        <button
-                          onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-50 text-slate-700 font-medium hover:bg-slate-100 transition-colors"
-                        >
-                          <Download className="w-4 h-4" />
-                          <span>Download</span>
-                        </button>
+                      </div>
+
+                      {/* Amount & Actions */}
+                      <div className="flex flex-col items-end gap-4">
+                        <div className="text-right">
+                          <p className="text-sm text-slate-500 mb-1">
+                            Total Amount
+                          </p>
+                          <p className="text-2xl font-bold text-sky-600">
+                            ₹{formatCurrency(booking.net_amount)}
+                          </p>
+                        </div>
+
+                        <div className="flex gap-2">
+                          {booking.status?.toLowerCase() === "confirmed" && (
+                            <button
+                              onClick={async (e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                try {
+                                  const res = await api.get(
+                                    `/api/portal/bookings/${booking.id}/qr`,
+                                    { responseType: "blob" }
+                                  );
+                                  const url = URL.createObjectURL(res.data);
+                                  window.open(url, "_blank");
+                                } catch {
+                                  /* silently ignore */
+                                }
+                              }}
+                              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-sky-50 text-sky-700 font-medium hover:bg-sky-100 transition-colors"
+                            >
+                              <QrCode className="w-4 h-4" />
+                              <span>View QR</span>
+                            </button>
+                          )}
+                          <button
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              window.location.href = `/customer/history/${booking.id}`;
+                            }}
+                            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-50 text-slate-700 font-medium hover:bg-slate-100 transition-colors"
+                          >
+                            <Download className="w-4 h-4" />
+                            <span>Download</span>
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              </Link>
-            ))}
+                </Link>
+              );
+            })}
 
             {/* Pagination */}
-            {lastPage > 1 && (
+            {totalPages > 1 && (
               <div className="flex items-center justify-between pt-6">
                 <p className="text-sm text-slate-600">
-                  Page {currentPage} of {lastPage}
+                  Page {currentPage} of {totalPages}
                 </p>
                 <div className="flex items-center gap-2">
                   <button
@@ -270,11 +279,11 @@ export default function HistoryPage() {
                   </button>
                   <button
                     onClick={() =>
-                      setCurrentPage((p) => Math.min(lastPage, p + 1))
+                      setCurrentPage((p) => Math.min(totalPages, p + 1))
                     }
-                    disabled={currentPage === lastPage}
+                    disabled={currentPage === totalPages}
                     className={`flex items-center gap-1 px-4 py-2 rounded-xl transition-colors ${
-                      currentPage === lastPage
+                      currentPage === totalPages
                         ? "text-slate-400 bg-slate-100 cursor-not-allowed"
                         : "text-slate-700 bg-white border border-slate-200 hover:bg-slate-50"
                     }`}
