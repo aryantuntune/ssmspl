@@ -1,4 +1,7 @@
-from sqlalchemy import BigInteger, Boolean, Date, ForeignKey, Integer, Numeric, Time
+import uuid as uuid_mod
+
+from sqlalchemy import BigInteger, Boolean, Date, ForeignKey, Integer, Numeric, String, Time
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -19,7 +22,9 @@ class Booking(AuditMixin, Base):
     is_cancelled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     net_amount: Mapped[float] = mapped_column(Numeric(9, 2), nullable=False)
     route_id: Mapped[int] = mapped_column(Integer, ForeignKey("routes.id"), nullable=False)
-    portal_user_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("portal_users.id"), nullable=True)
+    portal_user_id: Mapped[int] = mapped_column(Integer, ForeignKey("portal_users.id"), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="CONFIRMED", nullable=False)
+    verification_code: Mapped[uuid_mod.UUID | None] = mapped_column(UUID(as_uuid=True), default=uuid_mod.uuid4, nullable=True)
 
     def __repr__(self) -> str:
         return f"<Booking id={self.id} booking_no={self.booking_no} branch_id={self.branch_id}>"
