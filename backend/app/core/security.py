@@ -1,6 +1,8 @@
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+import hashlib
+
 import bcrypt
 from jose import JWTError, jwt
 
@@ -41,3 +43,8 @@ def decode_token(token: str) -> dict:
     Raises JWTError on invalid/expired tokens.
     """
     return jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+
+
+def hash_token(token: str) -> str:
+    """Return a SHA-256 hex digest of a token string (used for refresh token storage)."""
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()

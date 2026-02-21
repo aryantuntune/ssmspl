@@ -10,6 +10,18 @@ router = APIRouter(prefix="/api/booking", tags=["Booking Data"])
 
 
 @router.get(
+    "/branches",
+    summary="Get all active departure branches",
+    description="Returns all active branches for the booking form departure selection.",
+)
+async def departure_branches(
+    db: AsyncSession = Depends(get_db),
+    _: PortalUser = Depends(get_current_portal_user),
+):
+    return await booking_service.get_departure_branches(db)
+
+
+@router.get(
     "/to-branches/{branch_id}",
     summary="Get destination branches for a departure branch",
     description="Returns branches connected via active routes to the given departure branch.",

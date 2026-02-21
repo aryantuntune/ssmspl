@@ -22,16 +22,10 @@ router = APIRouter(prefix="/api/portal/bookings", tags=["Portal Bookings"])
 )
 async def create_booking(
     body: BookingCreate,
-    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: PortalUser = Depends(get_current_portal_user),
 ):
-    result = await booking_service.create_booking(db, body, current_user)
-
-    # Send confirmation email in background (managed by FastAPI lifecycle)
-    background_tasks.add_task(send_booking_confirmation, result, current_user.email)
-
-    return result
+    return await booking_service.create_booking(db, body, current_user)
 
 
 @router.get(
@@ -61,6 +55,31 @@ async def get_booking(
     current_user: PortalUser = Depends(get_current_portal_user),
 ):
     return await booking_service.get_booking_by_id(db, booking_id, current_user.id)
+
+
+@router.post(
+    "/{booking_id}/pay",
+    response_model=BookingRead,
+    summary="Simulate payment for a booking",
+    description="Simulates payment and moves booking from PENDING to CONFIRMED. "
+                "In production, this will be replaced by Razorpay integration.",
+    responses={
+        400: {"description": "Booking not in PENDING status"},
+        404: {"description": "Booking not found"},
+    },
+)
+async def pay_booking(
+    booking_id: int,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+    current_user: PortalUser = Depends(get_current_portal_user),
+):
+    result = await booking_service.confirm_booking_payment(db, booking_id, current_user.id)
+
+    # Send confirmation email after successful payment
+    background_tasks.add_task(send_booking_confirmation, result, current_user.email)
+
+    return result
 
 
 @router.post(

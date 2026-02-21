@@ -201,6 +201,7 @@ async def _enrich_booking(
         "branch_name": branch_name,
         "route_id": booking.route_id,
         "route_name": route_name,
+        "booking_date": booking.booking_date,
         "travel_date": booking.travel_date,
         "departure": _format_time(booking.departure),
         "amount": float(booking.amount) if booking.amount is not None else 0,
@@ -231,6 +232,16 @@ async def _enrich_booking(
 
 
 # ── Public data functions (for booking form) ─────────────────────────────────
+
+
+async def get_departure_branches(db: AsyncSession) -> list[dict]:
+    """Return all active branches for the departure selector."""
+    result = await db.execute(
+        select(Branch.id, Branch.name)
+        .where(Branch.is_active == True)
+        .order_by(Branch.name)
+    )
+    return [{"id": row.id, "name": row.name} for row in result.all()]
 
 
 async def get_to_branches(db: AsyncSession, from_branch_id: int) -> list[dict]:
@@ -418,9 +429,6 @@ async def create_booking(
             detail=f"Departure time {data.departure} is not a valid schedule for this branch",
         )
 
-    # 5. Check capacity
-    await _check_capacity(db, data.from_branch_id, data.travel_date, departure_time)
-
     # 6 & 7. Validate items, get rates, compute line amounts
     item_details = []  # list of (item_data, rate, levy, line_amount, item_obj)
     for item_data in data.items:
@@ -501,6 +509,7 @@ async def create_booking(
         id=next_booking_id,
         branch_id=data.from_branch_id,
         booking_no=next_booking_no,
+        booking_date=today,
         travel_date=data.travel_date,
         departure=departure_time,
         amount=total_amount,
@@ -510,7 +519,7 @@ async def create_booking(
         net_amount=net_amount,
         route_id=route.id,
         portal_user_id=portal_user.id,
-        status="CONFIRMED",
+        status="PENDING",
         verification_code=uuid_mod.uuid4(),
     )
     db.add(booking)
@@ -598,6 +607,35 @@ async def get_booking_by_id(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Booking not found",
         )
+    return await _enrich_booking(db, booking, include_items=True)
+
+
+async def confirm_booking_payment(
+    db: AsyncSession, booking_id: int, portal_user_id: int
+) -> dict:
+    """Simulate payment and move PENDING → CONFIRMED."""
+    result = await db.execute(
+        select(Booking).where(Booking.id == booking_id)
+    )
+    booking = result.scalar_one_or_none()
+    if not booking:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Booking not found",
+        )
+    if booking.portal_user_id != portal_user_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Booking not found",
+        )
+    if booking.status != "PENDING":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Booking status is '{booking.status}', expected 'PENDING'",
+        )
+
+    booking.status = "CONFIRMED"
+    await db.flush()
     return await _enrich_booking(db, booking, include_items=True)
 
 

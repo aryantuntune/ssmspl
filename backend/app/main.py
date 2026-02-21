@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.routers import auth, users, boats, branches, routes, items, item_rates, ferry_schedules, payment_modes, tickets, portal_auth, company, booking, portal_bookings
+from app.routers import auth, users, boats, branches, routes, items, item_rates, ferry_schedules, payment_modes, tickets, portal_auth, company, booking, portal_bookings, reports, verification
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -83,6 +83,14 @@ app = FastAPI(
             "name": "Portal Bookings",
             "description": "Customer booking management -- create, list, view, cancel, QR codes.",
         },
+        {
+            "name": "Reports",
+            "description": "Revenue, ticket count, item breakdown, branch summary, and payment mode reports — requires **Super Admin**, **Admin**, or **Manager** role.",
+        },
+        {
+            "name": "Ticket Verification",
+            "description": "Booking/ticket lookup and check-in for ferry boarding — requires **Ticket Checker**, **Manager**, **Admin**, or **Super Admin** role.",
+        },
     ],
     contact={
         "name": "SSMSPL Engineering",
@@ -115,6 +123,8 @@ app.include_router(portal_auth.router)
 app.include_router(company.router)
 app.include_router(booking.router)
 app.include_router(portal_bookings.router)
+app.include_router(reports.router)
+app.include_router(verification.router)
 
 
 @app.get("/health", tags=["Health"])

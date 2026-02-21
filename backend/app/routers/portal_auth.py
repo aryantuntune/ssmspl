@@ -79,10 +79,12 @@ async def me(current_user: PortalUser = Depends(get_current_portal_user)):
 @router.post(
     "/logout",
     summary="Logout portal user",
-    description="Client-side logout. JWT is stateless — the client should discard stored tokens.",
+    description="Revoke the refresh token if provided in the request body. "
+                "If no body is sent, returns success without revoking (backward compatible).",
     responses={
         200: {"description": "Logout acknowledged"},
     },
 )
-async def logout():
+async def logout(body: RefreshRequest | None = None, db: AsyncSession = Depends(get_db)):
+    await portal_auth_service.logout(db, body.refresh_token if body else None)
     return {"message": "Logged out successfully"}
