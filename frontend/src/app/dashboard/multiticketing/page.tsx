@@ -257,7 +257,7 @@ export default function MultiTicketingPage() {
 
   /* ── Item CRUD within a ticket ── */
 
-  const addItemRow = (ticketTempId: string) => {
+  const addItemRow = useCallback((ticketTempId: string) => {
     setTickets((prev) =>
       prev.map((t) =>
         t.tempId === ticketTempId ? { ...t, items: [...t.items, emptyItem()] } : t
@@ -272,9 +272,9 @@ export default function MultiTicketingPage() {
         lastInput?.focus();
       }
     }, 50);
-  };
+  }, []);
 
-  const removeItemRow = (ticketTempId: string, itemTempId: string) => {
+  const removeItemRow = useCallback((ticketTempId: string, itemTempId: string) => {
     setTickets((prev) =>
       prev.map((t) =>
         t.tempId === ticketTempId
@@ -282,7 +282,7 @@ export default function MultiTicketingPage() {
           : t
       )
     );
-  };
+  }, []);
 
   /* ── Keyboard shortcuts: Alt+A add row, Alt+D remove row ── */
   useEffect(() => {

@@ -7,6 +7,7 @@ import { User } from "@/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Ticket,
   Ship,
@@ -82,7 +83,34 @@ export default function DashboardPage() {
     });
   }, []);
 
-  if (!user) return null;
+  if (!user) {
+    return (
+      <div className="space-y-6">
+        <Skeleton className="h-24 w-full rounded-xl" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map((i) => (
+            <Card key={i}>
+              <CardContent className="pt-6">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-2">
+                    <Skeleton className="h-4 w-24" />
+                    <Skeleton className="h-8 w-16" />
+                  </div>
+                  <Skeleton className="h-12 w-12 rounded-xl" />
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+        <Skeleton className="h-6 w-32" />
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {[1, 2, 3].map((i) => (
+            <Skeleton key={i} className="h-24 rounded-xl" />
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   const roleLabel = user.role
     .replace(/_/g, " ")

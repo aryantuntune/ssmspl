@@ -13,6 +13,7 @@ export default function DashboardShell({ children }: { children: React.ReactNode
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [activeTheme, setActiveTheme] = useState("ocean");
 
   useEffect(() => {
@@ -26,14 +27,11 @@ export default function DashboardShell({ children }: { children: React.ReactNode
       router.push("/login");
     });
 
-    // Fetch company settings for active theme
     api.get("/api/company/").then((res) => {
       if (res.data.active_theme) {
         setActiveTheme(res.data.active_theme);
       }
-    }).catch(() => {
-      // Non-admin roles may not have access — use default
-    });
+    }).catch(() => {});
   }, [router]);
 
   if (!user) {
@@ -51,10 +49,15 @@ export default function DashboardShell({ children }: { children: React.ReactNode
           user={user}
           collapsed={sidebarCollapsed}
           onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
+          mobileOpen={mobileSidebarOpen}
+          onMobileClose={() => setMobileSidebarOpen(false)}
         />
-        <div className="flex-1 flex flex-col min-h-screen">
-          <AppHeader user={user} />
-          <main className="flex-1 p-6 overflow-auto">
+        <div className="flex-1 flex flex-col min-h-screen min-w-0">
+          <AppHeader
+            user={user}
+            onMobileMenuToggle={() => setMobileSidebarOpen(true)}
+          />
+          <main className="flex-1 p-4 lg:p-6 overflow-auto">
             {children}
           </main>
         </div>

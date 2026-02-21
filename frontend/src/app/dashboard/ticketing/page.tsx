@@ -67,8 +67,6 @@ function isFormRowInvalid(fi: FormItem, items: Item[]): boolean {
   return false;
 }
 
-const PAGE_SIZE_OPTIONS = [5, 10, 25, 50, 100];
-
 /* -- Searchable item dropdown -- */
 function ItemSearchSelect({
   items,
@@ -963,9 +961,6 @@ export default function TicketingPage() {
       setSubmitting(false);
     }
   };
-
-  // Pagination computed values
-  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
 
   const handleSort = (column: string) => {
     if (sortBy === column) {
