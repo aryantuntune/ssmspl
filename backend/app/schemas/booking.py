@@ -3,35 +3,96 @@ from datetime import date, datetime, time
 from pydantic import BaseModel, Field
 
 
-class BookingItemRead(BaseModel):
-    id: int = Field(..., description="Unique booking item identifier")
-    booking_id: int = Field(..., description="Parent booking ID")
-    item_id: int = Field(..., description="Item ID")
-    rate: float = Field(..., description="Rate")
-    levy: float = Field(..., description="Levy")
-    vehicle_no: str | None = Field(None, description="Vehicle number")
-    is_cancelled: bool = Field(..., description="Whether this item is cancelled")
-    quantity: int = Field(..., description="Quantity")
-    created_at: datetime | None = Field(None, description="Record creation timestamp")
-    updated_at: datetime | None = Field(None, description="Record last update timestamp")
+# ── Create schemas ──
 
-    model_config = {"from_attributes": True}
+class BookingItemCreate(BaseModel):
+    item_id: int = Field(..., description="Item ID")
+    quantity: int = Field(..., ge=1, description="Quantity")
+    vehicle_no: str | None = Field(None, max_length=15, description="Vehicle number (optional)")
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [{"item_id": 1, "quantity": 2, "vehicle_no": None}]
+        }
+    }
+
+
+class BookingCreate(BaseModel):
+    from_branch_id: int = Field(..., description="Departure branch ID")
+    to_branch_id: int = Field(..., description="Destination branch ID")
+    travel_date: date = Field(..., description="Travel date (must be today or future)")
+    departure: str = Field(..., description="Departure time HH:MM")
+    items: list[BookingItemCreate] = Field(..., min_length=1, description="Booking items (at least 1)")
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "from_branch_id": 1,
+                    "to_branch_id": 2,
+                    "travel_date": "2026-02-21",
+                    "departure": "09:30",
+                    "items": [{"item_id": 1, "quantity": 2, "vehicle_no": None}],
+                }
+            ]
+        }
+    }
+
+
+# ── Read schemas (enriched responses) ──
+
+class BookingItemRead(BaseModel):
+    id: int
+    booking_id: int
+    item_id: int
+    item_name: str | None = None
+    rate: float
+    levy: float
+    quantity: int
+    vehicle_no: str | None = None
+    is_cancelled: bool
+    amount: float = Field(..., description="Computed: quantity * (rate + levy)")
 
 
 class BookingRead(BaseModel):
-    id: int = Field(..., description="Unique booking identifier")
-    branch_id: int = Field(..., description="Branch ID")
-    booking_no: int = Field(..., description="Booking number")
-    travel_date: date = Field(..., description="Travel date")
-    departure: time | None = Field(None, description="Departure time")
-    amount: float = Field(..., description="Total amount")
-    discount: float | None = Field(None, description="Discount")
-    payment_mode_id: int = Field(..., description="Payment mode ID")
-    is_cancelled: bool = Field(..., description="Whether booking is cancelled")
-    net_amount: float = Field(..., description="Net amount")
-    route_id: int = Field(..., description="Route ID")
-    portal_user_id: int | None = Field(None, description="Portal user ID")
-    created_at: datetime | None = Field(None, description="Record creation timestamp")
-    updated_at: datetime | None = Field(None, description="Record last update timestamp")
+    id: int
+    booking_no: int
+    status: str
+    verification_code: str | None = None
+    branch_id: int
+    branch_name: str | None = None
+    route_id: int
+    route_name: str | None = None
+    travel_date: date
+    departure: str | None = None
+    amount: float
+    discount: float
+    net_amount: float
+    portal_user_id: int
+    is_cancelled: bool
+    created_at: datetime | None = None
+    items: list[BookingItemRead] | None = None
 
-    model_config = {"from_attributes": True}
+
+# ── List schemas (lighter payload for paginated list) ──
+
+class BookingListItem(BaseModel):
+    id: int
+    booking_no: int
+    status: str
+    branch_name: str | None = None
+    route_name: str | None = None
+    travel_date: date
+    departure: str | None = None
+    net_amount: float
+    is_cancelled: bool
+    created_at: datetime | None = None
+    items: list[dict] | None = None  # [{item_name, quantity}]
+
+
+class BookingListResponse(BaseModel):
+    data: list[BookingListItem]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
