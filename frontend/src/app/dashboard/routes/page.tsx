@@ -1,8 +1,29 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback } from "react";
 import api from "@/lib/api";
 import { Branch, Route, RouteCreate, RouteUpdate } from "@/types";
+import DataTable, { Column } from "@/components/dashboard/DataTable";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Switch } from "@/components/ui/switch";
+import { Plus } from "lucide-react";
 
 interface RouteFormData {
   branch_id_one: string;
@@ -10,8 +31,11 @@ interface RouteFormData {
   is_active: boolean;
 }
 
-const emptyForm: RouteFormData = { branch_id_one: "", branch_id_two: "", is_active: true };
-const PAGE_SIZE_OPTIONS = [5, 10, 25, 50, 100];
+const emptyForm: RouteFormData = {
+  branch_id_one: "",
+  branch_id_two: "",
+  is_active: true,
+};
 
 export default function RoutesPage() {
   const [routes, setRoutes] = useState<Route[]>([]);
@@ -22,19 +46,12 @@ export default function RoutesPage() {
 
   // Pagination, sorting & filters
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(5);
+  const [pageSize, setPageSize] = useState(10);
   const [totalCount, setTotalCount] = useState(0);
   const [sortBy, setSortBy] = useState("id");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [branchFilter, setBranchFilter] = useState("");
-  const [idInput, setIdInput] = useState("");
-  const [idFilter, setIdFilter] = useState("");
-  const [idEndInput, setIdEndInput] = useState("");
-  const [idFilterEnd, setIdFilterEnd] = useState("");
-  const [idOp, setIdOp] = useState("eq");
   const [statusFilter, setStatusFilter] = useState("");
-  const idDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const idEndDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Modal state
   const [showModal, setShowModal] = useState(false);
@@ -47,7 +64,9 @@ export default function RoutesPage() {
 
   const fetchBranches = useCallback(async () => {
     try {
-      const resp = await api.get<Branch[]>("/api/branches/?skip=0&limit=200&status=active&sort_by=name&sort_order=asc");
+      const resp = await api.get<Branch[]>(
+        "/api/branches/?skip=0&limit=200&status=active&sort_by=name&sort_order=asc"
+      );
       setBranches(resp.data);
     } catch {
       // branches dropdown will be empty
@@ -66,14 +85,9 @@ export default function RoutesPage() {
       });
 
       if (branchFilter) params.set("branch_filter", branchFilter);
-      if (idFilter) {
-        params.set("id_filter", idFilter);
-        params.set("id_op", idOp);
-        if (idOp === "between" && idFilterEnd) params.set("id_filter_end", idFilterEnd);
-      }
       if (statusFilter) params.set("status", statusFilter);
 
-      const filterKeys = ["branch_filter", "id_filter", "id_op", "id_filter_end", "status"];
+      const filterKeys = ["branch_filter", "status"];
       const countParams = new URLSearchParams(
         Object.fromEntries([...params].filter(([k]) => filterKeys.includes(k)))
       );
@@ -90,7 +104,7 @@ export default function RoutesPage() {
     } finally {
       setTableLoading(false);
     }
-  }, [page, pageSize, sortBy, sortOrder, branchFilter, idFilter, idOp, idFilterEnd, statusFilter]);
+  }, [page, pageSize, sortBy, sortOrder, branchFilter, statusFilter]);
 
   useEffect(() => {
     fetchRoutes();
@@ -143,7 +157,8 @@ export default function RoutesPage() {
         const update: RouteUpdate = {};
         if (b1 !== editingRoute.branch_id_one) update.branch_id_one = b1;
         if (b2 !== editingRoute.branch_id_two) update.branch_id_two = b2;
-        if (form.is_active !== (editingRoute.is_active ?? true)) update.is_active = form.is_active;
+        if (form.is_active !== (editingRoute.is_active ?? true))
+          update.is_active = form.is_active;
         await api.patch(`/api/routes/${editingRoute.id}`, update);
       } else {
         const create: RouteCreate = { branch_id_one: b1, branch_id_two: b2 };
@@ -153,16 +168,13 @@ export default function RoutesPage() {
       await fetchRoutes();
     } catch (err: unknown) {
       const msg =
-        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
-        "Operation failed. Please try again.";
+        (err as { response?: { data?: { detail?: string } } })?.response?.data
+          ?.detail || "Operation failed. Please try again.";
       setFormError(msg);
     } finally {
       setSubmitting(false);
     }
   };
-
-  // Pagination computed values
-  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
 
   const handleSort = (column: string) => {
     if (sortBy === column) {
@@ -174,402 +186,313 @@ export default function RoutesPage() {
     setPage(1);
   };
 
-  const sortIndicator = (column: string) => {
-    if (sortBy !== column) return "";
-    return sortOrder === "asc" ? " \u25B2" : " \u25BC";
-  };
-
   const handlePageSizeChange = (newSize: number) => {
     setPageSize(newSize);
     setPage(1);
   };
 
+  const columns: Column<Route>[] = [
+    {
+      key: "id",
+      label: "ID",
+      sortable: true,
+      render: (r) => <span className="text-muted-foreground">{r.id}</span>,
+    },
+    {
+      key: "branch_id_one",
+      label: "Branch One",
+      sortable: true,
+      render: (r) => (
+        <span className="font-medium">
+          {r.branch_one_name ?? r.branch_id_one}
+        </span>
+      ),
+    },
+    {
+      key: "branch_id_two",
+      label: "Branch Two",
+      sortable: true,
+      render: (r) => (
+        <span className="font-medium">
+          {r.branch_two_name ?? r.branch_id_two}
+        </span>
+      ),
+    },
+    {
+      key: "is_active",
+      label: "Status",
+      sortable: true,
+      render: (r) => (
+        <Badge variant={r.is_active ? "default" : "destructive"}>
+          {r.is_active ? "Active" : "Inactive"}
+        </Badge>
+      ),
+    },
+    {
+      key: "actions",
+      label: "Actions",
+      className: "text-right",
+      render: (r) => (
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" size="sm" onClick={() => setViewRoute(r)}>
+            View
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => openEditModal(r)}>
+            Edit
+          </Button>
+        </div>
+      ),
+    },
+  ];
+
   return (
-    <>
-      <div className="flex items-center justify-between mb-6">
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-gray-800">Route Management</h2>
-          <p className="text-gray-500 text-sm mt-1">
+          <h1 className="text-2xl font-bold">Route Management</h1>
+          <p className="text-muted-foreground text-sm mt-1">
             Manage ferry routes between branches
           </p>
         </div>
-        <button
-          onClick={openCreateModal}
-          className="bg-blue-700 hover:bg-blue-800 text-white font-semibold px-5 py-2.5 rounded-lg transition"
-        >
-          + Add Route
-        </button>
+        <Button onClick={openCreateModal}>
+          <Plus className="h-4 w-4 mr-2" /> Add Route
+        </Button>
       </div>
 
       {error && (
-        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+        <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg text-destructive text-sm">
           {error}
         </div>
       )}
 
       {/* Filters */}
-      <div className="flex flex-wrap items-end gap-3 mb-4">
-        {/* ID filter operator */}
-        <div>
-          <label className="block text-xs font-medium text-gray-500 mb-1">ID</label>
-          <div className="flex">
-            <select
-              value={idOp}
-              onChange={(e) => {
-                const op = e.target.value;
-                setIdOp(op);
-                if (op !== "between") { setIdEndInput(""); setIdFilterEnd(""); }
-                setPage(1);
-              }}
-              className="border border-gray-300 rounded-l-lg px-2 py-2 text-black text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
-            >
-              <option value="eq">=</option>
-              <option value="lt">&lt;</option>
-              <option value="gt">&gt;</option>
-              <option value="between">Between</option>
-            </select>
-            <input
-              type="number"
-              min="1"
-              placeholder={idOp === "between" ? "From" : "ID"}
-              value={idInput}
-              onChange={(e) => {
-                const val = e.target.value;
-                setIdInput(val);
-                if (idDebounceRef.current) clearTimeout(idDebounceRef.current);
-                idDebounceRef.current = setTimeout(() => { setIdFilter(val); setPage(1); }, 400);
-              }}
-              className={`w-20 border border-l-0 border-gray-300 px-2 py-2 text-black text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${idOp !== "between" ? "rounded-r-lg" : ""}`}
-            />
-            {idOp === "between" && (
-              <>
-                <span className="flex items-center px-1.5 border-y border-gray-300 bg-gray-50 text-gray-400 text-xs">&ndash;</span>
-                <input
-                  type="number"
-                  min="1"
-                  placeholder="To"
-                  value={idEndInput}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setIdEndInput(val);
-                    if (idEndDebounceRef.current) clearTimeout(idEndDebounceRef.current);
-                    idEndDebounceRef.current = setTimeout(() => { setIdFilterEnd(val); setPage(1); }, 400);
-                  }}
-                  className="w-20 border border-l-0 border-gray-300 rounded-r-lg px-2 py-2 text-black text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </>
+      <Card>
+        <CardContent className="pt-6">
+          <div className="flex flex-wrap items-end gap-3">
+            <div>
+              <Label className="mb-1.5 block">Branch</Label>
+              <Select
+                value={branchFilter || "all"}
+                onValueChange={(v) => {
+                  setBranchFilter(v === "all" ? "" : v);
+                  setPage(1);
+                }}
+              >
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="All Branches" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Branches</SelectItem>
+                  {branches.map((b) => (
+                    <SelectItem key={b.id} value={String(b.id)}>
+                      {b.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="mb-1.5 block">Status</Label>
+              <Select
+                value={statusFilter || "all"}
+                onValueChange={(v) => {
+                  setStatusFilter(v === "all" ? "" : v);
+                  setPage(1);
+                }}
+              >
+                <SelectTrigger className="w-[120px]">
+                  <SelectValue placeholder="All" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="inactive">Inactive</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {(branchFilter || statusFilter) && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setBranchFilter("");
+                  setStatusFilter("");
+                  setPage(1);
+                }}
+              >
+                Clear filters
+              </Button>
             )}
           </div>
-        </div>
+        </CardContent>
+      </Card>
 
-        {/* Branch filter */}
-        <div>
-          <label className="block text-xs font-medium text-gray-500 mb-1">Branch</label>
-          <select
-            value={branchFilter}
-            onChange={(e) => { setBranchFilter(e.target.value); setPage(1); }}
-            className="border border-gray-300 rounded-lg px-3 py-2 text-black text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="">All Branches</option>
-            {branches.map((b) => (
-              <option key={b.id} value={b.id}>{b.name}</option>
-            ))}
-          </select>
-        </div>
-
-        {/* Status filter */}
-        <div>
-          <label className="block text-xs font-medium text-gray-500 mb-1">Status</label>
-          <select
-            value={statusFilter}
-            onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
-            className="border border-gray-300 rounded-lg px-3 py-2 text-black text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="">All</option>
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
-          </select>
-        </div>
-
-        {/* Clear filters */}
-        {(branchFilter || statusFilter || idInput || idEndInput || idOp !== "eq") && (
-          <button
-            onClick={() => {
-              setBranchFilter(""); setIdInput(""); setIdFilter("");
-              setIdEndInput(""); setIdFilterEnd(""); setIdOp("eq");
-              setStatusFilter(""); setPage(1);
-            }}
-            className="text-sm text-gray-500 hover:text-gray-700 underline pb-2"
-          >
-            Clear filters
-          </button>
-        )}
-      </div>
-
-      {/* Routes Table */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-auto max-h-[calc(100vh-220px)]">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
-            <tr>
-              <th onClick={() => handleSort("id")} className="text-left px-6 py-3 font-semibold text-gray-600 cursor-pointer select-none hover:text-blue-700">ID{sortIndicator("id")}</th>
-              <th onClick={() => handleSort("branch_id_one")} className="text-left px-6 py-3 font-semibold text-gray-600 cursor-pointer select-none hover:text-blue-700">Branch One{sortIndicator("branch_id_one")}</th>
-              <th onClick={() => handleSort("branch_id_two")} className="text-left px-6 py-3 font-semibold text-gray-600 cursor-pointer select-none hover:text-blue-700">Branch Two{sortIndicator("branch_id_two")}</th>
-              <th onClick={() => handleSort("is_active")} className="text-left px-6 py-3 font-semibold text-gray-600 cursor-pointer select-none hover:text-blue-700">Status{sortIndicator("is_active")}</th>
-              <th className="text-right px-6 py-3 font-semibold text-gray-600">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {tableLoading ? (
-              <tr>
-                <td colSpan={5} className="text-center py-8 text-gray-400">
-                  Loading routes...
-                </td>
-              </tr>
-            ) : routes.length === 0 ? (
-              <tr>
-                <td colSpan={5} className="text-center py-8 text-gray-400">
-                  No routes found. Click &quot;+ Add Route&quot; to create one.
-                </td>
-              </tr>
-            ) : (
-              routes.map((route) => (
-                <tr
-                  key={route.id}
-                  className="border-b border-gray-100 hover:bg-gray-50 transition"
-                >
-                  <td className="px-6 py-4 text-gray-500">{route.id}</td>
-                  <td className="px-6 py-4 font-medium text-gray-800">{route.branch_one_name ?? route.branch_id_one}</td>
-                  <td className="px-6 py-4 font-medium text-gray-800">{route.branch_two_name ?? route.branch_id_two}</td>
-                  <td className="px-6 py-4">
-                    <span
-                      className={`inline-block text-xs font-semibold px-2.5 py-1 rounded-full ${
-                        route.is_active
-                          ? "bg-green-50 text-green-700"
-                          : "bg-red-50 text-red-700"
-                      }`}
-                    >
-                      {route.is_active ? "Active" : "Inactive"}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-right space-x-3">
-                    <button
-                      onClick={() => setViewRoute(route)}
-                      className="text-indigo-600 hover:text-indigo-800 font-medium text-sm transition"
-                    >
-                      View
-                    </button>
-                    <button
-                      onClick={() => openEditModal(route)}
-                      className="text-blue-600 hover:text-blue-800 font-medium text-sm transition"
-                    >
-                      Edit
-                    </button>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Pagination */}
-      <div className="flex items-center justify-between mt-4 text-sm text-gray-600">
-        <div className="flex items-center gap-2">
-          <span>Rows per page:</span>
-          <select
-            value={pageSize}
-            onChange={(e) => handlePageSizeChange(Number(e.target.value))}
-            className="border border-gray-300 rounded-md px-2 py-1 text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            {PAGE_SIZE_OPTIONS.map((size) => (
-              <option key={size} value={size}>
-                {size}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="flex items-center gap-2">
-          <span>
-            {totalCount === 0
-              ? "No records"
-              : `${(page - 1) * pageSize + 1}\u2013${Math.min(page * pageSize, totalCount)} of ${totalCount}`}
-          </span>
-          <button
-            onClick={() => setPage(1)}
-            disabled={page <= 1}
-            className="w-8 h-8 flex items-center justify-center border border-gray-300 rounded-md hover:bg-gray-100 transition disabled:opacity-40 disabled:cursor-not-allowed"
-            title="First page"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4"><path fillRule="evenodd" d="M15.79 14.77a.75.75 0 01-1.06.02l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 111.04 1.08L11.832 10l3.938 3.71a.75.75 0 01.02 1.06zm-6 0a.75.75 0 01-1.06.02l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 111.04 1.08L5.832 10l3.938 3.71a.75.75 0 01.02 1.06z" clipRule="evenodd" /></svg>
-          </button>
-          <button
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={page <= 1}
-            className="w-8 h-8 flex items-center justify-center border border-gray-300 rounded-md hover:bg-gray-100 transition disabled:opacity-40 disabled:cursor-not-allowed"
-            title="Previous page"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4"><path fillRule="evenodd" d="M12.79 14.77a.75.75 0 01-1.06.02l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 111.04 1.08L8.832 10l3.938 3.71a.75.75 0 01.02 1.06z" clipRule="evenodd" /></svg>
-          </button>
-          <button
-            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-            disabled={page >= totalPages}
-            className="w-8 h-8 flex items-center justify-center border border-gray-300 rounded-md hover:bg-gray-100 transition disabled:opacity-40 disabled:cursor-not-allowed"
-            title="Next page"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4"><path fillRule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clipRule="evenodd" /></svg>
-          </button>
-          <button
-            onClick={() => setPage(totalPages)}
-            disabled={page >= totalPages}
-            className="w-8 h-8 flex items-center justify-center border border-gray-300 rounded-md hover:bg-gray-100 transition disabled:opacity-40 disabled:cursor-not-allowed"
-            title="Last page"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4"><path fillRule="evenodd" d="M4.21 14.77a.75.75 0 01.02-1.06L8.168 10 4.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02zm6 0a.75.75 0 01.02-1.06L14.168 10 10.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clipRule="evenodd" /></svg>
-          </button>
-        </div>
-      </div>
+      {/* Table */}
+      <DataTable
+        columns={columns}
+        data={routes}
+        totalCount={totalCount}
+        page={page}
+        pageSize={pageSize}
+        sortBy={sortBy}
+        sortOrder={sortOrder}
+        onPageChange={setPage}
+        onPageSizeChange={handlePageSizeChange}
+        onSort={handleSort}
+        loading={tableLoading}
+        emptyMessage='No routes found. Click "Add Route" to create one.'
+      />
 
       {/* View Modal */}
-      {viewRoute && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4 p-6">
-            <h3 className="text-lg font-bold text-gray-800 mb-4">Route Details</h3>
+      <Dialog
+        open={!!viewRoute}
+        onOpenChange={(open) => !open && setViewRoute(null)}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Route Details</DialogTitle>
+          </DialogHeader>
+          {viewRoute && (
             <div className="space-y-3">
-              <div className="flex justify-between">
-                <span className="text-sm font-medium text-gray-500">ID</span>
-                <span className="text-sm text-gray-800">{viewRoute.id}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-sm font-medium text-gray-500">Branch One</span>
-                <span className="text-sm text-gray-800">{viewRoute.branch_one_name ?? viewRoute.branch_id_one}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-sm font-medium text-gray-500">Branch Two</span>
-                <span className="text-sm text-gray-800">{viewRoute.branch_two_name ?? viewRoute.branch_id_two}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-sm font-medium text-gray-500">Status</span>
-                <span
-                  className={`inline-block text-xs font-semibold px-2.5 py-1 rounded-full ${
-                    viewRoute.is_active
-                      ? "bg-green-50 text-green-700"
-                      : "bg-red-50 text-red-700"
-                  }`}
+              {(
+                [
+                  ["ID", viewRoute.id],
+                  [
+                    "Branch One",
+                    viewRoute.branch_one_name ?? viewRoute.branch_id_one,
+                  ],
+                  [
+                    "Branch Two",
+                    viewRoute.branch_two_name ?? viewRoute.branch_id_two,
+                  ],
+                  [
+                    "Status",
+                    <Badge
+                      key="status"
+                      variant={viewRoute.is_active ? "default" : "destructive"}
+                    >
+                      {viewRoute.is_active ? "Active" : "Inactive"}
+                    </Badge>,
+                  ],
+                ] as [string, React.ReactNode][]
+              ).map(([label, value]) => (
+                <div
+                  key={label}
+                  className="flex justify-between items-center"
                 >
-                  {viewRoute.is_active ? "Active" : "Inactive"}
-                </span>
-              </div>
+                  <span className="text-sm text-muted-foreground">{label}</span>
+                  <span className="text-sm">{value}</span>
+                </div>
+              ))}
             </div>
-            <div className="flex justify-end pt-4">
-              <button
-                onClick={() => setViewRoute(null)}
-                className="px-4 py-2 text-gray-600 hover:text-gray-800 font-medium text-sm transition"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setViewRoute(null)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Create/Edit Modal */}
-      {showModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4 p-6">
-            <h3 className="text-lg font-bold text-gray-800 mb-4">
+      <Dialog open={showModal} onOpenChange={(open) => !open && closeModal()}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
               {editingRoute ? "Edit Route" : "Add New Route"}
-            </h3>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Branch One *
-                </label>
-                <select
-                  required
-                  value={form.branch_id_one}
-                  onChange={(e) => setForm({ ...form, branch_id_one: e.target.value })}
-                  className="w-full border border-gray-300 rounded-lg px-4 py-2 text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">Select a branch</option>
+            </DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <Label>Branch One *</Label>
+              <Select
+                value={form.branch_id_one || "placeholder"}
+                onValueChange={(v) =>
+                  setForm({
+                    ...form,
+                    branch_id_one: v === "placeholder" ? "" : v,
+                  })
+                }
+              >
+                <SelectTrigger className="mt-1.5">
+                  <SelectValue placeholder="Select a branch" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="placeholder" disabled>
+                    Select a branch
+                  </SelectItem>
                   {branches.map((b) => (
-                    <option key={b.id} value={b.id}>{b.name}</option>
+                    <SelectItem key={b.id} value={String(b.id)}>
+                      {b.name}
+                    </SelectItem>
                   ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Branch Two *
-                </label>
-                <select
-                  required
-                  value={form.branch_id_two}
-                  onChange={(e) => setForm({ ...form, branch_id_two: e.target.value })}
-                  className="w-full border border-gray-300 rounded-lg px-4 py-2 text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">Select a branch</option>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Branch Two *</Label>
+              <Select
+                value={form.branch_id_two || "placeholder"}
+                onValueChange={(v) =>
+                  setForm({
+                    ...form,
+                    branch_id_two: v === "placeholder" ? "" : v,
+                  })
+                }
+              >
+                <SelectTrigger className="mt-1.5">
+                  <SelectValue placeholder="Select a branch" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="placeholder" disabled>
+                    Select a branch
+                  </SelectItem>
                   {branches.map((b) => (
-                    <option key={b.id} value={b.id}>{b.name}</option>
+                    <SelectItem key={b.id} value={String(b.id)}>
+                      {b.name}
+                    </SelectItem>
                   ))}
-                </select>
-              </div>
-
-              {/* Status toggle - only shown when editing */}
-              {editingRoute && (
-                <div className="flex items-center justify-between py-2">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">
-                      Status
-                    </label>
-                    <p className="text-xs text-gray-400">
-                      Inactive routes are soft-deleted and hidden from normal operations
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setForm({ ...form, is_active: !form.is_active })}
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${
-                      form.is_active ? "bg-green-500" : "bg-gray-300"
-                    }`}
-                  >
-                    <span
-                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${
-                        form.is_active ? "translate-x-6" : "translate-x-1"
-                      }`}
-                    />
-                  </button>
+                </SelectContent>
+              </Select>
+            </div>
+            {editingRoute && (
+              <div className="flex items-center justify-between py-2">
+                <div>
+                  <Label>Status</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Inactive routes are soft-deleted and hidden from normal
+                    operations
+                  </p>
                 </div>
-              )}
-
-              {formError && (
-                <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded p-2">
-                  {formError}
-                </p>
-              )}
-
-              <div className="flex justify-end gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={closeModal}
-                  className="px-4 py-2 text-gray-600 hover:text-gray-800 font-medium text-sm transition"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="bg-blue-700 hover:bg-blue-800 text-white font-semibold px-5 py-2 rounded-lg transition disabled:opacity-60"
-                >
-                  {submitting
-                    ? "Saving..."
-                    : editingRoute
-                      ? "Update Route"
-                      : "Create Route"}
-                </button>
+                <Switch
+                  checked={form.is_active}
+                  onCheckedChange={(checked) =>
+                    setForm({ ...form, is_active: checked })
+                  }
+                />
               </div>
-            </form>
-          </div>
-        </div>
-      )}
-    </>
+            )}
+            {formError && (
+              <p className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded p-2">
+                {formError}
+              </p>
+            )}
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={closeModal}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={submitting}>
+                {submitting
+                  ? "Saving..."
+                  : editingRoute
+                    ? "Update Route"
+                    : "Create Route"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }
