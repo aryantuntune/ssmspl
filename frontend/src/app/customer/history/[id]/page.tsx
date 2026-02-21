@@ -7,37 +7,41 @@ import CustomerLayout from "@/components/customer/CustomerLayout";
 import api from "@/lib/api";
 import {
   Calendar,
-  MapPin,
   Clock,
   Ticket,
   ArrowLeft,
   Download,
   QrCode,
   IndianRupee,
-  User,
   Ship,
   CheckCircle,
   XCircle,
   AlertCircle,
   Loader2,
+  Percent,
 } from "lucide-react";
 
 const formatDate = (dateString: string) => {
   if (!dateString) return "-";
+  // Handle YYYY-MM-DD string directly
+  const parts = dateString.split("-");
+  if (parts.length === 3) {
+    const date = new Date(
+      parseInt(parts[0]),
+      parseInt(parts[1]) - 1,
+      parseInt(parts[2])
+    );
+    return date.toLocaleDateString("en-IN", {
+      year: "numeric",
+      month: "long",
+      day: "2-digit",
+    });
+  }
   const date = new Date(dateString);
   return date.toLocaleDateString("en-IN", {
     year: "numeric",
     month: "long",
     day: "2-digit",
-  });
-};
-
-const formatTime = (dateString: string) => {
-  if (!dateString) return "";
-  const date = new Date(dateString);
-  return date.toLocaleTimeString("en-IN", {
-    hour: "2-digit",
-    minute: "2-digit",
   });
 };
 
@@ -65,38 +69,39 @@ const StatusBadge = ({ status }: { status?: string }) => {
     >
       <Icon className="w-4 h-4" />
       {status
-        ? status.charAt(0).toUpperCase() + status.slice(1)
+        ? status.charAt(0).toUpperCase() + status.slice(1).toLowerCase()
         : "Unknown"}
     </span>
   );
 };
 
 interface BookingItemData {
+  id: number;
+  booking_id: number;
+  item_id: number;
   item_name?: string;
-  description?: string;
+  rate: number;
+  levy: number;
+  quantity: number;
   vehicle_no?: string;
-  qty?: number;
-  quantity?: number;
-  amount?: number;
-  rate?: number;
+  is_cancelled: boolean;
+  amount: number;
 }
 
 interface BookingData {
   id: number;
-  ticket_id?: string;
-  status?: string;
-  from_branch?: { branch_name?: string };
-  to_branch?: { branch_name?: string };
+  booking_no: number;
+  status: string;
+  verification_code?: string;
+  branch_name?: string;
+  route_name?: string;
   travel_date?: string;
-  departure_time?: string;
+  departure?: string;
+  amount: number;
+  discount: number;
+  net_amount: number;
+  is_cancelled: boolean;
   created_at?: string;
-  total_amount?: number;
-  booking_source?: string;
-  customer?: {
-    name?: string;
-    first_name?: string;
-    email?: string;
-  };
   items?: BookingItemData[];
 }
 
@@ -105,6 +110,9 @@ export default function BookingViewPage() {
   const bookingId = params.id;
   const [booking, setBooking] = useState<BookingData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showQr, setShowQr] = useState(false);
+  const [qrUrl, setQrUrl] = useState<string | null>(null);
+  const [cancelling, setCancelling] = useState(false);
 
   useEffect(() => {
     if (!bookingId) return;
@@ -144,6 +152,11 @@ export default function BookingViewPage() {
     );
   }
 
+  // Split route_name (e.g. "Dighi - Agardanda") into from/to
+  const routeParts = booking.route_name?.split(" - ") || [];
+  const fromName = routeParts[0] || "N/A";
+  const toName = routeParts[1] || "N/A";
+
   return (
     <CustomerLayout>
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 pb-12">
@@ -168,7 +181,7 @@ export default function BookingViewPage() {
                 <div>
                   <p className="text-sky-100 text-sm">Booking Reference</p>
                   <p className="text-2xl font-bold font-mono">
-                    #{booking.ticket_id || booking.id}
+                    #{booking.booking_no}
                   </p>
                 </div>
               </div>
@@ -184,7 +197,7 @@ export default function BookingViewPage() {
                 <div className="flex-1">
                   <p className="text-sm text-slate-500 mb-1">From</p>
                   <p className="text-lg font-bold text-slate-800">
-                    {booking.from_branch?.branch_name || "N/A"}
+                    {fromName}
                   </p>
                 </div>
                 <div className="w-12 h-12 rounded-full bg-sky-100 flex items-center justify-center">
@@ -193,23 +206,21 @@ export default function BookingViewPage() {
                 <div className="flex-1 text-right">
                   <p className="text-sm text-slate-500 mb-1">To</p>
                   <p className="text-lg font-bold text-amber-600">
-                    {booking.to_branch?.branch_name || "N/A"}
+                    {toName}
                   </p>
                 </div>
               </div>
             </div>
 
             {/* Details Grid */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className={`grid grid-cols-2 ${booking.discount > 0 ? "md:grid-cols-4" : "md:grid-cols-3"} gap-4`}>
               <div className="bg-slate-50 rounded-xl p-4">
                 <div className="flex items-center gap-2 text-slate-500 mb-1">
                   <Calendar className="w-4 h-4" />
                   <span className="text-xs">Date</span>
                 </div>
                 <p className="font-semibold text-slate-800">
-                  {formatDate(
-                    booking.travel_date || booking.created_at || ""
-                  )}
+                  {formatDate(booking.travel_date || "")}
                 </p>
               </div>
               <div className="bg-slate-50 rounded-xl p-4">
@@ -218,8 +229,7 @@ export default function BookingViewPage() {
                   <span className="text-xs">Time</span>
                 </div>
                 <p className="font-semibold text-slate-800">
-                  {booking.departure_time ||
-                    formatTime(booking.created_at || "")}
+                  {booking.departure || "-"}
                 </p>
               </div>
               <div className="bg-slate-50 rounded-xl p-4">
@@ -228,42 +238,21 @@ export default function BookingViewPage() {
                   <span className="text-xs">Amount</span>
                 </div>
                 <p className="font-semibold text-sky-600">
-                  ₹{formatCurrency(booking.total_amount || 0)}
+                  ₹{formatCurrency(booking.net_amount)}
                 </p>
               </div>
-              <div className="bg-slate-50 rounded-xl p-4">
-                <div className="flex items-center gap-2 text-slate-500 mb-1">
-                  <Ticket className="w-4 h-4" />
-                  <span className="text-xs">Source</span>
+              {booking.discount > 0 && (
+                <div className="bg-slate-50 rounded-xl p-4">
+                  <div className="flex items-center gap-2 text-slate-500 mb-1">
+                    <Percent className="w-4 h-4" />
+                    <span className="text-xs">Discount</span>
+                  </div>
+                  <p className="font-semibold text-green-600">
+                    ₹{formatCurrency(booking.discount)}
+                  </p>
                 </div>
-                <p className="font-semibold text-slate-800 capitalize">
-                  {booking.booking_source || "Web"}
-                </p>
-              </div>
+              )}
             </div>
-
-            {/* Customer Info */}
-            {booking.customer && (
-              <div className="border-t border-slate-100 pt-6">
-                <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-4">
-                  Customer Details
-                </h3>
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-full bg-sky-100 flex items-center justify-center">
-                    <User className="w-6 h-6 text-sky-600" />
-                  </div>
-                  <div>
-                    <p className="font-semibold text-slate-800">
-                      {booking.customer.name ||
-                        booking.customer.first_name}
-                    </p>
-                    <p className="text-sm text-slate-500">
-                      {booking.customer.email}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
 
             {/* Items */}
             {booking.items && booking.items.length > 0 && (
@@ -274,12 +263,12 @@ export default function BookingViewPage() {
                 <div className="space-y-3">
                   {booking.items.map((item, idx) => (
                     <div
-                      key={idx}
+                      key={item.id || idx}
                       className="flex items-center justify-between bg-slate-50 rounded-xl p-4"
                     >
                       <div>
                         <p className="font-medium text-slate-800">
-                          {item.item_name || item.description}
+                          {item.item_name}
                         </p>
                         {item.vehicle_no && (
                           <p className="text-sm text-slate-500">
@@ -289,15 +278,10 @@ export default function BookingViewPage() {
                       </div>
                       <div className="text-right">
                         <p className="text-sm text-slate-500">
-                          x{item.qty || item.quantity}
+                          x{item.quantity}
                         </p>
                         <p className="font-semibold text-slate-800">
-                          ₹
-                          {formatCurrency(
-                            item.amount ||
-                              (item.rate || 0) *
-                                (item.qty || item.quantity || 0)
-                          )}
+                          ₹{formatCurrency(item.amount)}
                         </p>
                       </div>
                     </div>
@@ -308,20 +292,70 @@ export default function BookingViewPage() {
 
             {/* Actions */}
             <div className="border-t border-slate-100 pt-6 flex flex-wrap gap-3">
-              {booking.status?.toLowerCase() === "confirmed" && (
-                <button className="flex items-center gap-2 px-6 py-3 rounded-xl bg-sky-600 text-white font-semibold hover:bg-sky-700 transition-colors">
+              {booking.status?.toUpperCase() === "CONFIRMED" && (
+                <button
+                  onClick={async () => {
+                    try {
+                      const res = await api.get(`/api/portal/bookings/${bookingId}/qr`, { responseType: 'blob' });
+                      const url = URL.createObjectURL(res.data);
+                      setQrUrl(url);
+                      setShowQr(true);
+                    } catch {}
+                  }}
+                  className="flex items-center gap-2 px-6 py-3 rounded-xl bg-sky-600 text-white font-semibold hover:bg-sky-700 transition-colors"
+                >
                   <QrCode className="w-5 h-5" />
                   <span>Show QR Code</span>
                 </button>
               )}
-              <button className="flex items-center gap-2 px-6 py-3 rounded-xl bg-slate-100 text-slate-700 font-semibold hover:bg-slate-200 transition-colors">
+              <button
+                onClick={() => window.print()}
+                className="flex items-center gap-2 px-6 py-3 rounded-xl bg-slate-100 text-slate-700 font-semibold hover:bg-slate-200 transition-colors"
+              >
                 <Download className="w-5 h-5" />
                 <span>Download Ticket</span>
               </button>
+              {booking.status?.toUpperCase() === "CONFIRMED" && (
+                <button
+                  onClick={async () => {
+                    if (!confirm("Are you sure you want to cancel this booking?")) return;
+                    setCancelling(true);
+                    try {
+                      const res = await api.post(`/api/portal/bookings/${bookingId}/cancel`);
+                      setBooking(res.data);
+                    } catch {}
+                    setCancelling(false);
+                  }}
+                  disabled={cancelling}
+                  className="flex items-center gap-2 px-6 py-3 rounded-xl bg-red-100 text-red-700 font-semibold hover:bg-red-200 transition-colors disabled:opacity-50"
+                >
+                  <XCircle className="w-5 h-5" />
+                  <span>{cancelling ? "Cancelling..." : "Cancel Booking"}</span>
+                </button>
+              )}
             </div>
           </div>
         </div>
       </div>
+
+      {/* QR Code Modal */}
+      {showQr && qrUrl && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6 text-center">
+            <h2 className="text-xl font-bold text-slate-800 mb-4">Booking QR Code</h2>
+            <div className="flex justify-center mb-4">
+              <img src={qrUrl} alt="Booking QR Code" className="w-64 h-64" />
+            </div>
+            <p className="text-sm text-slate-500 mb-4">Show this QR code at the jetty for boarding</p>
+            <button
+              onClick={() => { setShowQr(false); if (qrUrl) URL.revokeObjectURL(qrUrl); }}
+              className="w-full py-3 rounded-xl bg-sky-600 text-white font-medium hover:bg-sky-700 transition-colors"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
     </CustomerLayout>
   );
 }
