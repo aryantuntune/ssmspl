@@ -23,24 +23,25 @@ const roundTo2 = (num: number) =>
 
 interface Branch {
   id: number;
-  branch_id?: number;
-  branch_name?: string;
-  name?: string;
+  name: string;
 }
 
 interface FerrySchedule {
   schedule_time: string;
-  ferry_boat_id?: number;
 }
 
 interface AvailableItem {
   id: number;
-  item_name: string;
+  name: string;
+  short_name: string;
+  is_vehicle: boolean;
+  rate: number;
+  levy: number;
 }
 
 interface BookingItem {
   id: number;
-  item_rate_id: string;
+  item_id: string;
   quantity: number;
   vehicle_no: string;
   rate: number;
@@ -52,15 +53,13 @@ export default function BookingPage() {
   const [toBranch, setToBranch] = useState("");
   const [travelDate, setTravelDate] = useState("");
   const [ferryTime, setFerryTime] = useState("");
-  const [selectedFerryBoatId, setSelectedFerryBoatId] = useState<number | null>(
-    null
-  );
+  const [routeId, setRouteId] = useState<number | null>(null);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [toBranches, setToBranches] = useState<Branch[]>([]);
   const [ferrySchedules, setFerrySchedules] = useState<FerrySchedule[]>([]);
   const [availableItems, setAvailableItems] = useState<AvailableItem[]>([]);
   const [items, setItems] = useState<BookingItem[]>([
-    { id: 1, item_rate_id: "", quantity: 1, vehicle_no: "", rate: 0, levy: 0 },
+    { id: 1, item_id: "", quantity: 1, vehicle_no: "", rate: 0, levy: 0 },
   ]);
   const [showPreview, setShowPreview] = useState(false);
   const [showError, setShowError] = useState(false);
@@ -83,14 +82,27 @@ export default function BookingPage() {
   // Load branches on mount
   useEffect(() => {
     api
-      .get("/api/branches")
-      .then((res) => setBranches(res.data || []))
+      .get("/api/branches?status=active&limit=200")
+      .then((res) => {
+        const data = res.data || [];
+        setBranches(data.map((b: Record<string, unknown>) => ({ id: b.id, name: b.name })));
+      })
       .catch(() => setBranches([]));
   }, []);
 
-  // Load destination branches & items when from branch changes
+  // Load destination branches when from branch changes
   useEffect(() => {
     if (!fromBranch) return;
+
+    // Reset dependent state
+    setToBranch("");
+    setAvailableItems([]);
+    setFerrySchedules([]);
+    setFerryTime("");
+    setRouteId(null);
+    setItems([
+      { id: 1, item_id: "", quantity: 1, vehicle_no: "", rate: 0, levy: 0 },
+    ]);
 
     api
       .get(`/api/booking/to-branches/${fromBranch}`)
@@ -98,15 +110,23 @@ export default function BookingPage() {
         const data: Branch[] = res.data || [];
         setToBranches(data);
         if (data.length === 1) {
-          setToBranch(String(data[0].id || data[0].branch_id));
-        } else {
-          setToBranch("");
+          setToBranch(String(data[0].id));
         }
       })
       .catch(() => setToBranches([]));
+  }, [fromBranch]);
+
+  // Load items and schedules when BOTH fromBranch AND toBranch are set
+  useEffect(() => {
+    if (!fromBranch || !toBranch) return;
+
+    // Reset items list when route changes
+    setItems([
+      { id: 1, item_id: "", quantity: 1, vehicle_no: "", rate: 0, levy: 0 },
+    ]);
 
     api
-      .get(`/api/booking/items/${fromBranch}`)
+      .get(`/api/booking/items/${fromBranch}/${toBranch}`)
       .then((res) => setAvailableItems(res.data || []))
       .catch(() => setAvailableItems([]));
 
@@ -117,18 +137,7 @@ export default function BookingPage() {
         setFerryTime("");
       })
       .catch(() => setFerrySchedules([]));
-
-    setItems([
-      {
-        id: 1,
-        item_rate_id: "",
-        quantity: 1,
-        vehicle_no: "",
-        rate: 0,
-        levy: 0,
-      },
-    ]);
-  }, [fromBranch]);
+  }, [fromBranch, toBranch]);
 
   const addItem = () => {
     const newId = Math.max(...items.map((i) => i.id)) + 1;
@@ -136,7 +145,7 @@ export default function BookingPage() {
       ...items,
       {
         id: newId,
-        item_rate_id: "",
+        item_id: "",
         quantity: 1,
         vehicle_no: "",
         rate: 0,
@@ -150,31 +159,32 @@ export default function BookingPage() {
   };
 
   const updateItem = (id: number, field: string, value: string | number) => {
+    // When an item is selected, look up rate/levy from availableItems directly
+    if (field === "item_id" && value) {
+      const selectedItem = availableItems.find(
+        (i) => String(i.id) === String(value)
+      );
+      if (selectedItem) {
+        setItems((current) =>
+          current.map((i) =>
+            i.id === id
+              ? {
+                  ...i,
+                  item_id: String(value),
+                  rate: selectedItem.rate,
+                  levy: selectedItem.levy,
+                }
+              : i
+          )
+        );
+        return;
+      }
+    }
+
     setItems((prev) =>
       prev.map((item) => {
         if (item.id === id) {
-          const updated = { ...item, [field]: value };
-
-          if (field === "item_rate_id" && value) {
-            api
-              .get(`/api/booking/item-rate/${value}`)
-              .then((res) => {
-                setItems((current) =>
-                  current.map((i) =>
-                    i.id === id
-                      ? {
-                          ...i,
-                          rate: res.data.item_rate || 0,
-                          levy: res.data.item_lavy || 0,
-                        }
-                      : i
-                  )
-                );
-              })
-              .catch(() => {});
-          }
-
-          return updated;
+          return { ...item, [field]: value };
         }
         return item;
       })
@@ -194,15 +204,13 @@ export default function BookingPage() {
   );
 
   const getBranchName = (id: string, list: Branch[]) => {
-    const branch = list.find(
-      (b) => String(b.id) === id || String(b.branch_id) === id
-    );
-    return branch?.branch_name || branch?.name || "Unknown";
+    const branch = list.find((b) => String(b.id) === id);
+    return branch?.name || "Unknown";
   };
 
   const getItemName = (id: string) => {
     const item = availableItems.find((i) => String(i.id) === id);
-    return item?.item_name || "Unknown";
+    return item?.name || "Unknown";
   };
 
   const validateForm = () => {
@@ -227,7 +235,7 @@ export default function BookingPage() {
       return false;
     }
     for (const item of items) {
-      if (!item.item_rate_id) {
+      if (!item.item_id) {
         setErrorMessage("Please select a description for all items.");
         setShowError(true);
         return false;
@@ -251,14 +259,13 @@ export default function BookingPage() {
     setSubmitting(true);
     try {
       await api.post("/api/portal/bookings", {
-        from_branch: fromBranch,
-        to_branch: toBranch,
-        ferry_boat_id: selectedFerryBoatId,
-        date: travelDate,
-        departure_time: ferryTime,
+        from_branch_id: parseInt(fromBranch),
+        to_branch_id: parseInt(toBranch),
+        travel_date: travelDate,
+        departure: ferryTime,
         items: items.map((item) => ({
-          item_rate_id: item.item_rate_id,
-          qty: item.quantity || 1,
+          item_id: parseInt(item.item_id),
+          quantity: item.quantity || 1,
           vehicle_no: item.vehicle_no || undefined,
         })),
       });
@@ -268,8 +275,8 @@ export default function BookingPage() {
       setFromBranch("");
       setToBranch("");
       setFerryTime("");
-      setSelectedFerryBoatId(null);
-      setItems([{ id: 1, item_rate_id: "", quantity: 1, vehicle_no: "", rate: 0, levy: 0 }]);
+      setRouteId(null);
+      setItems([{ id: 1, item_id: "", quantity: 1, vehicle_no: "", rate: 0, levy: 0 }]);
     } catch (error: unknown) {
       const msg =
         error instanceof Error
@@ -336,10 +343,10 @@ export default function BookingPage() {
                   <option value="">Select departure point</option>
                   {branches.map((branch) => (
                     <option
-                      key={branch.id || branch.branch_id}
-                      value={branch.id || branch.branch_id}
+                      key={branch.id}
+                      value={branch.id}
                     >
-                      {branch.branch_name || branch.name}
+                      {branch.name}
                     </option>
                   ))}
                 </select>
@@ -362,9 +369,7 @@ export default function BookingPage() {
                 {toBranches.length === 1 ? (
                   <input
                     type="text"
-                    value={
-                      toBranches[0]?.branch_name || toBranches[0]?.name || ""
-                    }
+                    value={toBranches[0]?.name || ""}
                     readOnly
                     className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-700 font-medium cursor-not-allowed"
                   />
@@ -378,10 +383,10 @@ export default function BookingPage() {
                     <option value="">Select destination</option>
                     {toBranches.map((branch) => (
                       <option
-                        key={branch.id || branch.branch_id}
-                        value={branch.id || branch.branch_id}
+                        key={branch.id}
+                        value={branch.id}
                       >
-                        {branch.branch_name || branch.name}
+                        {branch.name}
                       </option>
                     ))}
                   </select>
@@ -421,14 +426,9 @@ export default function BookingPage() {
                   <select
                     value={ferryTime}
                     onChange={(e) => {
-                      const selectedTime = e.target.value;
-                      setFerryTime(selectedTime);
-                      const schedule = ferrySchedules.find(
-                        (s) => s.schedule_time === selectedTime
-                      );
-                      setSelectedFerryBoatId(schedule?.ferry_boat_id || null);
+                      setFerryTime(e.target.value);
                     }}
-                    disabled={!fromBranch || ferrySchedules.length === 0}
+                    disabled={!fromBranch || !toBranch || ferrySchedules.length === 0}
                     className="w-full pl-12 pr-4 py-3 rounded-xl border border-slate-200 bg-white focus:border-sky-500 focus:ring-4 focus:ring-sky-500/10 transition-all disabled:bg-slate-100 disabled:cursor-not-allowed"
                     required
                   >
@@ -440,7 +440,7 @@ export default function BookingPage() {
                     ))}
                   </select>
                 </div>
-                {fromBranch && ferrySchedules.length === 0 && (
+                {fromBranch && toBranch && ferrySchedules.length === 0 && (
                   <p className="mt-1 text-xs text-amber-600">
                     No schedules available for this departure point
                   </p>
@@ -484,9 +484,9 @@ export default function BookingPage() {
                         Description
                       </label>
                       <select
-                        value={item.item_rate_id}
+                        value={item.item_id}
                         onChange={(e) =>
-                          updateItem(item.id, "item_rate_id", e.target.value)
+                          updateItem(item.id, "item_id", e.target.value)
                         }
                         className="w-full px-3 py-2.5 rounded-xl border border-slate-200 focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 text-sm"
                         required
@@ -494,7 +494,7 @@ export default function BookingPage() {
                         <option value="">Select item</option>
                         {availableItems.map((opt) => (
                           <option key={opt.id} value={opt.id}>
-                            {opt.item_name}
+                            {opt.name}
                           </option>
                         ))}
                       </select>
@@ -716,7 +716,7 @@ export default function BookingPage() {
                         {items.map((item) => (
                           <tr key={item.id} className="hover:bg-slate-50">
                             <td className="px-4 py-3 text-sm text-slate-800">
-                              {getItemName(item.item_rate_id)}
+                              {getItemName(item.item_id)}
                             </td>
                             <td className="px-4 py-3 text-sm text-slate-600 text-center">
                               {item.quantity}
