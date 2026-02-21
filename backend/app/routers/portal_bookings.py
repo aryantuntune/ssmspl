@@ -1,6 +1,4 @@
-import asyncio
-
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,13 +22,14 @@ router = APIRouter(prefix="/api/portal/bookings", tags=["Portal Bookings"])
 )
 async def create_booking(
     body: BookingCreate,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: PortalUser = Depends(get_current_portal_user),
 ):
     result = await booking_service.create_booking(db, body, current_user)
 
-    # Fire-and-forget email
-    asyncio.create_task(send_booking_confirmation(result, current_user.email))
+    # Send confirmation email in background (managed by FastAPI lifecycle)
+    background_tasks.add_task(send_booking_confirmation, result, current_user.email)
 
     return result
 

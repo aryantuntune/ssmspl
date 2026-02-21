@@ -53,7 +53,6 @@ export default function BookingPage() {
   const [toBranch, setToBranch] = useState("");
   const [travelDate, setTravelDate] = useState("");
   const [ferryTime, setFerryTime] = useState("");
-  const [routeId, setRouteId] = useState<number | null>(null);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [toBranches, setToBranches] = useState<Branch[]>([]);
   const [ferrySchedules, setFerrySchedules] = useState<FerrySchedule[]>([]);
@@ -99,7 +98,6 @@ export default function BookingPage() {
     setAvailableItems([]);
     setFerrySchedules([]);
     setFerryTime("");
-    setRouteId(null);
     setItems([
       { id: 1, item_id: "", quantity: 1, vehicle_no: "", rate: 0, levy: 0 },
     ]);
@@ -245,6 +243,17 @@ export default function BookingPage() {
         setShowError(true);
         return false;
       }
+      // Validate vehicle_no is required for vehicle items
+      const selectedItem = availableItems.find(
+        (i) => String(i.id) === String(item.item_id)
+      );
+      if (selectedItem?.is_vehicle && !item.vehicle_no.trim()) {
+        setErrorMessage(
+          `Vehicle number is required for "${selectedItem.name}".`
+        );
+        setShowError(true);
+        return false;
+      }
     }
     return true;
   };
@@ -275,7 +284,6 @@ export default function BookingPage() {
       setFromBranch("");
       setToBranch("");
       setFerryTime("");
-      setRouteId(null);
       setItems([{ id: 1, item_id: "", quantity: 1, vehicle_no: "", rate: 0, levy: 0 }]);
     } catch (error: unknown) {
       const msg =

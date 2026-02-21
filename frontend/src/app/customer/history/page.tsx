@@ -228,7 +228,7 @@ export default function HistoryPage() {
                                   const url = URL.createObjectURL(res.data);
                                   window.open(url, "_blank");
                                 } catch {
-                                  /* silently ignore */
+                                  alert("Failed to load QR code. Please try again.");
                                 }
                               }}
                               className="flex items-center gap-2 px-4 py-2 rounded-xl bg-sky-50 text-sky-700 font-medium hover:bg-sky-100 transition-colors"

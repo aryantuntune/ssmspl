@@ -300,7 +300,9 @@ export default function BookingViewPage() {
                       const url = URL.createObjectURL(res.data);
                       setQrUrl(url);
                       setShowQr(true);
-                    } catch {}
+                    } catch {
+                      alert("Failed to load QR code. Please try again.");
+                    }
                   }}
                   className="flex items-center gap-2 px-6 py-3 rounded-xl bg-sky-600 text-white font-semibold hover:bg-sky-700 transition-colors"
                 >
@@ -323,7 +325,9 @@ export default function BookingViewPage() {
                     try {
                       const res = await api.post(`/api/portal/bookings/${bookingId}/cancel`);
                       setBooking(res.data);
-                    } catch {}
+                    } catch {
+                      alert("Failed to cancel booking. Please try again.");
+                    }
                     setCancelling(false);
                   }}
                   disabled={cancelling}

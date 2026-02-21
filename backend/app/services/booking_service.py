@@ -4,7 +4,7 @@ import uuid as uuid_mod
 from decimal import Decimal, ROUND_HALF_UP
 
 from fastapi import HTTPException, status
-from sqlalchemy import select, func, or_
+from sqlalchemy import select, func, or_, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.booking import Booking
@@ -387,7 +387,7 @@ async def create_booking(
     # 2. Find route
     route = await _find_route(db, data.from_branch_id, data.to_branch_id)
 
-    # 3. Validate travel_date >= today
+    # 3. Validate travel_date >= today and departure not in the past
     today = datetime.date.today()
     if data.travel_date < today:
         raise HTTPException(
@@ -397,6 +397,15 @@ async def create_booking(
 
     # 4. Validate departure in ferry_schedules
     departure_time = _parse_time(data.departure)
+
+    if data.travel_date == today:
+        now = datetime.datetime.now().time()
+        if departure_time <= now:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Departure time {data.departure} has already passed for today",
+            )
+
     sched_result = await db.execute(
         select(FerrySchedule).where(
             FerrySchedule.branch_id == data.from_branch_id,
@@ -460,7 +469,8 @@ async def create_booking(
     branch = branch_lock_result.scalar_one()
     next_booking_no = (branch.last_booking_no or 0) + 1
 
-    # 10. Generate next booking ID
+    # 10. Generate next booking ID (advisory lock prevents race condition)
+    await db.execute(text("SELECT pg_advisory_xact_lock(hashtext('bookings_id'))"))
     id_result = await db.execute(select(func.coalesce(func.max(Booking.id), 0)))
     next_booking_id = id_result.scalar() + 1
 
@@ -505,7 +515,8 @@ async def create_booking(
     )
     db.add(booking)
 
-    # 13. Create BookingItem rows
+    # 13. Create BookingItem rows (advisory lock prevents race condition)
+    await db.execute(text("SELECT pg_advisory_xact_lock(hashtext('booking_items_id'))"))
     item_id_result = await db.execute(select(func.coalesce(func.max(BookingItem.id), 0)))
     next_item_id = item_id_result.scalar() + 1
 
