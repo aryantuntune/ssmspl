@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
 import { getAccessToken, clearTokens } from "@/lib/auth";
@@ -74,11 +75,13 @@ export default function Header() {
         <div className="max-w-7xl mx-auto px-4 flex items-center justify-between h-16">
           {/* Logo */}
           <Link href="/" className="flex items-center gap-3 group">
-            <div className="w-10 h-10 bg-[#0891b2] rounded-lg flex items-center justify-center">
-              <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M20 21c-1.39 0-2.78-.47-4-1.32-2.44 1.71-5.56 1.71-8 0C6.78 20.53 5.39 21 4 21H2v-2h2c1.38 0 2.74-.35 4-.99 2.52 1.29 5.48 1.29 8 0 1.26.65 2.62.99 4 .99h2v2h-2zM3.95 19H4c1.6 0 3.02-.88 4-2 .98 1.12 2.4 2 4 2s3.02-.88 4-2c.98 1.12 2.4 2 4 2h.05l1.89-6.68c.08-.26.06-.54-.06-.78s-.34-.42-.6-.5L20 10.62V6c0-1.1-.9-2-2-2h-3V1H9v3H6c-1.1 0-2 .9-2 2v4.62l-1.29.42a1.007 1.007 0 00-.66 1.28L3.95 19zM6 6h12v3.97L12 8 6 9.97V6z" />
-              </svg>
-            </div>
+            <Image
+              src="/images/logos/logo.png"
+              alt="Suvarnadurga Shipping"
+              width={44}
+              height={44}
+              className="object-contain"
+            />
             <div className="leading-tight">
               <span className="font-bold text-[#0c3547] text-base group-hover:text-[#0891b2] transition-colors">Suvarnadurga</span>
               <br />
@@ -108,7 +111,7 @@ export default function Header() {
             {isLoggedIn ? (
               <>
                 <Link
-                  href="/customer/dashboard"
+                  href={dashboardHref}
                   className="bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white px-5 py-2 rounded-lg text-sm font-semibold transition-all shadow-md hover:shadow-lg"
                 >
                   My Dashboard
@@ -176,7 +179,7 @@ export default function Header() {
               {isLoggedIn ? (
                 <>
                   <Link
-                    href="/customer/dashboard"
+                    href={dashboardHref}
                     onClick={() => setMobileMenuOpen(false)}
                     className="text-center bg-gradient-to-r from-amber-500 to-orange-500 text-white px-5 py-2 rounded-lg text-sm font-semibold"
                   >

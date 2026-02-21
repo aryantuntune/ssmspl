@@ -3,11 +3,11 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import api from "@/lib/api";
 import { setPortalTokens } from "@/lib/portalAuth";
 import { TokenResponse } from "@/types";
 import {
-  Ship,
   Mail,
   Lock,
   Eye,
@@ -73,9 +73,13 @@ export default function CustomerLoginPage() {
               href="/"
               className="inline-flex items-center gap-3 group"
             >
-              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-sky-400 to-sky-600 flex items-center justify-center shadow-xl group-hover:shadow-sky-500/50 transition-all duration-300">
-                <Ship className="w-7 h-7 text-white" />
-              </div>
+              <Image
+                src="/images/logos/logo-white.png"
+                alt="Suvarnadurga Shipping"
+                width={56}
+                height={56}
+                className="object-contain drop-shadow-lg"
+              />
               <span className="text-3xl font-bold text-white tracking-tight">
                 SSMSPL
               </span>

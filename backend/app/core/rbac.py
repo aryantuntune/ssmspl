@@ -39,6 +39,7 @@ ROLE_MENU_ITEMS: dict[UserRole, list[str]] = {
         "Ticketing",
         "Multi-Ticketing",
         "Reports",
+        "System Settings",
     ],
     UserRole.MANAGER: [
         "Dashboard",

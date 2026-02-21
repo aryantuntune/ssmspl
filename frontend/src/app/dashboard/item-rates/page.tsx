@@ -724,7 +724,7 @@ export default function ItemRatesPage() {
                       <input
                         type="number"
                         step="0.01"
-                        min="0"
+                        min="1.01"
                         placeholder="0.00"
                         value={form.rate}
                         onChange={(e) => setForm({ ...form, rate: e.target.value })}

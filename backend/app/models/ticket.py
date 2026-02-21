@@ -2,9 +2,10 @@ from sqlalchemy import BigInteger, Boolean, Date, ForeignKey, Integer, Numeric, 
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
+from app.models.mixins import AuditMixin
 
 
-class Ticket(Base):
+class Ticket(AuditMixin, Base):
     __tablename__ = "tickets"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -23,7 +24,7 @@ class Ticket(Base):
         return f"<Ticket id={self.id} ticket_no={self.ticket_no} branch_id={self.branch_id}>"
 
 
-class TicketItem(Base):
+class TicketItem(AuditMixin, Base):
     __tablename__ = "ticket_items"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)

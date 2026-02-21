@@ -1,4 +1,4 @@
-from datetime import time
+from datetime import datetime, time
 
 from pydantic import BaseModel, Field
 
@@ -55,5 +55,8 @@ class BranchRead(BranchBase):
     sf_after: time | None = Field(None, description="Sailing forbidden after this time")
     sf_before: time | None = Field(None, description="Sailing forbidden before this time")
     is_active: bool | None = Field(None, description="Whether the branch is active (soft-delete flag)")
+    last_booking_no: int = Field(0, description="Last booking number issued by this branch")
+    created_at: datetime | None = Field(None, description="Record creation timestamp")
+    updated_at: datetime | None = Field(None, description="Record last update timestamp")
 
     model_config = {"from_attributes": True}

@@ -77,7 +77,7 @@ interface Booking {
   status?: string;
   from_branch?: { branch_name?: string };
   to_branch?: { branch_name?: string };
-  booking_date?: string;
+  travel_date?: string;
   created_at?: string;
   total_amount?: number;
   items?: BookingItem[];
@@ -181,7 +181,7 @@ export default function HistoryPage() {
                           <Calendar className="w-4 h-4 text-slate-400" />
                           <span>
                             {formatDate(
-                              booking.booking_date || booking.created_at || ""
+                              booking.travel_date || booking.created_at || ""
                             )}
                           </span>
                         </div>

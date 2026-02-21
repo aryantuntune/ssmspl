@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import api from "@/lib/api";
 import { setTokens, setSelectedBranch } from "@/lib/auth";
 import { TokenResponse, LoginRequest, User, RouteBranch } from "@/types";
@@ -109,27 +110,13 @@ export default function LoginPage() {
         {/* Brand header */}
         <div className="text-center mb-8 animate-slide-up">
           <Link href="/" className="inline-flex items-center space-x-3 group">
-            <div className="w-14 h-14 rounded-2xl bg-white shadow-xl flex items-center justify-center group-hover:shadow-2xl transition-shadow">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="28"
-                height="28"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="text-indigo-600"
-              >
-                <path d="M12 10.189V14" />
-                <path d="M12 2v3" />
-                <path d="M19 13a7 7 0 1 0-14 0" />
-                <path d="M3 19h18" />
-                <path d="M5 19v2" />
-                <path d="M19 19v2" />
-              </svg>
-            </div>
+            <Image
+              src="/images/logos/logo-white.png"
+              alt="Suvarnadurga Shipping"
+              width={56}
+              height={56}
+              className="object-contain drop-shadow-lg"
+            />
             <span className="text-3xl font-bold text-white">SSMSPL</span>
           </Link>
           <p className="mt-2 text-white/70 text-sm">Admin Portal</p>

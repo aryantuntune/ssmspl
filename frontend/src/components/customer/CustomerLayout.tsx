@@ -2,11 +2,11 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { clearPortalTokens } from "@/lib/portalAuth";
 import {
-  Ship,
   Menu,
   X,
   Ticket,
@@ -85,11 +85,15 @@ export default function CustomerLayout({
           <div className="flex items-center justify-between h-16">
             {/* Logo */}
             <Link href="/" className="flex items-center gap-3 group">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-sky-400 to-sky-600 flex items-center justify-center shadow-lg shadow-sky-500/20 group-hover:shadow-sky-500/40 transition-all duration-300">
-                <Ship className="w-5 h-5 text-white" />
-              </div>
+              <Image
+                src="/images/logos/logo.png"
+                alt="Suvarnadurga Shipping"
+                width={40}
+                height={40}
+                className="object-contain"
+              />
               <span className="text-xl font-bold text-sky-900 tracking-tight">
-                Jetty
+                SSMSPL
               </span>
             </Link>
 

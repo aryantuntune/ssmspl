@@ -2,9 +2,10 @@ from sqlalchemy import Boolean, ForeignKey, Integer
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
+from app.models.mixins import AuditMixin
 
 
-class Route(Base):
+class Route(AuditMixin, Base):
     __tablename__ = "routes"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)

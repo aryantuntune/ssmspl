@@ -87,7 +87,7 @@ interface BookingData {
   status?: string;
   from_branch?: { branch_name?: string };
   to_branch?: { branch_name?: string };
-  booking_date?: string;
+  travel_date?: string;
   departure_time?: string;
   created_at?: string;
   total_amount?: number;
@@ -208,7 +208,7 @@ export default function BookingViewPage() {
                 </div>
                 <p className="font-semibold text-slate-800">
                   {formatDate(
-                    booking.booking_date || booking.created_at || ""
+                    booking.travel_date || booking.created_at || ""
                   )}
                 </p>
               </div>

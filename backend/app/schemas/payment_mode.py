@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel, Field
 
 
@@ -33,5 +35,7 @@ class PaymentModeUpdate(BaseModel):
 class PaymentModeRead(PaymentModeBase):
     id: int = Field(..., description="Unique payment mode identifier")
     is_active: bool = Field(..., description="Whether the payment mode is active")
+    created_at: datetime | None = Field(None, description="Record creation timestamp")
+    updated_at: datetime | None = Field(None, description="Record last update timestamp")
 
     model_config = {"from_attributes": True}

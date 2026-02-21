@@ -3,9 +3,10 @@ from sqlalchemy.orm import Mapped, mapped_column
 from datetime import date as date_type
 
 from app.database import Base
+from app.models.mixins import AuditMixin
 
 
-class ItemRate(Base):
+class ItemRate(AuditMixin, Base):
     __tablename__ = "item_rates"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)

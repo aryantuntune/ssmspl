@@ -11,6 +11,19 @@ export const metadata: Metadata = {
   title: "Suvarnadurga Shipping & Marine Services - Ferry Boat Ticketing",
   description:
     "Maharashtra's premier ferry service connecting the Konkan coast since 2003. Book ferry tickets for Dabhol-Dhopave, Jaigad-Tawsal, Dighi-Agardande, and more routes.",
+  icons: {
+    icon: [
+      { url: "/favicon-16x16.png", sizes: "16x16", type: "image/png" },
+      { url: "/favicon-32x32.png", sizes: "32x32", type: "image/png" },
+    ],
+    apple: "/apple-touch-icon.png",
+  },
+  openGraph: {
+    title: "Suvarnadurga Shipping & Marine Services",
+    description:
+      "Maharashtra's premier ferry service connecting the Konkan coast since 2003.",
+    images: [{ url: "/og-image.png", width: 1200, height: 630 }],
+  },
 };
 
 export default function RootLayout({

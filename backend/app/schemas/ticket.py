@@ -1,5 +1,6 @@
+from datetime import date, datetime, time
+
 from pydantic import BaseModel, Field
-from datetime import date, time
 
 
 # ── Ticket Item schemas ──
@@ -47,7 +48,7 @@ class TicketItemRead(BaseModel):
 
 class TicketPayementCreate(BaseModel):
     payment_mode_id: int = Field(..., description="Payment mode ID (e.g. CASH, UPI)")
-    amount: float = Field(..., gt=0, description="Payment amount")
+    amount: float = Field(..., ge=1, description="Payment amount (must be >= 1)")
     ref_no: str | None = Field(None, max_length=30, description="Reference/transaction ID (for UPI payments)")
 
     model_config = {
@@ -77,8 +78,8 @@ class TicketCreate(BaseModel):
     route_id: int = Field(..., description="Route ID")
     payment_mode_id: int = Field(..., description="Payment mode ID")
     discount: float | None = Field(0, ge=0, description="Discount amount")
-    amount: float = Field(..., ge=0, description="Total amount (sum of item amounts)")
-    net_amount: float = Field(..., ge=0, description="Net amount (amount - discount)")
+    amount: float = Field(..., ge=1, description="Total amount (sum of item amounts, must be >= 1)")
+    net_amount: float = Field(..., ge=1, description="Net amount (amount - discount, must be >= 1)")
     items: list[TicketItemCreate] = Field(..., min_length=1, description="Ticket items (at least 1)")
     payments: list[TicketPayementCreate] | None = Field(None, description="Payment rows (optional, at least 1 if provided)")
 
@@ -111,8 +112,8 @@ class TicketUpdate(BaseModel):
     route_id: int | None = Field(None, description="Updated route ID")
     payment_mode_id: int | None = Field(None, description="Updated payment mode ID")
     discount: float | None = Field(None, ge=0, description="Updated discount")
-    amount: float | None = Field(None, ge=0, description="Updated total amount")
-    net_amount: float | None = Field(None, ge=0, description="Updated net amount")
+    amount: float | None = Field(None, ge=1, description="Updated total amount (must be >= 1)")
+    net_amount: float | None = Field(None, ge=1, description="Updated net amount (must be >= 1)")
     is_cancelled: bool | None = Field(None, description="Set true to cancel the ticket")
     items: list[TicketItemUpdate] | None = Field(None, description="Updated ticket items")
 
@@ -143,6 +144,8 @@ class TicketRead(BaseModel):
     payment_mode_name: str | None = Field(None, description="Payment mode description")
     items: list[TicketItemRead] | None = Field(None, description="Ticket items (only in detail view)")
     payments: list[TicketPayementRead] | None = Field(None, description="Ticket payments (only in detail view)")
+    created_at: datetime | None = Field(None, description="Record creation timestamp")
+    updated_at: datetime | None = Field(None, description="Record last update timestamp")
 
     model_config = {"from_attributes": True}
 
@@ -179,6 +182,9 @@ class MultiTicketInitResponse(BaseModel):
     first_ferry_time: str | None = Field(None, description="HH:MM of earliest ferry")
     last_ferry_time: str | None = Field(None, description="HH:MM of latest ferry")
     is_off_hours: bool = Field(..., description="True if current time is outside ferry schedule")
+    sf_item_id: int | None = Field(None, description="Special Ferry item ID from company config")
+    sf_rate: float | None = Field(None, description="Current rate for the Special Ferry item")
+    sf_levy: float | None = Field(None, description="Current levy for the Special Ferry item")
 
 class MultiTicketCreate(BaseModel):
     tickets: list[TicketCreate] = Field(..., min_length=1, description="Array of tickets to create atomically")

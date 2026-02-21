@@ -2,9 +2,10 @@ from sqlalchemy import BigInteger, ForeignKey, Integer, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
+from app.models.mixins import AuditMixin
 
 
-class TicketPayement(Base):
+class TicketPayement(AuditMixin, Base):
     __tablename__ = "ticket_payement"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)

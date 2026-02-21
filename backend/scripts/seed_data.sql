@@ -1,152 +1,551 @@
 -- ============================================================
 -- SSMSPL – Seed Data Script
--- User Management & Authentication
 -- ============================================================
 -- Default password for ALL seed users: Password@123
 -- IMPORTANT: Change all passwords before deploying to staging/production!
 -- ============================================================
 
--- Truncate for idempotent re-seeding (dev/test only)
--- TRUNCATE TABLE refresh_tokens, users RESTART IDENTITY CASCADE;
-
+-- ============================================================
+-- USERS
+-- ============================================================
 INSERT INTO users (id, email, username, full_name, hashed_password, role, is_active, is_verified)
 VALUES
-    -- Super Admin
-    (
-        uuid_generate_v4(),
-        'superadmin@ssmspl.com',
-        'superadmin',
-        'Super Administrator',
-        '$2b$12$40jxkhNDTRR7btlgX0mTIuom3jXuB3r5OT0J2dh0ep5Q3iK3YDUD.',  -- Password@123
-        'SUPER_ADMIN',
-        TRUE,
-        TRUE
-    ),
-    -- Admin
-    (
-        uuid_generate_v4(),
-        'admin@ssmspl.com',
-        'admin',
-        'System Administrator',
-        '$2b$12$40jxkhNDTRR7btlgX0mTIuom3jXuB3r5OT0J2dh0ep5Q3iK3YDUD.',
-        'ADMIN',
-        TRUE,
-        TRUE
-    ),
-    -- Manager
-    (
-        uuid_generate_v4(),
-        'manager@ssmspl.com',
-        'manager',
-        'Operations Manager',
-        '$2b$12$40jxkhNDTRR7btlgX0mTIuom3jXuB3r5OT0J2dh0ep5Q3iK3YDUD.',
-        'MANAGER',
-        TRUE,
-        TRUE
-    ),
-    -- Billing Operator
-    (
-        uuid_generate_v4(),
-        'billing@ssmspl.com',
-        'billing_operator',
-        'Billing Operator',
-        '$2b$12$40jxkhNDTRR7btlgX0mTIuom3jXuB3r5OT0J2dh0ep5Q3iK3YDUD.',
-        'BILLING_OPERATOR',
-        TRUE,
-        TRUE
-    ),
-    -- Ticket Checker
-    (
-        uuid_generate_v4(),
-        'checker@ssmspl.com',
-        'ticket_checker',
-        'Ticket Checker',
-        '$2b$12$40jxkhNDTRR7btlgX0mTIuom3jXuB3r5OT0J2dh0ep5Q3iK3YDUD.',
-        'TICKET_CHECKER',
-        TRUE,
-        TRUE
-    )
+    (uuid_generate_v4(), 'superadmin@ssmspl.com', 'superadmin', 'Super Administrator',
+     '$2b$12$40jxkhNDTRR7btlgX0mTIuom3jXuB3r5OT0J2dh0ep5Q3iK3YDUD.', 'SUPER_ADMIN', TRUE, TRUE),
+    (uuid_generate_v4(), 'admin@ssmspl.com', 'admin', 'System Administrator',
+     '$2b$12$40jxkhNDTRR7btlgX0mTIuom3jXuB3r5OT0J2dh0ep5Q3iK3YDUD.', 'ADMIN', TRUE, TRUE),
+    (uuid_generate_v4(), 'manager@ssmspl.com', 'manager', 'Operations Manager',
+     '$2b$12$40jxkhNDTRR7btlgX0mTIuom3jXuB3r5OT0J2dh0ep5Q3iK3YDUD.', 'MANAGER', TRUE, TRUE),
+    (uuid_generate_v4(), 'billing@ssmspl.com', 'billing_operator', 'Billing Operator',
+     '$2b$12$40jxkhNDTRR7btlgX0mTIuom3jXuB3r5OT0J2dh0ep5Q3iK3YDUD.', 'BILLING_OPERATOR', TRUE, TRUE),
+    (uuid_generate_v4(), 'checker@ssmspl.com', 'ticket_checker', 'Ticket Checker',
+     '$2b$12$40jxkhNDTRR7btlgX0mTIuom3jXuB3r5OT0J2dh0ep5Q3iK3YDUD.', 'TICKET_CHECKER', TRUE, TRUE)
 ON CONFLICT (username) DO NOTHING;
 
 -- ============================================================
--- BOATS SEED DATA
+-- BRANCHES
 -- ============================================================
+INSERT INTO branches (id, name, address, contact_nos, latitude, longitude, sf_after, sf_before, last_ticket_no, last_booking_no, is_active)
+VALUES
+    (101, 'DABHOL',     'Dabhol, Maharashtra 415706',                                                    '02348-248900, 9767248900', 17.586058130000001, 73.177510299999994, '22:15:00', '06:00:00', 14, 0, TRUE),
+    (102, 'DHOPAVE',    'Dhopave, Maharashtra 415634',                                                   '7709250800',               17.580611230000000, 73.181980450000000, '22:15:00', '06:00:00',  0, 0, TRUE),
+    (103, 'VESHVI',     'Fanas, Bankot, Maharashtra 415208',                                             '02350-223300, 8767980300', 17.991896250000000, 73.060650880000000, '22:15:00', '06:00:00',  1, 0, TRUE),
+    (104, 'BAGMANDALE', 'Bagmandla, Maharashtra 402114',                                                 '9322819161',               17.982583520000000, 73.062374420000000, '22:15:00', '06:00:00',  0, 0, TRUE),
+    (105, 'JAIGAD',     'Maharashtra State Highway 4, Jaigad, Maharashtra',                              '02354-242500, 8550999884', 17.294506860000000, 73.239508200000000, '22:15:00', '06:00:00',  0, 0, TRUE),
+    (106, 'TAVSAL',     'Tavsal, Guhagar, Tavasal, Maharashtra 415703',                                  '8550999880',               17.292074440000000, 73.223632300000000, '22:15:00', '06:00:00',  0, 0, TRUE),
+    (107, 'AGARDANDA',  'Rajapuri Creek, Agardanda, Maharashtra 402401',                                 '8550999887',               18.264839040000000, 72.973455290000000, '22:15:00', '06:00:00',  0, 0, TRUE),
+    (108, 'DIGHI',      'Dighi, Maharashtra',                                                            '9156546700',               18.274628490000000, 72.993665240000000, '22:15:00', '06:00:00',  0, 0, TRUE),
+    (109, 'VASAI',      'Police Colony, Naigaon West, Naigaon, Vasai-Virar, Maharashtra 401201',         '8624063900',               19.318682690000000, 72.850771390000000, '22:15:00', '06:00:00',  0, 0, TRUE),
+    (110, 'BHAYANDER',  'Bhayandar, Jai Ambe Nagar, Bhayandar West, Mira Bhayandar, Maharashtra 401101','8600314710',               19.332657980000000, 72.819967780000000, '22:15:00', '06:00:00',  0, 0, TRUE)
+ON CONFLICT (name) DO NOTHING;
 
+-- ============================================================
+-- ROUTES
+-- ============================================================
+INSERT INTO routes (id, branch_id_one, branch_id_two, is_active)
+VALUES
+    (1, 101, 102, TRUE),   -- DABHOL ↔ DHOPAVE
+    (2, 103, 104, TRUE),   -- VESHVI ↔ BAGMANDALE
+    (3, 105, 106, TRUE),   -- JAIGAD ↔ TAVSAL
+    (4, 107, 108, TRUE),   -- AGARDANDA ↔ DIGHI
+    (5, 110, 109, TRUE)    -- BHAYANDER ↔ VASAI
+ON CONFLICT (id) DO NOTHING;
+
+-- ============================================================
+-- BOATS
+-- ============================================================
 INSERT INTO boats (id, name, no, is_active)
 VALUES
-    (1, 'SHANTADURGA', 'RTN-IV-03-00001', TRUE),
-    (2, 'SONIA', 'RTN-IV-03-00007', TRUE),
-    (3, 'PRIYANKA', 'RTN-IV-08-00010', TRUE),
-    (4, 'SUPRIYA', 'RTN-IV-08-00011', TRUE),
-    (5, 'AISHWARYA', 'RTN-IV-08-00030', TRUE),
-    (6, 'AVANTIKA', 'RTN-IV-03-00082', TRUE),
-    (7, 'ISHWARI', 'RTN-IV-118', TRUE),
-    (8, 'VAIBHAVI', 'RTN-IV-124', TRUE),
-    (9, 'AAROHI', 'RTN-IV-125', TRUE),
-    (10, 'GIRIJA', 'RTN-IV-136', TRUE),
-    (11, 'JANHVI', 'RTN-IV-137', TRUE),
-    (12, 'DEVIKA', 'RTN-IV-159', TRUE)
+    (1,  'SHANTADURGA', 'RTN-IV-03-00001', TRUE),
+    (2,  'SONIA',       'RTN-IV-03-00007', TRUE),
+    (3,  'PRIYANKA',    'RTN-IV-08-00010', TRUE),
+    (4,  'SUPRIYA',     'RTN-IV-08-00011', TRUE),
+    (5,  'AISHWARYA',   'RTN-IV-08-00030', TRUE),
+    (6,  'AVANTIKA',    'RTN-IV-03-00082', TRUE),
+    (7,  'ISHWARI',     'RTN-IV-118',      TRUE),
+    (8,  'VAIBHAVI',    'RTN-IV-124',      TRUE),
+    (9,  'AAROHI',      'RTN-IV-125',      TRUE),
+    (10, 'GIRIJA',      'RTN-IV-136',      TRUE),
+    (11, 'JANHVI',      'RTN-IV-137',      TRUE),
+    (12, 'DEVIKA',      'RTN-IV-159',      TRUE)
 ON CONFLICT (name) DO NOTHING;
 
 -- ============================================================
--- BRANCHES SEED DATA
+-- FERRY SCHEDULES
+-- 06:30 to 22:00, ~30-60 min gap, lunch break 13:00–13:45
+-- Same schedule for all 10 branches
 -- ============================================================
-
-INSERT INTO branches (id, name, address, contact_nos, latitude, longitude, sf_after, sf_before, is_active)
-VALUES
-    (1, 'Old Goa', 'Old Goa Jetty, Goa 403402', '0832-2456789', 15.501330000000000, 73.911090000000000, '18:00:00', '06:00:00', TRUE),
-    (2, 'Panaji', 'Panaji Jetty, Goa 403001', '0832-2224123', 15.496394000000000, 73.810982000000000, '18:30:00', '05:30:00', TRUE),
-    (3, 'Ribander', 'Ribander Ferry Point, Goa 403006', NULL, 15.492580000000000, 73.870250000000000, NULL, NULL, TRUE),
-    (4, 'Chorao', 'Chorao Island Jetty, Goa 403102', '0832-2414567', 15.517000000000000, 73.875000000000000, '18:00:00', '06:30:00', TRUE),
-    (5, 'Divar', 'Divar Island Jetty, Goa 403403', NULL, 15.516000000000000, 73.894000000000000, NULL, NULL, TRUE),
-    (6, 'Aldona', 'Aldona Ferry Point, Goa 403508', '0832-2892345', 15.587000000000000, 73.874000000000000, '17:30:00', '06:00:00', TRUE)
-ON CONFLICT (name) DO NOTHING;
-
--- ============================================================
--- FERRY SCHEDULES SEED DATA
--- ============================================================
-
 INSERT INTO ferry_schedules (id, branch_id, departure)
 VALUES
-    (1, 1, '07:00'),
-    (2, 1, '08:30'),
-    (3, 1, '10:00'),
-    (4, 1, '14:00'),
-    (5, 1, '16:30'),
-    (6, 2, '07:15'),
-    (7, 2, '09:00'),
-    (8, 2, '11:00'),
-    (9, 2, '14:30'),
-    (10, 2, '17:00'),
-    (11, 3, '06:45'),
-    (12, 3, '09:30'),
-    (13, 3, '13:00'),
-    (14, 3, '16:00'),
-    (15, 4, '07:30'),
-    (16, 4, '10:30'),
-    (17, 4, '15:00'),
-    (18, 5, '08:00'),
-    (19, 5, '12:00'),
-    (20, 5, '17:30')
-ON CONFLICT ON CONSTRAINT uq_ferry_schedules_branch_departure DO NOTHING;
+    -- DABHOL (101)
+    (1,   101, '06:30'), (2,   101, '07:15'), (3,   101, '08:00'), (4,   101, '08:45'),
+    (5,   101, '09:30'), (6,   101, '10:15'), (7,   101, '11:00'), (8,   101, '11:45'),
+    (9,   101, '12:30'), (10,  101, '13:45'), (11,  101, '14:30'), (12,  101, '15:15'),
+    (13,  101, '16:00'), (14,  101, '16:45'), (15,  101, '17:30'), (16,  101, '18:15'),
+    (17,  101, '19:00'), (18,  101, '19:45'), (19,  101, '20:30'), (20,  101, '21:15'),
+    -- DHOPAVE (102)
+    (21,  102, '06:30'), (22,  102, '07:15'), (23,  102, '08:00'), (24,  102, '08:45'),
+    (25,  102, '09:30'), (26,  102, '10:15'), (27,  102, '11:00'), (28,  102, '11:45'),
+    (29,  102, '12:30'), (30,  102, '13:45'), (31,  102, '14:30'), (32,  102, '15:15'),
+    (33,  102, '16:00'), (34,  102, '16:45'), (35,  102, '17:30'), (36,  102, '18:15'),
+    (37,  102, '19:00'), (38,  102, '19:45'), (39,  102, '20:30'), (40,  102, '21:15'),
+    -- VESHVI (103)
+    (41,  103, '06:30'), (42,  103, '07:15'), (43,  103, '08:00'), (44,  103, '08:45'),
+    (45,  103, '09:30'), (46,  103, '10:15'), (47,  103, '11:00'), (48,  103, '11:45'),
+    (49,  103, '12:30'), (50,  103, '13:45'), (51,  103, '14:30'), (52,  103, '15:15'),
+    (53,  103, '16:00'), (54,  103, '16:45'), (55,  103, '17:30'), (56,  103, '18:15'),
+    (57,  103, '19:00'), (58,  103, '19:45'), (59,  103, '20:30'), (60,  103, '21:15'),
+    -- BAGMANDALE (104)
+    (61,  104, '06:30'), (62,  104, '07:15'), (63,  104, '08:00'), (64,  104, '08:45'),
+    (65,  104, '09:30'), (66,  104, '10:15'), (67,  104, '11:00'), (68,  104, '11:45'),
+    (69,  104, '12:30'), (70,  104, '13:45'), (71,  104, '14:30'), (72,  104, '15:15'),
+    (73,  104, '16:00'), (74,  104, '16:45'), (75,  104, '17:30'), (76,  104, '18:15'),
+    (77,  104, '19:00'), (78,  104, '19:45'), (79,  104, '20:30'), (80,  104, '21:15'),
+    -- JAIGAD (105)
+    (81,  105, '06:30'), (82,  105, '07:15'), (83,  105, '08:00'), (84,  105, '08:45'),
+    (85,  105, '09:30'), (86,  105, '10:15'), (87,  105, '11:00'), (88,  105, '11:45'),
+    (89,  105, '12:30'), (90,  105, '13:45'), (91,  105, '14:30'), (92,  105, '15:15'),
+    (93,  105, '16:00'), (94,  105, '16:45'), (95,  105, '17:30'), (96,  105, '18:15'),
+    (97,  105, '19:00'), (98,  105, '19:45'), (99,  105, '20:30'), (100, 105, '21:15'),
+    -- TAVSAL (106)
+    (101, 106, '06:30'), (102, 106, '07:15'), (103, 106, '08:00'), (104, 106, '08:45'),
+    (105, 106, '09:30'), (106, 106, '10:15'), (107, 106, '11:00'), (108, 106, '11:45'),
+    (109, 106, '12:30'), (110, 106, '13:45'), (111, 106, '14:30'), (112, 106, '15:15'),
+    (113, 106, '16:00'), (114, 106, '16:45'), (115, 106, '17:30'), (116, 106, '18:15'),
+    (117, 106, '19:00'), (118, 106, '19:45'), (119, 106, '20:30'), (120, 106, '21:15'),
+    -- AGARDANDA (107)
+    (121, 107, '06:30'), (122, 107, '07:15'), (123, 107, '08:00'), (124, 107, '08:45'),
+    (125, 107, '09:30'), (126, 107, '10:15'), (127, 107, '11:00'), (128, 107, '11:45'),
+    (129, 107, '12:30'), (130, 107, '13:45'), (131, 107, '14:30'), (132, 107, '15:15'),
+    (133, 107, '16:00'), (134, 107, '16:45'), (135, 107, '17:30'), (136, 107, '18:15'),
+    (137, 107, '19:00'), (138, 107, '19:45'), (139, 107, '20:30'), (140, 107, '21:15'),
+    -- DIGHI (108)
+    (141, 108, '06:30'), (142, 108, '07:15'), (143, 108, '08:00'), (144, 108, '08:45'),
+    (145, 108, '09:30'), (146, 108, '10:15'), (147, 108, '11:00'), (148, 108, '11:45'),
+    (149, 108, '12:30'), (150, 108, '13:45'), (151, 108, '14:30'), (152, 108, '15:15'),
+    (153, 108, '16:00'), (154, 108, '16:45'), (155, 108, '17:30'), (156, 108, '18:15'),
+    (157, 108, '19:00'), (158, 108, '19:45'), (159, 108, '20:30'), (160, 108, '21:15'),
+    -- VASAI (109)
+    (161, 109, '06:30'), (162, 109, '07:15'), (163, 109, '08:00'), (164, 109, '08:45'),
+    (165, 109, '09:30'), (166, 109, '10:15'), (167, 109, '11:00'), (168, 109, '11:45'),
+    (169, 109, '12:30'), (170, 109, '13:45'), (171, 109, '14:30'), (172, 109, '15:15'),
+    (173, 109, '16:00'), (174, 109, '16:45'), (175, 109, '17:30'), (176, 109, '18:15'),
+    (177, 109, '19:00'), (178, 109, '19:45'), (179, 109, '20:30'), (180, 109, '21:15'),
+    -- BHAYANDER (110)
+    (181, 110, '06:30'), (182, 110, '07:15'), (183, 110, '08:00'), (184, 110, '08:45'),
+    (185, 110, '09:30'), (186, 110, '10:15'), (187, 110, '11:00'), (188, 110, '11:45'),
+    (189, 110, '12:30'), (190, 110, '13:45'), (191, 110, '14:30'), (192, 110, '15:15'),
+    (193, 110, '16:00'), (194, 110, '16:45'), (195, 110, '17:30'), (196, 110, '18:15'),
+    (197, 110, '19:00'), (198, 110, '19:45'), (199, 110, '20:30'), (200, 110, '21:15')
+ON CONFLICT (id) DO NOTHING;
 
 -- ============================================================
--- PORTAL USERS SEED DATA (Customer accounts)
--- Default password for ALL seed portal users: Password@123
+-- ITEMS  (from items.csv)
 -- ============================================================
-
-INSERT INTO portal_users (id, first_name, last_name, email, password, mobile, created_at)
+INSERT INTO items (id, name, short_name, online_visiblity, is_vehicle, is_active)
 VALUES
-    (1, 'Rajesh', 'Naik', 'rajesh.naik@example.com', '$2b$12$40jxkhNDTRR7btlgX0mTIuom3jXuB3r5OT0J2dh0ep5Q3iK3YDUD.', '+919876543210', NOW()),
-    (2, 'Priya', 'Desai', 'priya.desai@example.com', '$2b$12$40jxkhNDTRR7btlgX0mTIuom3jXuB3r5OT0J2dh0ep5Q3iK3YDUD.', '+919876543211', NOW()),
-    (3, 'Amit', 'Prabhu', 'amit.prabhu@example.com', '$2b$12$40jxkhNDTRR7btlgX0mTIuom3jXuB3r5OT0J2dh0ep5Q3iK3YDUD.', '+919876543212', NOW())
-ON CONFLICT ON CONSTRAINT portal_users_unique_email DO NOTHING;
+    -- Two-wheelers
+    (1,   'CYCLE',                             'CYCLE',                     TRUE,  TRUE,  TRUE),
+    (2,   'MOTOTR CYCLE WITH DRIVER.',         'MOTOTR CYCLE WITH DRIVER',  TRUE,  TRUE,  TRUE),
+    (153, 'MOTERCYCLE BELO 100 CC',            'MOTERCYCLE BELO 100 CC',    TRUE,  TRUE,  TRUE),
+    -- Three-wheelers
+    (3,   'EMPTY 3 WHLR RICKSHAW',            'EMPTY 3 WHLR RICKSHAW',     TRUE,  TRUE,  TRUE),
+    (4,   'EMPTY 3WHLR 5 ST RICKSHAW',        'EMPTY 3WHLR 5 TEMPO',       TRUE,  TRUE,  TRUE),
+    -- Light vehicles
+    (5,   'TATA MAGIC/MAXIMO 6 ST',           'TATA MAGIC/MAXIMO 6 ST',    TRUE,  TRUE,  TRUE),
+    (6,   'TATA ACE/MAXIMO TEMPO',            'TATA ACE/MAXIMO TEMPO',     TRUE,  TRUE,  TRUE),
+    (7,   'EMPTY CAR 5 ST',                   'EMPTY CAR 5 ST',            TRUE,  TRUE,  TRUE),
+    (8,   'EMPTY LUX. CAR 5 ST',             'EMPTY LUX. CAR 5 ST',       TRUE,  TRUE,  TRUE),
+    (9,   'SUMO/SCAPIO/TAVERA/INOVA 7 ST',   'SUMO/SCAPIO/TAVERA/INOVA',  TRUE,  TRUE,  TRUE),
+    (10,  'TATA MOBILE/MAX PICKUP',           'TATA MOBILE/MAX PICKUP',    TRUE,  TRUE,  TRUE),
+    -- Medium vehicles
+    (13,  'AMBULANCE',                         'AMBULANCE',                 TRUE,  TRUE,  TRUE),
+    (14,  'TEMPO TRAVELER/18 ST BUS',         'TEMPO TRAVELER/18 ST BUS',  TRUE,  TRUE,  TRUE),
+    (15,  '407 TEMPO',                         '407 TEMPO',                 TRUE,  TRUE,  TRUE),
+    (16,  'MINI BUS 21 ST',                   'MINI BUS 21 ST',            TRUE,  TRUE,  TRUE),
+    (17,  'LODED 709',                         'LODED 709',                 TRUE,  TRUE,  TRUE),
+    (18,  'MED.GOODS 6 WHLR  (709)',          'MED.GOODS 6 WHLR  (709',   TRUE,  TRUE,  TRUE),
+    -- Heavy vehicles
+    (19,  'LODED TRUCK',                       'LODED TRUCK',               TRUE,  TRUE,  TRUE),
+    (20,  'PASSENGER BUS',                     'PASSENGER BUS',             TRUE,  TRUE,  TRUE),
+    (21,  'TANKER /TRUCK',                     'TANKER/TRUCK',              TRUE,  TRUE,  TRUE),
+    (22,  'TRUCK 10 WHLR',                    'TRUCK 10 WHLR',             TRUE,  TRUE,  TRUE),
+    (32,  'JCB',                               'JCB',                       TRUE,  TRUE,  TRUE),
+    (33,  'TRACTOR WITH TROLLY',              'TRACTOR WITH TROLLY',       TRUE,  TRUE,  TRUE),
+    (154, 'EMPTY 14 WHEELER GOODS TRUCK',     'EMPTY 14 WHEELER GOODS TRUCK', TRUE, TRUE, TRUE),
+    -- Heavy machinery
+    (35,  'ROAD ROLLER',                       'ROAD ROLLER',               FALSE, TRUE,  TRUE),
+    (36,  'HEAVY MACHINES',                    'HEAVY MACHINES',            FALSE, TRUE,  TRUE),
+    (37,  'HYDRA',                             'HYDRA',                     FALSE, TRUE,  TRUE),
+    (38,  'OIL TANKER',                        'OIL TANKER',                FALSE, TRUE,  TRUE),
+    -- Passengers
+    (11,  'PASSENGER ADULT ABOVE 12 YR',      'PASSENGER ADULT ABV 12 YR', TRUE,  FALSE, TRUE),
+    (12,  'PASSENGER CHILD 3-12 YR',          'PASSENGER CHILD 3-12 YR',   TRUE,  FALSE, TRUE),
+    (29,  'TOURIST (FOR 1 HOUR)',              'TOURIST (FOR 1 HOUR',       TRUE,  FALSE, TRUE),
+    -- Monthly passes (not visible online)
+    (27,  'MONTH PASS STUDNT UPTO 10TH STD.', 'MONTH PASS STDNT UPTO 10',  FALSE, FALSE, TRUE),
+    (28,  'MONTH PASS STUDNT AVOVE XTH STD.', 'MONTH PASS STDNT ABOV 10',  FALSE, FALSE, TRUE),
+    (30,  'MONTH PASS PASSENGER',              'MONTH PASS PASSENGER',      FALSE, FALSE, TRUE),
+    -- Goods / livestock / luggage
+    (23,  'GOODS PER HALF TON',               'GOODS PER HALF TON',        TRUE,  FALSE, TRUE),
+    (24,  'PASSENGER LUGGABE ABV 20KG PER KG','PASSNGR LUGGAGE(ABV 20KG',  TRUE,  FALSE, TRUE),
+    (151, 'LUGGAGE',                           'LUGGAGE',                   TRUE,  FALSE, TRUE),
+    (25,  'DOG/GOATS/SHEEP (PER NO)',         'DOG/GOATS/SHEEP (PER NO',   TRUE,  FALSE, TRUE),
+    (26,  'COWS/BUFFELLOW(PER NO)',           'COWS/BUFFELLOW(PER NO',     TRUE,  FALSE, TRUE),
+    (31,  'FISH/CHICKEN/BIRDS/FRUITS',        'FISH/CHICKEN/BIRDS/FRUITS', TRUE,  FALSE, TRUE),
+    -- Special services / charges
+    (34,  'SPECIAL FERRY',                     'SPECIAL FERRY',             FALSE, FALSE, TRUE),
+    (45,  'SPECIAL FERRY DAY',                'SPECIAL FERRY DAY',         FALSE, FALSE, TRUE),
+    (39,  'WAITING CHARGES',                   'WAITING CHARGES',           FALSE, FALSE, TRUE),
+    (40,  'PARTY',                             'PARTY',                     FALSE, FALSE, TRUE),
+    (41,  'SHOOTING',                          'SHOOTING',                  FALSE, FALSE, TRUE),
+    (42,  'PUMPE FILLING CHARGES',            'PUMPE FILLING CHARGES',     FALSE, FALSE, TRUE),
+    (43,  'CAFE COUNTER',                     'CAFE COUNTER',              FALSE, FALSE, TRUE),
+    (44,  'SHIPE TO SHORE',                   'SHIPE TO SHORE',            FALSE, FALSE, TRUE),
+    (152, 'ROUND UP',                          'ROUND UP',                  FALSE, FALSE, TRUE)
+ON CONFLICT (name) DO NOTHING;
 
 -- ============================================================
--- VERIFICATION QUERIES
+-- PAYMENT MODES
+-- ============================================================
+INSERT INTO payment_modes (id, description, is_active)
+VALUES
+    (1, 'Cash',   TRUE),
+    (2, 'UPI',    TRUE),
+    (3, 'Card',   TRUE),
+    (4, 'Online', TRUE)
+ON CONFLICT (id) DO NOTHING;
+
+-- ============================================================
+-- ITEM RATES  (same rates across all 5 routes, applicable from 2026-01-01)
+-- ============================================================
+-- Helper: generates item_rate rows for all routes for a given item
+-- Format: (id, applicable_from_date, levy, rate, item_id, route_id, is_active)
+
+INSERT INTO item_rates (id, applicable_from_date, levy, rate, item_id, route_id, is_active)
+VALUES
+    -- CYCLE (id=1): rate 10, levy 1
+    (1,   '2026-01-01', 1.00,   10.00, 1,   1, TRUE),
+    (2,   '2026-01-01', 1.00,   10.00, 1,   2, TRUE),
+    (3,   '2026-01-01', 1.00,   10.00, 1,   3, TRUE),
+    (4,   '2026-01-01', 1.00,   10.00, 1,   4, TRUE),
+    (5,   '2026-01-01', 1.00,   10.00, 1,   5, TRUE),
+    -- MOTOR CYCLE WITH DRIVER (id=2): rate 35, levy 3
+    (6,   '2026-01-01', 3.00,   35.00, 2,   1, TRUE),
+    (7,   '2026-01-01', 3.00,   35.00, 2,   2, TRUE),
+    (8,   '2026-01-01', 3.00,   35.00, 2,   3, TRUE),
+    (9,   '2026-01-01', 3.00,   35.00, 2,   4, TRUE),
+    (10,  '2026-01-01', 3.00,   35.00, 2,   5, TRUE),
+    -- MOTERCYCLE BELO 100 CC (id=153): rate 25, levy 2
+    (11,  '2026-01-01', 2.00,   25.00, 153, 1, TRUE),
+    (12,  '2026-01-01', 2.00,   25.00, 153, 2, TRUE),
+    (13,  '2026-01-01', 2.00,   25.00, 153, 3, TRUE),
+    (14,  '2026-01-01', 2.00,   25.00, 153, 4, TRUE),
+    (15,  '2026-01-01', 2.00,   25.00, 153, 5, TRUE),
+    -- EMPTY 3 WHLR RICKSHAW (id=3): rate 65, levy 5
+    (16,  '2026-01-01', 5.00,   65.00, 3,   1, TRUE),
+    (17,  '2026-01-01', 5.00,   65.00, 3,   2, TRUE),
+    (18,  '2026-01-01', 5.00,   65.00, 3,   3, TRUE),
+    (19,  '2026-01-01', 5.00,   65.00, 3,   4, TRUE),
+    (20,  '2026-01-01', 5.00,   65.00, 3,   5, TRUE),
+    -- EMPTY 3WHLR 5 ST RICKSHAW (id=4): rate 80, levy 8
+    (21,  '2026-01-01', 8.00,   80.00, 4,   1, TRUE),
+    (22,  '2026-01-01', 8.00,   80.00, 4,   2, TRUE),
+    (23,  '2026-01-01', 8.00,   80.00, 4,   3, TRUE),
+    (24,  '2026-01-01', 8.00,   80.00, 4,   4, TRUE),
+    (25,  '2026-01-01', 8.00,   80.00, 4,   5, TRUE),
+    -- TATA MAGIC/MAXIMO 6 ST (id=5): rate 120, levy 12
+    (26,  '2026-01-01', 12.00, 120.00, 5,   1, TRUE),
+    (27,  '2026-01-01', 12.00, 120.00, 5,   2, TRUE),
+    (28,  '2026-01-01', 12.00, 120.00, 5,   3, TRUE),
+    (29,  '2026-01-01', 12.00, 120.00, 5,   4, TRUE),
+    (30,  '2026-01-01', 12.00, 120.00, 5,   5, TRUE),
+    -- TATA ACE/MAXIMO TEMPO (id=6): rate 130, levy 13
+    (31,  '2026-01-01', 13.00, 130.00, 6,   1, TRUE),
+    (32,  '2026-01-01', 13.00, 130.00, 6,   2, TRUE),
+    (33,  '2026-01-01', 13.00, 130.00, 6,   3, TRUE),
+    (34,  '2026-01-01', 13.00, 130.00, 6,   4, TRUE),
+    (35,  '2026-01-01', 13.00, 130.00, 6,   5, TRUE),
+    -- EMPTY CAR 5 ST (id=7): rate 150, levy 15
+    (36,  '2026-01-01', 15.00, 150.00, 7,   1, TRUE),
+    (37,  '2026-01-01', 15.00, 150.00, 7,   2, TRUE),
+    (38,  '2026-01-01', 15.00, 150.00, 7,   3, TRUE),
+    (39,  '2026-01-01', 15.00, 150.00, 7,   4, TRUE),
+    (40,  '2026-01-01', 15.00, 150.00, 7,   5, TRUE),
+    -- EMPTY LUX. CAR 5 ST (id=8): rate 200, levy 20
+    (41,  '2026-01-01', 20.00, 200.00, 8,   1, TRUE),
+    (42,  '2026-01-01', 20.00, 200.00, 8,   2, TRUE),
+    (43,  '2026-01-01', 20.00, 200.00, 8,   3, TRUE),
+    (44,  '2026-01-01', 20.00, 200.00, 8,   4, TRUE),
+    (45,  '2026-01-01', 20.00, 200.00, 8,   5, TRUE),
+    -- SUMO/SCAPIO/TAVERA/INOVA 7 ST (id=9): rate 200, levy 20
+    (46,  '2026-01-01', 20.00, 200.00, 9,   1, TRUE),
+    (47,  '2026-01-01', 20.00, 200.00, 9,   2, TRUE),
+    (48,  '2026-01-01', 20.00, 200.00, 9,   3, TRUE),
+    (49,  '2026-01-01', 20.00, 200.00, 9,   4, TRUE),
+    (50,  '2026-01-01', 20.00, 200.00, 9,   5, TRUE),
+    -- TATA MOBILE/MAX PICKUP (id=10): rate 180, levy 18
+    (51,  '2026-01-01', 18.00, 180.00, 10,  1, TRUE),
+    (52,  '2026-01-01', 18.00, 180.00, 10,  2, TRUE),
+    (53,  '2026-01-01', 18.00, 180.00, 10,  3, TRUE),
+    (54,  '2026-01-01', 18.00, 180.00, 10,  4, TRUE),
+    (55,  '2026-01-01', 18.00, 180.00, 10,  5, TRUE),
+    -- PASSENGER ADULT ABOVE 12 YR (id=11): rate 22, levy 2
+    (56,  '2026-01-01', 2.00,   22.00, 11,  1, TRUE),
+    (57,  '2026-01-01', 2.00,   22.00, 11,  2, TRUE),
+    (58,  '2026-01-01', 2.00,   22.00, 11,  3, TRUE),
+    (59,  '2026-01-01', 2.00,   22.00, 11,  4, TRUE),
+    (60,  '2026-01-01', 2.00,   22.00, 11,  5, TRUE),
+    -- PASSENGER CHILD 3-12 YR (id=12): rate 11, levy 1
+    (61,  '2026-01-01', 1.00,   11.00, 12,  1, TRUE),
+    (62,  '2026-01-01', 1.00,   11.00, 12,  2, TRUE),
+    (63,  '2026-01-01', 1.00,   11.00, 12,  3, TRUE),
+    (64,  '2026-01-01', 1.00,   11.00, 12,  4, TRUE),
+    (65,  '2026-01-01', 1.00,   11.00, 12,  5, TRUE),
+    -- AMBULANCE (id=13): rate 100, levy 0 (emergency concession)
+    (66,  '2026-01-01', 0.00,  100.00, 13,  1, TRUE),
+    (67,  '2026-01-01', 0.00,  100.00, 13,  2, TRUE),
+    (68,  '2026-01-01', 0.00,  100.00, 13,  3, TRUE),
+    (69,  '2026-01-01', 0.00,  100.00, 13,  4, TRUE),
+    (70,  '2026-01-01', 0.00,  100.00, 13,  5, TRUE),
+    -- TEMPO TRAVELER/18 ST BUS (id=14): rate 350, levy 35
+    (71,  '2026-01-01', 35.00, 350.00, 14,  1, TRUE),
+    (72,  '2026-01-01', 35.00, 350.00, 14,  2, TRUE),
+    (73,  '2026-01-01', 35.00, 350.00, 14,  3, TRUE),
+    (74,  '2026-01-01', 35.00, 350.00, 14,  4, TRUE),
+    (75,  '2026-01-01', 35.00, 350.00, 14,  5, TRUE),
+    -- 407 TEMPO (id=15): rate 300, levy 30
+    (76,  '2026-01-01', 30.00, 300.00, 15,  1, TRUE),
+    (77,  '2026-01-01', 30.00, 300.00, 15,  2, TRUE),
+    (78,  '2026-01-01', 30.00, 300.00, 15,  3, TRUE),
+    (79,  '2026-01-01', 30.00, 300.00, 15,  4, TRUE),
+    (80,  '2026-01-01', 30.00, 300.00, 15,  5, TRUE),
+    -- MINI BUS 21 ST (id=16): rate 400, levy 40
+    (81,  '2026-01-01', 40.00, 400.00, 16,  1, TRUE),
+    (82,  '2026-01-01', 40.00, 400.00, 16,  2, TRUE),
+    (83,  '2026-01-01', 40.00, 400.00, 16,  3, TRUE),
+    (84,  '2026-01-01', 40.00, 400.00, 16,  4, TRUE),
+    (85,  '2026-01-01', 40.00, 400.00, 16,  5, TRUE),
+    -- LODED 709 (id=17): rate 350, levy 35
+    (86,  '2026-01-01', 35.00, 350.00, 17,  1, TRUE),
+    (87,  '2026-01-01', 35.00, 350.00, 17,  2, TRUE),
+    (88,  '2026-01-01', 35.00, 350.00, 17,  3, TRUE),
+    (89,  '2026-01-01', 35.00, 350.00, 17,  4, TRUE),
+    (90,  '2026-01-01', 35.00, 350.00, 17,  5, TRUE),
+    -- MED.GOODS 6 WHLR (709) (id=18): rate 350, levy 35
+    (91,  '2026-01-01', 35.00, 350.00, 18,  1, TRUE),
+    (92,  '2026-01-01', 35.00, 350.00, 18,  2, TRUE),
+    (93,  '2026-01-01', 35.00, 350.00, 18,  3, TRUE),
+    (94,  '2026-01-01', 35.00, 350.00, 18,  4, TRUE),
+    (95,  '2026-01-01', 35.00, 350.00, 18,  5, TRUE),
+    -- LODED TRUCK (id=19): rate 500, levy 50
+    (96,  '2026-01-01', 50.00, 500.00, 19,  1, TRUE),
+    (97,  '2026-01-01', 50.00, 500.00, 19,  2, TRUE),
+    (98,  '2026-01-01', 50.00, 500.00, 19,  3, TRUE),
+    (99,  '2026-01-01', 50.00, 500.00, 19,  4, TRUE),
+    (100, '2026-01-01', 50.00, 500.00, 19,  5, TRUE),
+    -- PASSENGER BUS (id=20): rate 500, levy 50
+    (101, '2026-01-01', 50.00, 500.00, 20,  1, TRUE),
+    (102, '2026-01-01', 50.00, 500.00, 20,  2, TRUE),
+    (103, '2026-01-01', 50.00, 500.00, 20,  3, TRUE),
+    (104, '2026-01-01', 50.00, 500.00, 20,  4, TRUE),
+    (105, '2026-01-01', 50.00, 500.00, 20,  5, TRUE),
+    -- TANKER/TRUCK (id=21): rate 550, levy 55
+    (106, '2026-01-01', 55.00, 550.00, 21,  1, TRUE),
+    (107, '2026-01-01', 55.00, 550.00, 21,  2, TRUE),
+    (108, '2026-01-01', 55.00, 550.00, 21,  3, TRUE),
+    (109, '2026-01-01', 55.00, 550.00, 21,  4, TRUE),
+    (110, '2026-01-01', 55.00, 550.00, 21,  5, TRUE),
+    -- TRUCK 10 WHLR (id=22): rate 700, levy 70
+    (111, '2026-01-01', 70.00, 700.00, 22,  1, TRUE),
+    (112, '2026-01-01', 70.00, 700.00, 22,  2, TRUE),
+    (113, '2026-01-01', 70.00, 700.00, 22,  3, TRUE),
+    (114, '2026-01-01', 70.00, 700.00, 22,  4, TRUE),
+    (115, '2026-01-01', 70.00, 700.00, 22,  5, TRUE),
+    -- GOODS PER HALF TON (id=23): rate 30, levy 3
+    (116, '2026-01-01', 3.00,   30.00, 23,  1, TRUE),
+    (117, '2026-01-01', 3.00,   30.00, 23,  2, TRUE),
+    (118, '2026-01-01', 3.00,   30.00, 23,  3, TRUE),
+    (119, '2026-01-01', 3.00,   30.00, 23,  4, TRUE),
+    (120, '2026-01-01', 3.00,   30.00, 23,  5, TRUE),
+    -- PASSENGER LUGGAGE ABV 20KG PER KG (id=24): rate 5, levy 0
+    (121, '2026-01-01', 0.00,    5.00, 24,  1, TRUE),
+    (122, '2026-01-01', 0.00,    5.00, 24,  2, TRUE),
+    (123, '2026-01-01', 0.00,    5.00, 24,  3, TRUE),
+    (124, '2026-01-01', 0.00,    5.00, 24,  4, TRUE),
+    (125, '2026-01-01', 0.00,    5.00, 24,  5, TRUE),
+    -- DOG/GOATS/SHEEP (id=25): rate 15, levy 1
+    (126, '2026-01-01', 1.00,   15.00, 25,  1, TRUE),
+    (127, '2026-01-01', 1.00,   15.00, 25,  2, TRUE),
+    (128, '2026-01-01', 1.00,   15.00, 25,  3, TRUE),
+    (129, '2026-01-01', 1.00,   15.00, 25,  4, TRUE),
+    (130, '2026-01-01', 1.00,   15.00, 25,  5, TRUE),
+    -- COWS/BUFFALO (id=26): rate 30, levy 3
+    (131, '2026-01-01', 3.00,   30.00, 26,  1, TRUE),
+    (132, '2026-01-01', 3.00,   30.00, 26,  2, TRUE),
+    (133, '2026-01-01', 3.00,   30.00, 26,  3, TRUE),
+    (134, '2026-01-01', 3.00,   30.00, 26,  4, TRUE),
+    (135, '2026-01-01', 3.00,   30.00, 26,  5, TRUE),
+    -- MONTH PASS STUDENT UPTO 10TH (id=27): rate 150, levy 15
+    (136, '2026-01-01', 15.00, 150.00, 27,  1, TRUE),
+    (137, '2026-01-01', 15.00, 150.00, 27,  2, TRUE),
+    (138, '2026-01-01', 15.00, 150.00, 27,  3, TRUE),
+    (139, '2026-01-01', 15.00, 150.00, 27,  4, TRUE),
+    (140, '2026-01-01', 15.00, 150.00, 27,  5, TRUE),
+    -- MONTH PASS STUDENT ABOVE 10TH (id=28): rate 200, levy 20
+    (141, '2026-01-01', 20.00, 200.00, 28,  1, TRUE),
+    (142, '2026-01-01', 20.00, 200.00, 28,  2, TRUE),
+    (143, '2026-01-01', 20.00, 200.00, 28,  3, TRUE),
+    (144, '2026-01-01', 20.00, 200.00, 28,  4, TRUE),
+    (145, '2026-01-01', 20.00, 200.00, 28,  5, TRUE),
+    -- TOURIST (FOR 1 HOUR) (id=29): rate 100, levy 10
+    (146, '2026-01-01', 10.00, 100.00, 29,  1, TRUE),
+    (147, '2026-01-01', 10.00, 100.00, 29,  2, TRUE),
+    (148, '2026-01-01', 10.00, 100.00, 29,  3, TRUE),
+    (149, '2026-01-01', 10.00, 100.00, 29,  4, TRUE),
+    (150, '2026-01-01', 10.00, 100.00, 29,  5, TRUE),
+    -- MONTH PASS PASSENGER (id=30): rate 300, levy 30
+    (151, '2026-01-01', 30.00, 300.00, 30,  1, TRUE),
+    (152, '2026-01-01', 30.00, 300.00, 30,  2, TRUE),
+    (153, '2026-01-01', 30.00, 300.00, 30,  3, TRUE),
+    (154, '2026-01-01', 30.00, 300.00, 30,  4, TRUE),
+    (155, '2026-01-01', 30.00, 300.00, 30,  5, TRUE),
+    -- FISH/CHICKEN/BIRDS/FRUITS (id=31): rate 20, levy 2
+    (156, '2026-01-01', 2.00,   20.00, 31,  1, TRUE),
+    (157, '2026-01-01', 2.00,   20.00, 31,  2, TRUE),
+    (158, '2026-01-01', 2.00,   20.00, 31,  3, TRUE),
+    (159, '2026-01-01', 2.00,   20.00, 31,  4, TRUE),
+    (160, '2026-01-01', 2.00,   20.00, 31,  5, TRUE),
+    -- JCB (id=32): rate 700, levy 70
+    (161, '2026-01-01', 70.00, 700.00, 32,  1, TRUE),
+    (162, '2026-01-01', 70.00, 700.00, 32,  2, TRUE),
+    (163, '2026-01-01', 70.00, 700.00, 32,  3, TRUE),
+    (164, '2026-01-01', 70.00, 700.00, 32,  4, TRUE),
+    (165, '2026-01-01', 70.00, 700.00, 32,  5, TRUE),
+    -- TRACTOR WITH TROLLY (id=33): rate 400, levy 40
+    (166, '2026-01-01', 40.00, 400.00, 33,  1, TRUE),
+    (167, '2026-01-01', 40.00, 400.00, 33,  2, TRUE),
+    (168, '2026-01-01', 40.00, 400.00, 33,  3, TRUE),
+    (169, '2026-01-01', 40.00, 400.00, 33,  4, TRUE),
+    (170, '2026-01-01', 40.00, 400.00, 33,  5, TRUE),
+    -- SPECIAL FERRY (id=34): rate 5000, levy 500
+    (171, '2026-01-01', 500.00, 5000.00, 34, 1, TRUE),
+    (172, '2026-01-01', 500.00, 5000.00, 34, 2, TRUE),
+    (173, '2026-01-01', 500.00, 5000.00, 34, 3, TRUE),
+    (174, '2026-01-01', 500.00, 5000.00, 34, 4, TRUE),
+    (175, '2026-01-01', 500.00, 5000.00, 34, 5, TRUE),
+    -- ROAD ROLLER (id=35): rate 800, levy 80
+    (176, '2026-01-01', 80.00, 800.00, 35,  1, TRUE),
+    (177, '2026-01-01', 80.00, 800.00, 35,  2, TRUE),
+    (178, '2026-01-01', 80.00, 800.00, 35,  3, TRUE),
+    (179, '2026-01-01', 80.00, 800.00, 35,  4, TRUE),
+    (180, '2026-01-01', 80.00, 800.00, 35,  5, TRUE),
+    -- HEAVY MACHINES (id=36): rate 800, levy 80
+    (181, '2026-01-01', 80.00, 800.00, 36,  1, TRUE),
+    (182, '2026-01-01', 80.00, 800.00, 36,  2, TRUE),
+    (183, '2026-01-01', 80.00, 800.00, 36,  3, TRUE),
+    (184, '2026-01-01', 80.00, 800.00, 36,  4, TRUE),
+    (185, '2026-01-01', 80.00, 800.00, 36,  5, TRUE),
+    -- HYDRA (id=37): rate 800, levy 80
+    (186, '2026-01-01', 80.00, 800.00, 37,  1, TRUE),
+    (187, '2026-01-01', 80.00, 800.00, 37,  2, TRUE),
+    (188, '2026-01-01', 80.00, 800.00, 37,  3, TRUE),
+    (189, '2026-01-01', 80.00, 800.00, 37,  4, TRUE),
+    (190, '2026-01-01', 80.00, 800.00, 37,  5, TRUE),
+    -- OIL TANKER (id=38): rate 900, levy 90
+    (191, '2026-01-01', 90.00, 900.00, 38,  1, TRUE),
+    (192, '2026-01-01', 90.00, 900.00, 38,  2, TRUE),
+    (193, '2026-01-01', 90.00, 900.00, 38,  3, TRUE),
+    (194, '2026-01-01', 90.00, 900.00, 38,  4, TRUE),
+    (195, '2026-01-01', 90.00, 900.00, 38,  5, TRUE),
+    -- WAITING CHARGES (id=39): rate 500, levy 50
+    (196, '2026-01-01', 50.00, 500.00, 39,  1, TRUE),
+    (197, '2026-01-01', 50.00, 500.00, 39,  2, TRUE),
+    (198, '2026-01-01', 50.00, 500.00, 39,  3, TRUE),
+    (199, '2026-01-01', 50.00, 500.00, 39,  4, TRUE),
+    (200, '2026-01-01', 50.00, 500.00, 39,  5, TRUE),
+    -- PARTY (id=40): rate 3000, levy 300
+    (201, '2026-01-01', 300.00, 3000.00, 40, 1, TRUE),
+    (202, '2026-01-01', 300.00, 3000.00, 40, 2, TRUE),
+    (203, '2026-01-01', 300.00, 3000.00, 40, 3, TRUE),
+    (204, '2026-01-01', 300.00, 3000.00, 40, 4, TRUE),
+    (205, '2026-01-01', 300.00, 3000.00, 40, 5, TRUE),
+    -- SHOOTING (id=41): rate 5000, levy 500
+    (206, '2026-01-01', 500.00, 5000.00, 41, 1, TRUE),
+    (207, '2026-01-01', 500.00, 5000.00, 41, 2, TRUE),
+    (208, '2026-01-01', 500.00, 5000.00, 41, 3, TRUE),
+    (209, '2026-01-01', 500.00, 5000.00, 41, 4, TRUE),
+    (210, '2026-01-01', 500.00, 5000.00, 41, 5, TRUE),
+    -- PUMPE FILLING CHARGES (id=42): rate 1000, levy 100
+    (211, '2026-01-01', 100.00, 1000.00, 42, 1, TRUE),
+    (212, '2026-01-01', 100.00, 1000.00, 42, 2, TRUE),
+    (213, '2026-01-01', 100.00, 1000.00, 42, 3, TRUE),
+    (214, '2026-01-01', 100.00, 1000.00, 42, 4, TRUE),
+    (215, '2026-01-01', 100.00, 1000.00, 42, 5, TRUE),
+    -- CAFE COUNTER (id=43): rate 2000, levy 200
+    (216, '2026-01-01', 200.00, 2000.00, 43, 1, TRUE),
+    (217, '2026-01-01', 200.00, 2000.00, 43, 2, TRUE),
+    (218, '2026-01-01', 200.00, 2000.00, 43, 3, TRUE),
+    (219, '2026-01-01', 200.00, 2000.00, 43, 4, TRUE),
+    (220, '2026-01-01', 200.00, 2000.00, 43, 5, TRUE),
+    -- SHIPE TO SHORE (id=44): rate 1500, levy 150
+    (221, '2026-01-01', 150.00, 1500.00, 44, 1, TRUE),
+    (222, '2026-01-01', 150.00, 1500.00, 44, 2, TRUE),
+    (223, '2026-01-01', 150.00, 1500.00, 44, 3, TRUE),
+    (224, '2026-01-01', 150.00, 1500.00, 44, 4, TRUE),
+    (225, '2026-01-01', 150.00, 1500.00, 44, 5, TRUE),
+    -- SPECIAL FERRY DAY (id=45): rate 10000, levy 1000
+    (226, '2026-01-01', 1000.00, 10000.00, 45, 1, TRUE),
+    (227, '2026-01-01', 1000.00, 10000.00, 45, 2, TRUE),
+    (228, '2026-01-01', 1000.00, 10000.00, 45, 3, TRUE),
+    (229, '2026-01-01', 1000.00, 10000.00, 45, 4, TRUE),
+    (230, '2026-01-01', 1000.00, 10000.00, 45, 5, TRUE),
+    -- LUGGAGE (id=151): rate 15, levy 1
+    (231, '2026-01-01', 1.00,   15.00, 151, 1, TRUE),
+    (232, '2026-01-01', 1.00,   15.00, 151, 2, TRUE),
+    (233, '2026-01-01', 1.00,   15.00, 151, 3, TRUE),
+    (234, '2026-01-01', 1.00,   15.00, 151, 4, TRUE),
+    (235, '2026-01-01', 1.00,   15.00, 151, 5, TRUE),
+    -- ROUND UP (id=152): rate 1.01, levy 0  (rate > 1 required by check_item_rate)
+    (236, '2026-01-01', 0.00,    1.01, 152, 1, TRUE),
+    (237, '2026-01-01', 0.00,    1.01, 152, 2, TRUE),
+    (238, '2026-01-01', 0.00,    1.01, 152, 3, TRUE),
+    (239, '2026-01-01', 0.00,    1.01, 152, 4, TRUE),
+    (240, '2026-01-01', 0.00,    1.01, 152, 5, TRUE),
+    -- EMPTY 14 WHEELER GOODS TRUCK (id=154): rate 750, levy 75
+    (241, '2026-01-01', 75.00, 750.00, 154, 1, TRUE),
+    (242, '2026-01-01', 75.00, 750.00, 154, 2, TRUE),
+    (243, '2026-01-01', 75.00, 750.00, 154, 3, TRUE),
+    (244, '2026-01-01', 75.00, 750.00, 154, 4, TRUE),
+    (245, '2026-01-01', 75.00, 750.00, 154, 5, TRUE)
+ON CONFLICT (id) DO NOTHING;
+
+-- ============================================================
+-- COMPANY
+-- ============================================================
+INSERT INTO company (id, name, short_name, reg_address, gst_no, pan_no, tan_no, cin_no, contact, email, sf_item_id, updated_at)
+VALUES
+    (1,
+     'Suvarnadurga Shipping & Marine Services Pvt. Ltd.',
+     'Suvarnadurga Shipping',
+     'Dabhol FerryBoat Jetty, Dapoli, Dist. Ratnagiri, Maharashtra - 415712, India',
+     'N/A',
+     'N/A',
+     'N/A',
+     'N/A',
+     '9767248900',
+     'ssmsdapoli@rediffmail.com',
+     34,
+     NOW()
+    )
+ON CONFLICT (id) DO NOTHING;
+
+-- ============================================================
+-- VERIFICATION
 -- ============================================================
 SELECT id, username, email, role, is_active FROM users ORDER BY role;
-SELECT id, name, no, is_active FROM boats ORDER BY name;
-SELECT id, name, address, contact_nos, is_active FROM branches ORDER BY name;
-SELECT fs.id, b.name AS branch, fs.departure FROM ferry_schedules fs JOIN branches b ON b.id = fs.branch_id ORDER BY b.name, fs.departure;
-SELECT id, first_name, last_name, email, mobile FROM portal_users ORDER BY id;
+SELECT id, name, address, is_active FROM branches ORDER BY id;
+SELECT r.id, b1.name AS branch_one, b2.name AS branch_two, r.is_active FROM routes r JOIN branches b1 ON b1.id = r.branch_id_one JOIN branches b2 ON b2.id = r.branch_id_two ORDER BY r.id;
+SELECT id, name, no, is_active FROM boats ORDER BY id;
+SELECT id, name, short_name, is_vehicle, is_active FROM items ORDER BY id;
+SELECT COUNT(*) AS total_item_rates FROM item_rates;

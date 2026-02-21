@@ -65,6 +65,8 @@ export interface Boat {
   name: string;
   no: string;
   is_active: boolean | null;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface BoatCreate {
@@ -88,6 +90,9 @@ export interface Branch {
   sf_after: string | null;
   sf_before: string | null;
   is_active: boolean | null;
+  last_booking_no?: number;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface BranchCreate {
@@ -118,6 +123,8 @@ export interface Route {
   is_active: boolean | null;
   branch_one_name: string | null;
   branch_two_name: string | null;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface RouteCreate {
@@ -138,6 +145,8 @@ export interface Item {
   online_visibility: boolean | null;
   is_vehicle: boolean | null;
   is_active: boolean | null;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface ItemCreate {
@@ -160,6 +169,8 @@ export interface FerrySchedule {
   branch_id: number;
   departure: string;
   branch_name: string | null;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface FerryScheduleCreate {
@@ -182,6 +193,8 @@ export interface ItemRate {
   is_active: boolean | null;
   item_name: string | null;
   route_name: string | null;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface ItemRateCreate {
@@ -205,6 +218,8 @@ export interface PaymentMode {
   id: number;
   description: string;
   is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface PaymentModeCreate {
@@ -283,6 +298,8 @@ export interface Ticket {
   payment_mode_name: string | null;
   items: TicketItem[] | null;
   payments: TicketPayement[] | null;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface TicketCreate {
@@ -346,4 +363,93 @@ export interface MultiTicketInit {
   first_ferry_time: string | null;
   last_ferry_time: string | null;
   is_off_hours: boolean;
+  sf_item_id: number | null;
+  sf_rate: number | null;
+  sf_levy: number | null;
+}
+
+// ── Company types ──
+
+export interface Company {
+  id: number;
+  name: string;
+  short_name: string | null;
+  reg_address: string | null;
+  gst_no: string | null;
+  pan_no: string | null;
+  tan_no: string | null;
+  cin_no: string | null;
+  contact: string | null;
+  email: string | null;
+  sf_item_id: number | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface CompanyUpdate {
+  name?: string;
+  short_name?: string | null;
+  reg_address?: string | null;
+  gst_no?: string | null;
+  pan_no?: string | null;
+  tan_no?: string | null;
+  cin_no?: string | null;
+  contact?: string | null;
+  email?: string | null;
+  sf_item_id?: number | null;
+}
+
+// ── Booking types ──
+
+export interface BookingItem {
+  id: number;
+  booking_id: number;
+  item_id: number;
+  rate: number;
+  levy: number;
+  vehicle_no: string | null;
+  is_cancelled: boolean;
+  quantity: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface Booking {
+  id: number;
+  branch_id: number;
+  booking_no: number;
+  travel_date: string;
+  departure: string | null;
+  amount: number;
+  discount: number | null;
+  payment_mode_id: number;
+  is_cancelled: boolean;
+  net_amount: number;
+  route_id: number;
+  portal_user_id: number | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+// ── System update log types ──
+
+export interface SysUpdateLog {
+  id: number;
+  entity_name: string;
+  old_data: Record<string, unknown> | null;
+  new_data: Record<string, unknown> | null;
+  updated_by: string | null;
+  updated_at: string;
+}
+
+// ── Refresh token types ──
+
+export interface RefreshToken {
+  id: string;
+  user_id: string;
+  token_hash: string;
+  expires_at: string;
+  revoked: boolean;
+  created_at?: string;
+  updated_at?: string;
 }

@@ -7,6 +7,7 @@ import { isAuthenticated } from "@/lib/auth";
 import {
   User,
   MultiTicketInit,
+  MultiTicketInitItem,
   TicketCreate,
   TicketItemCreate,
   TicketPayementCreate,
@@ -24,6 +25,7 @@ interface TicketGridItem {
   levy: number;
   qty: number;
   vehicleNo: string;
+  isSfItem?: boolean;
 }
 
 interface TicketGrid {
@@ -43,8 +45,49 @@ function emptyItem(): TicketGridItem {
   return { tempId: uid(), itemId: 0, rate: 0, levy: 0, qty: 0, vehicleNo: "" };
 }
 
+function sfItem(itemId: number, rate: number, levy: number): TicketGridItem {
+  return { tempId: uid(), itemId, rate, levy, qty: 1, vehicleNo: "", isSfItem: true };
+}
+
 function emptyTicket(): TicketGrid {
   return { tempId: uid(), paymentModeId: 0, items: [emptyItem()] };
+}
+
+function emptyTicketWithSf(sfItemId: number, sfRate: number, sfLevy: number): TicketGrid {
+  return { tempId: uid(), paymentModeId: 0, items: [sfItem(sfItemId, sfRate, sfLevy), emptyItem()] };
+}
+
+/**
+ * Recalculate SF rate/levy split across all tickets.
+ * Each ticket gets floor(total / count), last ticket gets the remainder.
+ */
+function recalcSfSplit(
+  tickets: TicketGrid[],
+  totalRate: number,
+  totalLevy: number
+): TicketGrid[] {
+  const count = tickets.length;
+  if (count === 0) return tickets;
+
+  const baseRate = Math.floor(totalRate / count);
+  const baseLevy = Math.floor(totalLevy / count);
+  const remainderRate = totalRate - baseRate * count;
+  const remainderLevy = totalLevy - baseLevy * count;
+
+  return tickets.map((t, idx) => {
+    const isLast = idx === count - 1;
+    return {
+      ...t,
+      items: t.items.map((it) => {
+        if (!it.isSfItem) return it;
+        return {
+          ...it,
+          rate: isLast ? baseRate + remainderRate : baseRate,
+          levy: isLast ? baseLevy + remainderLevy : baseLevy,
+        };
+      }),
+    };
+  });
 }
 
 function formatDateDDMMYYYY(d: Date): string {
@@ -77,6 +120,17 @@ function grandTotal(tickets: TicketGrid[]): number {
   return tickets.reduce((sum, t) => sum + ticketTotal(t), 0);
 }
 
+function isRowInvalid(
+  item: TicketGridItem,
+  itemLookup: (id: number) => MultiTicketInitItem | null
+): boolean {
+  if (item.isSfItem) return false;
+  const def = itemLookup(item.itemId);
+  if (!def || item.qty < 1) return true;
+  if (def.is_vehicle && !item.vehicleNo.trim()) return true;
+  return false;
+}
+
 /* ── Page Component ── */
 
 export default function MultiTicketingPage() {
@@ -103,6 +157,7 @@ export default function MultiTicketingPage() {
   const [printData, setPrintData] = useState<Ticket[] | null>(null);
   const [showPrint, setShowPrint] = useState(false);
   const printTriggered = useRef(false);
+  const saveRef = useRef<HTMLButtonElement>(null);
 
   /* ── Live clock ── */
   useEffect(() => {
@@ -116,8 +171,18 @@ export default function MultiTicketingPage() {
       const { data } = await api.get<MultiTicketInit>("/api/tickets/multi-ticket-init");
       setInitData(data);
       setInitError("");
-    } catch {
-      setInitError("Failed to load ticketing configuration. Please try again.");
+      // Initialize tickets with SF item if configured
+      if (data.sf_item_id && data.sf_rate != null && data.sf_levy != null) {
+        setTickets([emptyTicketWithSf(data.sf_item_id, data.sf_rate, data.sf_levy)]);
+      } else {
+        setTickets([emptyTicket()]);
+      }
+    } catch (e: unknown) {
+      const detail =
+        e && typeof e === "object" && "response" in e
+          ? (e as { response?: { data?: { detail?: string } } }).response?.data?.detail
+          : null;
+      setInitError(detail || "Failed to load ticketing configuration. Please try again.");
     }
   }, []);
 
@@ -139,8 +204,12 @@ export default function MultiTicketingPage() {
 
   /* ── Form reset ── */
   const resetForm = useCallback(() => {
-    setTickets([emptyTicket()]);
-  }, []);
+    if (initData?.sf_item_id && initData.sf_rate != null && initData.sf_levy != null) {
+      setTickets([emptyTicketWithSf(initData.sf_item_id, initData.sf_rate, initData.sf_levy)]);
+    } else {
+      setTickets([emptyTicket()]);
+    }
+  }, [initData]);
 
   /* ── Print trigger ── */
   useEffect(() => {
@@ -168,12 +237,23 @@ export default function MultiTicketingPage() {
 
   /* ── Ticket CRUD ── */
 
+  const hasSf = initData?.sf_item_id && initData.sf_rate != null && initData.sf_levy != null;
+
   const addTicket = () => {
-    setTickets((prev) => [...prev, emptyTicket()]);
+    setTickets((prev) => {
+      const newTicket = hasSf
+        ? emptyTicketWithSf(initData!.sf_item_id!, initData!.sf_rate!, initData!.sf_levy!)
+        : emptyTicket();
+      const updated = [...prev, newTicket];
+      return hasSf ? recalcSfSplit(updated, initData!.sf_rate!, initData!.sf_levy!) : updated;
+    });
   };
 
   const removeTicket = (ticketTempId: string) => {
-    setTickets((prev) => prev.filter((t) => t.tempId !== ticketTempId));
+    setTickets((prev) => {
+      const updated = prev.filter((t) => t.tempId !== ticketTempId);
+      return hasSf ? recalcSfSplit(updated, initData!.sf_rate!, initData!.sf_levy!) : updated;
+    });
   };
 
   const updateTicketPaymentMode = (ticketTempId: string, paymentModeId: number) => {
@@ -190,6 +270,15 @@ export default function MultiTicketingPage() {
         t.tempId === ticketTempId ? { ...t, items: [...t.items, emptyItem()] } : t
       )
     );
+    // Auto-focus the ID input on the newly added row
+    setTimeout(() => {
+      const ticketCard = document.querySelector(`[data-ticket-id="${ticketTempId}"]`);
+      if (ticketCard) {
+        const inputs = ticketCard.querySelectorAll<HTMLInputElement>('[data-item-id-input]');
+        const lastInput = inputs[inputs.length - 1];
+        lastInput?.focus();
+      }
+    }, 50);
   };
 
   const removeItemRow = (ticketTempId: string, itemTempId: string) => {
@@ -201,6 +290,60 @@ export default function MultiTicketingPage() {
       )
     );
   };
+
+  /* ── Keyboard shortcuts: Alt+A add row, Alt+D remove row ── */
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (!e.altKey) return;
+
+      if (e.code === "KeyA") {
+        e.preventDefault();
+        e.stopPropagation();
+        const ticketCard = (document.activeElement as HTMLElement)?.closest<HTMLElement>('[data-ticket-id]');
+        const ticketTempId = ticketCard?.dataset.ticketId;
+        if (!ticketTempId) return;
+        const ticket = tickets.find((t) => t.tempId === ticketTempId);
+        if (!ticket || ticket.items.some((it) => isRowInvalid(it, findItem))) return;
+        addItemRow(ticketTempId);
+      }
+
+      if (e.code === "KeyS") {
+        e.preventDefault();
+        e.stopPropagation();
+        saveRef.current?.click();
+      }
+
+      if (e.code === "KeyD") {
+        e.preventDefault();
+        e.stopPropagation();
+        const row = (document.activeElement as HTMLElement)?.closest('tr');
+        if (!row) return;
+        const ticketCard = row.closest<HTMLElement>('[data-ticket-id]');
+        const ticketTempId = ticketCard?.dataset.ticketId;
+        if (!ticketTempId) return;
+        const tbody = row.closest('tbody');
+        if (!tbody) return;
+        const rows = Array.from(tbody.querySelectorAll('tr'));
+        const rowIdx = rows.indexOf(row as HTMLTableRowElement);
+        if (rowIdx === -1) return;
+        const ticket = tickets.find((t) => t.tempId === ticketTempId);
+        if (!ticket) return;
+        const item = ticket.items[rowIdx];
+        if (!item || item.isSfItem) return;
+        removeItemRow(ticketTempId, item.tempId);
+        setTimeout(() => {
+          const updatedCard = document.querySelector<HTMLElement>(`[data-ticket-id="${ticketTempId}"]`);
+          if (!updatedCard) return;
+          const inputs = updatedCard.querySelectorAll<HTMLInputElement>('[data-item-id-input]');
+          if (inputs.length === 0) return;
+          const targetIdx = Math.min(rowIdx, inputs.length - 1);
+          inputs[targetIdx]?.focus();
+        }, 50);
+      }
+    };
+    window.addEventListener('keydown', handler, true);
+    return () => window.removeEventListener('keydown', handler, true);
+  }, [tickets, findItem, addItemRow, removeItemRow]);
 
   const updateItemField = (
     ticketTempId: string,
@@ -351,16 +494,23 @@ export default function MultiTicketingPage() {
   /* ── Render ── */
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="h-screen flex flex-col overflow-hidden">
       <div className="print:hidden">
         <Navbar user={user} />
       </div>
-      <div className="flex flex-1">
-        <div className="print:hidden">
-          <Sidebar menuItems={user.menu_items} />
-        </div>
-        <main className="flex-1 p-6 bg-gray-50 print:hidden">
-          <h1 className="text-2xl font-bold text-gray-800 mb-4">Multi-Ticketing</h1>
+      <div className="flex flex-1 overflow-hidden">
+        <main className="flex-1 p-6 bg-gray-50 print:hidden flex flex-col overflow-hidden">
+          <div className="flex items-center justify-between mb-4 shrink-0">
+            <h1 className="text-2xl font-bold text-gray-800">Multi-Ticketing</h1>
+            {initData && (
+              <button
+                onClick={addTicket}
+                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium"
+              >
+                + Add Ticket
+              </button>
+            )}
+          </div>
 
           {initError && (
             <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4">
@@ -375,35 +525,35 @@ export default function MultiTicketingPage() {
           )}
 
           {initData && (
-            <>
+            <div className="flex flex-col flex-1 overflow-hidden">
               {/* ── Header info bar ── */}
-              <div className="bg-white rounded-lg shadow p-4 mb-6">
+              <div className="bg-white rounded-lg shadow p-4 mb-6 shrink-0">
                 <div className="flex flex-wrap items-center gap-x-8 gap-y-2 text-sm">
                   <div>
-                    <span className="text-gray-500 font-medium">Route:</span>{" "}
+                    <span className="text-black font-medium">Route:</span>{" "}
                     <span className="font-semibold text-gray-800">{initData.route_name}</span>
                   </div>
                   <div>
-                    <span className="text-gray-500 font-medium">Branch:</span>{" "}
+                    <span className="text-black font-medium">Branch:</span>{" "}
                     <span className="font-semibold text-gray-800">{initData.branch_name}</span>
                   </div>
                   <div>
-                    <span className="text-gray-500 font-medium">Date:</span>{" "}
+                    <span className="text-black font-medium">Date:</span>{" "}
                     <span className="font-semibold text-gray-800">{formatDateDDMMYYYY(now)}</span>
                   </div>
                   <div>
-                    <span className="text-gray-500 font-medium">Time:</span>{" "}
+                    <span className="text-black font-medium">Time:</span>{" "}
                     <span className="font-mono font-semibold text-gray-800">{formatTime(now)}</span>
                   </div>
                   {initData.first_ferry_time && (
                     <div>
-                      <span className="text-gray-500 font-medium">First Ferry:</span>{" "}
+                      <span className="text-black font-medium">First Ferry:</span>{" "}
                       <span className="text-gray-800">{initData.first_ferry_time}</span>
                     </div>
                   )}
                   {initData.last_ferry_time && (
                     <div>
-                      <span className="text-gray-500 font-medium">Last Ferry:</span>{" "}
+                      <span className="text-black font-medium">Last Ferry:</span>{" "}
                       <span className="text-gray-800">{initData.last_ferry_time}</span>
                     </div>
                   )}
@@ -422,12 +572,13 @@ export default function MultiTicketingPage() {
               </div>
 
               {/* ── Ticket grids ── */}
-              <div className="space-y-6">
+              <div className="space-y-6 flex-1 overflow-y-auto">
                 {tickets.map((ticket, ticketIdx) => {
                   const tTotal = ticketTotal(ticket);
                   return (
                     <div
                       key={ticket.tempId}
+                      data-ticket-id={ticket.tempId}
                       className="bg-white border border-gray-200 rounded-lg p-4"
                     >
                       {/* Card header */}
@@ -436,7 +587,7 @@ export default function MultiTicketingPage() {
                           Ticket #{ticketIdx + 1}
                         </h3>
                         <div className="flex items-center gap-3">
-                          <label className="text-sm text-gray-600">Payment Mode:</label>
+                          <label className="text-sm text-black">Payment Mode:</label>
                           <select
                             value={ticket.paymentModeId}
                             onChange={(e) =>
@@ -467,13 +618,31 @@ export default function MultiTicketingPage() {
                         <table className="w-full text-sm">
                           <thead>
                             <tr className="bg-gray-100">
+                              <th className="text-left px-3 py-2 w-[70px]">ID</th>
                               <th className="text-left px-3 py-2">Item</th>
                               <th className="text-left px-3 py-2">Rate</th>
                               <th className="text-left px-3 py-2">Levy</th>
                               <th className="text-left px-3 py-2">Qty</th>
                               <th className="text-left px-3 py-2">Vehicle No</th>
                               <th className="text-right px-3 py-2">Amount</th>
-                              <th className="text-center px-3 py-2 w-16"></th>
+                              <th className="text-center px-3 py-2 w-16">
+                                {(() => {
+                                  const hasInvalidRow = ticket.items.some(
+                                    (it) => isRowInvalid(it, findItem)
+                                  );
+                                  return (
+                                    <button
+                                      type="button"
+                                      tabIndex={-1}
+                                      onClick={() => addItemRow(ticket.tempId)}
+                                      disabled={hasInvalidRow}
+                                      className="text-xs bg-blue-700 hover:bg-blue-800 text-white font-semibold px-3 py-1.5 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                      +
+                                    </button>
+                                  );
+                                })()}
+                              </th>
                             </tr>
                           </thead>
                           <tbody>
@@ -481,57 +650,101 @@ export default function MultiTicketingPage() {
                               const itemDef = findItem(item.itemId);
                               const isVehicle = itemDef?.is_vehicle ?? false;
                               const amt = rowAmount(item);
+                              const locked = !!item.isSfItem;
+
+                              const hasValidItem = item.itemId > 0 && !!itemDef;
 
                               return (
-                                <tr key={item.tempId} className="border-t border-gray-200">
+                                <tr key={item.tempId} className={`border-t border-gray-200 ${locked ? "bg-amber-50" : ""}`}>
+                                  {/* ID column */}
                                   <td className="px-3 py-2">
-                                    <select
-                                      value={item.itemId}
-                                      onChange={(e) =>
-                                        updateItemField(
-                                          ticket.tempId,
-                                          item.tempId,
-                                          "itemId",
-                                          Number(e.target.value)
-                                        )
-                                      }
-                                      className="border border-gray-300 rounded px-2 py-1 text-sm w-full min-w-[160px]"
-                                    >
-                                      <option value={0}>-- Select Item --</option>
-                                      {initData.items.map((it) => (
-                                        <option key={it.id} value={it.id}>
-                                          {it.name}
-                                        </option>
-                                      ))}
-                                    </select>
+                                    {locked ? (
+                                      <span className="text-xs text-amber-700 font-mono">{item.itemId}</span>
+                                    ) : (
+                                      <input
+                                        type="number"
+                                        min={1}
+                                        value={item.itemId || ""}
+                                        placeholder="ID"
+                                        data-item-id-input
+                                        onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }}
+                                        onChange={(e) => {
+                                          const id = parseInt(e.target.value) || 0;
+                                          updateItemField(
+                                            ticket.tempId,
+                                            item.tempId,
+                                            "itemId",
+                                            id
+                                          );
+                                        }}
+                                        className="border border-gray-300 rounded px-2 py-1 text-sm w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                      />
+                                    )}
                                   </td>
-                                  <td className="px-3 py-2 text-gray-700">
+                                  {/* Item dropdown */}
+                                  <td className="px-3 py-2">
+                                    {locked ? (
+                                      <span className="font-semibold text-sm text-amber-800">
+                                        {itemDef?.name ?? "SPECIAL FERRY"}
+                                      </span>
+                                    ) : (
+                                      <select
+                                        tabIndex={hasValidItem ? -1 : 0}
+                                        value={item.itemId}
+                                        onChange={(e) =>
+                                          updateItemField(
+                                            ticket.tempId,
+                                            item.tempId,
+                                            "itemId",
+                                            Number(e.target.value)
+                                          )
+                                        }
+                                        className="border border-gray-300 rounded px-2 py-1 text-sm w-full min-w-[160px] focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                      >
+                                        <option value={0}>-- Select Item --</option>
+                                        {initData.items.map((it) => (
+                                          <option key={it.id} value={it.id}>
+                                            {it.name}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    )}
+                                  </td>
+                                  <td className="px-3 py-2 text-black">
                                     {item.rate.toFixed(2)}
                                   </td>
-                                  <td className="px-3 py-2 text-gray-700">
+                                  <td className="px-3 py-2 text-black">
                                     {item.levy.toFixed(2)}
                                   </td>
                                   <td className="px-3 py-2">
-                                    <input
-                                      type="number"
-                                      min={0}
-                                      value={item.qty}
-                                      onChange={(e) =>
-                                        updateItemField(
-                                          ticket.tempId,
-                                          item.tempId,
-                                          "qty",
-                                          Math.max(0, parseInt(e.target.value) || 0)
-                                        )
-                                      }
-                                      className="border border-gray-300 rounded px-2 py-1 text-sm w-20"
-                                    />
+                                    {locked ? (
+                                      <span className="text-sm font-medium">{item.qty}</span>
+                                    ) : (
+                                      <input
+                                        type="number"
+                                        min={0}
+                                        value={item.qty}
+                                        onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }}
+                                        onChange={(e) =>
+                                          updateItemField(
+                                            ticket.tempId,
+                                            item.tempId,
+                                            "qty",
+                                            Math.max(0, parseInt(e.target.value) || 0)
+                                          )
+                                        }
+                                        className="border border-gray-300 rounded px-2 py-1 text-sm w-20 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                      />
+                                    )}
                                   </td>
                                   <td className="px-3 py-2">
-                                    {isVehicle ? (
+                                    {locked ? (
+                                      <span className="text-black text-xs">N/A</span>
+                                    ) : isVehicle ? (
                                       <input
                                         type="text"
                                         value={item.vehicleNo}
+                                        onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }}
                                         onChange={(e) =>
                                           updateItemField(
                                             ticket.tempId,
@@ -541,18 +754,19 @@ export default function MultiTicketingPage() {
                                           )
                                         }
                                         placeholder="Vehicle No"
-                                        className="border border-gray-300 rounded px-2 py-1 text-sm w-full min-w-[120px]"
+                                        className="border border-gray-300 rounded px-2 py-1 text-sm w-full min-w-[120px] focus:outline-none focus:ring-2 focus:ring-blue-500"
                                       />
                                     ) : (
-                                      <span className="text-gray-400 text-xs">N/A</span>
+                                      <span className="text-black text-xs">N/A</span>
                                     )}
                                   </td>
                                   <td className="px-3 py-2 text-right font-medium text-gray-800">
                                     {amt.toFixed(2)}
                                   </td>
                                   <td className="px-3 py-2 text-center">
-                                    {ticket.items.length > 1 && (
+                                    {!locked && (
                                       <button
+                                        tabIndex={-1}
                                         onClick={() =>
                                           removeItemRow(ticket.tempId, item.tempId)
                                         }
@@ -570,13 +784,7 @@ export default function MultiTicketingPage() {
                       </div>
 
                       {/* Card footer */}
-                      <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-200">
-                        <button
-                          onClick={() => addItemRow(ticket.tempId)}
-                          className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium"
-                        >
-                          + Add Item
-                        </button>
+                      <div className="flex items-center justify-end mt-3 pt-3 border-t border-gray-200">
                         <div className="text-lg font-bold text-gray-800">
                           Ticket Total: <span className="text-blue-700">{tTotal.toFixed(2)}</span>
                         </div>
@@ -584,43 +792,34 @@ export default function MultiTicketingPage() {
                     </div>
                   );
                 })}
-              </div>
 
-              {/* ── Grand total ── */}
-              <div className="mt-6 bg-white rounded-lg shadow p-4 flex items-center justify-between">
-                <span className="text-xl font-bold text-gray-800">Grand Total:</span>
-                <span className="text-2xl font-bold text-blue-700">
-                  {grandTotal(tickets).toFixed(2)}
-                </span>
-              </div>
+                {/* ── Grand total ── */}
+                <div className="mt-6 bg-white rounded-lg shadow p-4 flex items-center justify-between">
+                  <span className="text-xl font-bold text-gray-800">Grand Total:</span>
+                  <span className="text-2xl font-bold text-blue-700">
+                    {grandTotal(tickets).toFixed(2)}
+                  </span>
+                </div>
 
-              {/* ── Add Ticket button ── */}
-              <div className="mt-4">
-                <button
-                  onClick={addTicket}
-                  className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium"
-                >
-                  + Add Ticket
-                </button>
+                {/* ── Footer buttons ── */}
+                <div className="mt-6 flex items-center gap-4">
+                  <button
+                    onClick={() => router.push("/dashboard")}
+                    className="bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    ref={saveRef}
+                    onClick={handleSaveAndPrint}
+                    disabled={submitting || tickets.some((t) => !t.paymentModeId || t.items.some((it) => isRowInvalid(it, findItem)))}
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {submitting ? "Saving..." : "Save & Print"}
+                  </button>
+                </div>
               </div>
-
-              {/* ── Footer buttons ── */}
-              <div className="mt-6 flex items-center gap-4">
-                <button
-                  onClick={resetForm}
-                  className="bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleSaveAndPrint}
-                  disabled={submitting}
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-50"
-                >
-                  {submitting ? "Saving..." : "Save & Print"}
-                </button>
-              </div>
-            </>
+            </div>
           )}
         </main>
       </div>

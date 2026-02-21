@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel, Field
 
 
@@ -42,5 +44,7 @@ class ItemUpdate(BaseModel):
 class ItemRead(ItemBase):
     id: int = Field(..., description="Unique item identifier")
     is_active: bool | None = Field(None, description="Whether the item is active (soft-delete flag)")
+    created_at: datetime | None = Field(None, description="Record creation timestamp")
+    updated_at: datetime | None = Field(None, description="Record last update timestamp")
 
     model_config = {"from_attributes": True}

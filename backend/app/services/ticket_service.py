@@ -13,6 +13,7 @@ from app.models.item import Item
 from app.models.item_rate import ItemRate
 from app.models.payment_mode import PaymentMode
 from app.models.ferry_schedule import FerrySchedule
+from app.models.company import Company
 from app.schemas.ticket import TicketCreate, TicketUpdate
 
 
@@ -316,6 +317,32 @@ async def get_multi_ticket_init(db: AsyncSession, user) -> dict:
     )
     payment_modes = pm_result.scalars().all()
 
+    # Get Special Ferry item ID from company config
+    sf_item_id = None
+    sf_rate = None
+    sf_levy = None
+    company_result = await db.execute(select(Company).limit(1))
+    company = company_result.scalar_one_or_none()
+    if company and company.sf_item_id:
+        sf_item_id = company.sf_item_id
+        # Look up the SF item's rate for this route
+        sf_rate_result = await db.execute(
+            select(ItemRate)
+            .where(
+                ItemRate.item_id == sf_item_id,
+                ItemRate.route_id == user.route_id,
+                ItemRate.is_active == True,
+                ItemRate.applicable_from_date.is_not(None),
+                ItemRate.applicable_from_date <= today,
+            )
+            .order_by(ItemRate.applicable_from_date.desc())
+            .limit(1)
+        )
+        sf_ir = sf_rate_result.scalar_one_or_none()
+        if sf_ir:
+            sf_rate = float(sf_ir.rate) if sf_ir.rate is not None else None
+            sf_levy = float(sf_ir.levy) if sf_ir.levy is not None else None
+
     return {
         "route_id": route.id,
         "route_name": route_name or "",
@@ -326,6 +353,9 @@ async def get_multi_ticket_init(db: AsyncSession, user) -> dict:
         "first_ferry_time": _format_time(first_ferry),
         "last_ferry_time": _format_time(last_ferry),
         "is_off_hours": is_off_hours,
+        "sf_item_id": sf_item_id,
+        "sf_rate": sf_rate,
+        "sf_levy": sf_levy,
     }
 
 

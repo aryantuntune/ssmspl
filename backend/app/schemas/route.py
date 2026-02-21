@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel, Field
 
 
@@ -38,5 +40,7 @@ class RouteRead(RouteBase):
     is_active: bool | None = Field(None, description="Whether the route is active")
     branch_one_name: str | None = Field(None, description="Name of the first branch")
     branch_two_name: str | None = Field(None, description="Name of the second branch")
+    created_at: datetime | None = Field(None, description="Record creation timestamp")
+    updated_at: datetime | None = Field(None, description="Record last update timestamp")
 
     model_config = {"from_attributes": True}

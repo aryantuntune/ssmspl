@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel, Field
 
 
@@ -35,5 +37,7 @@ class FerryScheduleUpdate(BaseModel):
 class FerryScheduleRead(FerryScheduleBase):
     id: int = Field(..., description="Unique schedule identifier")
     branch_name: str | None = Field(None, description="Name of the branch")
+    created_at: datetime | None = Field(None, description="Record creation timestamp")
+    updated_at: datetime | None = Field(None, description="Record last update timestamp")
 
     model_config = {"from_attributes": True}

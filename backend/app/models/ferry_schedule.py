@@ -2,9 +2,10 @@ from sqlalchemy import ForeignKey, Integer, Time
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
+from app.models.mixins import AuditMixin
 
 
-class FerrySchedule(Base):
+class FerrySchedule(AuditMixin, Base):
     __tablename__ = "ferry_schedules"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)

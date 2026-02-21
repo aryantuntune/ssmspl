@@ -486,10 +486,12 @@ export default function FerriesPage() {
                     <input
                       type="text"
                       required
+                      minLength={5}
+                      maxLength={30}
                       value={form.name}
                       onChange={(e) => setForm({ ...form, name: e.target.value })}
                       className="w-full border border-gray-300 rounded-lg px-4 py-2 text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="e.g. SHANTADURGA"
+                      placeholder="e.g. SHANTADURGA (5–30 chars)"
                     />
                   </div>
                   <div>
@@ -499,10 +501,12 @@ export default function FerriesPage() {
                     <input
                       type="text"
                       required
+                      minLength={10}
+                      maxLength={30}
                       value={form.no}
                       onChange={(e) => setForm({ ...form, no: e.target.value })}
                       className="w-full border border-gray-300 rounded-lg px-4 py-2 text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="e.g. RTN-IV-03-00001"
+                      placeholder="e.g. RTN-IV-03-00001 (10–30 chars)"
                     />
                   </div>
 

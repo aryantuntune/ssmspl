@@ -33,7 +33,155 @@ interface FormItem {
   is_cancelled: boolean;
 }
 
+function isFormRowInvalid(fi: FormItem, items: Item[]): boolean {
+  if (fi.is_cancelled) return false;
+  const def = items.find((i) => i.id === fi.item_id);
+  if (!def || fi.quantity < 1) return true;
+  if (def.is_vehicle && !fi.vehicle_no.trim()) return true;
+  return false;
+}
+
 const PAGE_SIZE_OPTIONS = [5, 10, 25, 50, 100];
+
+/* ── Searchable item dropdown ── */
+function ItemSearchSelect({
+  items,
+  selectedId,
+  disabled,
+  onSelect,
+  tabIndex,
+}: {
+  items: Item[];
+  selectedId: number;
+  disabled?: boolean;
+  onSelect: (id: number) => void;
+  tabIndex?: number;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
+  const [highlightIdx, setHighlightIdx] = useState(0);
+
+  const selectedItem = items.find((i) => i.id === selectedId);
+
+  const filtered = search.trim()
+    ? items.filter((i) => i.name.toLowerCase().includes(search.toLowerCase()))
+    : items;
+
+  // Close on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+        setOpen(false);
+        setSearch("");
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  // Scroll highlighted item into view
+  useEffect(() => {
+    if (!open || !listRef.current) return;
+    const el = listRef.current.children[highlightIdx] as HTMLElement | undefined;
+    el?.scrollIntoView({ block: "nearest" });
+  }, [highlightIdx, open]);
+
+  const handleSelect = (id: number) => {
+    onSelect(id);
+    setOpen(false);
+    setSearch("");
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (open && filtered.length > 0) {
+        handleSelect(filtered[highlightIdx]?.id ?? 0);
+      }
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      if (!open) {
+        setOpen(true);
+        setHighlightIdx(0);
+      } else {
+        setHighlightIdx((prev) => Math.min(prev + 1, filtered.length - 1));
+      }
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setHighlightIdx((prev) => Math.max(prev - 1, 0));
+    } else if (e.key === "Escape") {
+      setOpen(false);
+      setSearch("");
+    }
+  };
+
+  if (disabled) {
+    return (
+      <input
+        type="text"
+        readOnly
+        disabled
+        value={selectedItem?.name ?? ""}
+        className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-black text-sm bg-gray-100 cursor-not-allowed focus:outline-none"
+      />
+    );
+  }
+
+  return (
+    <div ref={wrapperRef} className="relative">
+      <input
+        ref={inputRef}
+        type="text"
+        tabIndex={tabIndex}
+        value={open ? search : selectedItem?.name ?? ""}
+        placeholder="-- Search item --"
+        onFocus={() => {
+          setOpen(true);
+          setSearch("");
+          setHighlightIdx(0);
+        }}
+        onChange={(e) => {
+          setSearch(e.target.value);
+          setHighlightIdx(0);
+          if (!open) setOpen(true);
+        }}
+        onKeyDown={handleKeyDown}
+        className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-black text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+      />
+      {open && (
+        <ul
+          ref={listRef}
+          className="absolute z-50 left-0 right-0 mt-1 max-h-48 overflow-y-auto bg-white border border-gray-300 rounded-lg shadow-lg text-sm"
+        >
+          {filtered.length === 0 ? (
+            <li className="px-3 py-2 text-gray-400">No items found</li>
+          ) : (
+            filtered.map((item, idx) => (
+              <li
+                key={item.id}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  handleSelect(item.id);
+                }}
+                onMouseEnter={() => setHighlightIdx(idx)}
+                className={`px-3 py-1.5 cursor-pointer ${
+                  idx === highlightIdx
+                    ? "bg-blue-600 text-white"
+                    : "text-black hover:bg-gray-100"
+                }`}
+              >
+                {item.name}
+              </li>
+            ))
+          )}
+        </ul>
+      )}
+    </div>
+  );
+}
 
 export default function TicketingPage() {
   const router = useRouter();
@@ -78,6 +226,8 @@ export default function TicketingPage() {
   const [branches, setBranches] = useState<Branch[]>([]);
   const [allRoutes, setAllRoutes] = useState<Route[]>([]);
   const [items, setItems] = useState<Item[]>([]);
+  const itemsRef = useRef<Item[]>([]);
+  useEffect(() => { itemsRef.current = items; }, [items]);
   const [paymentModes, setPaymentModes] = useState<PaymentMode[]>([]);
 
   // Modal
@@ -115,6 +265,8 @@ export default function TicketingPage() {
 
   // Detail items
   const [formItems, setFormItems] = useState<FormItem[]>([]);
+  const formItemsRef = useRef<FormItem[]>([]);
+  useEffect(() => { formItemsRef.current = formItems; }, [formItems]);
 
   // All ferry schedules (loaded once)
   const [ferrySchedules, setFerrySchedules] = useState<FerrySchedule[]>([]);
@@ -327,6 +479,8 @@ export default function TicketingPage() {
       if (e.altKey && e.code === "KeyA") {
         e.preventDefault();
         e.stopPropagation();
+        // Don't add a new row if any existing row is invalid
+        if (formItemsRef.current.some((fi) => isFormRowInvalid(fi, itemsRef.current))) return;
         handleAddItem();
         setTimeout(() => {
           const input = modalRef.current?.querySelector<HTMLInputElement>(
@@ -1962,7 +2116,8 @@ export default function TicketingPage() {
                                 type="button"
                                 tabIndex={-1}
                                 onClick={handleAddItem}
-                                className="text-xs bg-blue-700 hover:bg-blue-800 text-white font-semibold px-3 py-1.5 rounded-lg transition"
+                                disabled={formItems.some((fi) => isFormRowInvalid(fi, items))}
+                                className="text-xs bg-blue-700 hover:bg-blue-800 text-white font-semibold px-3 py-1.5 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
                               >
                                 + Add Item
                               </button>
@@ -2020,26 +2175,13 @@ export default function TicketingPage() {
                                     />
                                   </td>
                                   <td className="px-3 py-2">
-                                    <select
-                                      id={`item-sel-${fi.tempId}`}
-                                      tabIndex={fi.item_id && items.some((i) => i.id === fi.item_id) ? -1 : 0}
-                                      value={fi.item_id}
+                                    <ItemSearchSelect
+                                      items={items}
+                                      selectedId={fi.item_id}
                                       disabled={fi.is_cancelled}
-                                      onChange={(e) =>
-                                        handleItemChange(
-                                          fi.tempId,
-                                          Number(e.target.value)
-                                        )
-                                      }
-                                      className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-black text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
-                                    >
-                                      <option value={0}>-- Select --</option>
-                                      {items.map((item) => (
-                                        <option key={item.id} value={item.id}>
-                                          {item.name}
-                                        </option>
-                                      ))}
-                                    </select>
+                                      onSelect={(id) => handleItemChange(fi.tempId, id)}
+                                      tabIndex={fi.item_id && items.some((i) => i.id === fi.item_id) ? -1 : 0}
+                                    />
                                   </td>
                                   <td className="px-3 py-2">
                                     <input
@@ -2244,8 +2386,8 @@ export default function TicketingPage() {
                         ref={submitRef}
                         type="submit"
                         tabIndex={-1}
-                        disabled={submitting}
-                        className="bg-blue-700 hover:bg-blue-800 text-white font-semibold px-5 py-2 rounded-lg transition disabled:opacity-60"
+                        disabled={submitting || formItems.some((fi) => isFormRowInvalid(fi, items))}
+                        className="bg-blue-700 hover:bg-blue-800 text-white font-semibold px-5 py-2 rounded-lg transition disabled:opacity-60 disabled:cursor-not-allowed"
                       >
                       {submitting
                         ? "Saving..."

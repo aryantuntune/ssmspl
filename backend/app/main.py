@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.routers import auth, users, boats, branches, routes, items, item_rates, ferry_schedules, payment_modes, tickets, portal_auth
+from app.routers import auth, users, boats, branches, routes, items, item_rates, ferry_schedules, payment_modes, tickets, portal_auth, company
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -71,6 +71,10 @@ app = FastAPI(
             "name": "Portal Authentication",
             "description": "Customer-facing authentication — login, register, token refresh, and profile.",
         },
+        {
+            "name": "Company",
+            "description": "Company settings — requires **Super Admin** role.",
+        },
     ],
     contact={
         "name": "SSMSPL Engineering",
@@ -100,6 +104,7 @@ app.include_router(ferry_schedules.router)
 app.include_router(payment_modes.router)
 app.include_router(tickets.router)
 app.include_router(portal_auth.router)
+app.include_router(company.router)
 
 
 @app.get("/health", tags=["Health"])
