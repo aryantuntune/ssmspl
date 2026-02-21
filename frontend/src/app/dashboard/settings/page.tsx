@@ -3,6 +3,22 @@
 import { useEffect, useState } from "react";
 import api from "@/lib/api";
 import { Company, CompanyUpdate } from "@/types";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import { useTheme } from "@/components/ThemeProvider";
+import { DEFAULT_THEMES } from "@/lib/themes";
+import { Settings, Palette } from "lucide-react";
 
 interface FormData {
   name: string;
@@ -52,6 +68,10 @@ export default function SettingsPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+
+  const { theme, mode, setThemeName, toggleMode } = useTheme();
+  const [themeSubmitting, setThemeSubmitting] = useState(false);
+  const [themeSuccess, setThemeSuccess] = useState("");
 
   useEffect(() => {
     const init = async () => {
@@ -123,18 +143,32 @@ export default function SettingsPage() {
     }
   };
 
+  const handleThemeSave = async () => {
+    setThemeSubmitting(true);
+    setThemeSuccess("");
+    try {
+      await api.patch("/api/company/", { active_theme: theme.name });
+      setThemeSuccess("Theme saved successfully.");
+      setTimeout(() => setThemeSuccess(""), 3000);
+    } catch {
+      // Non-fatal — theme still applies locally
+    } finally {
+      setThemeSubmitting(false);
+    }
+  };
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-16 text-gray-500">
+      <div className="flex items-center justify-center py-16 text-muted-foreground">
         Loading...
       </div>
     );
   }
 
-  const fields: { key: keyof FormData; label: string; type?: string; required?: boolean; maxLength?: number }[] = [
+  const fields: { key: keyof FormData; label: string; type?: string; required?: boolean; maxLength?: number; textarea?: boolean }[] = [
     { key: "name", label: "Company Name", required: true, maxLength: 255 },
     { key: "short_name", label: "Short Name", maxLength: 60 },
-    { key: "reg_address", label: "Registered Address", maxLength: 500 },
+    { key: "reg_address", label: "Registered Address", maxLength: 500, textarea: true },
     { key: "gst_no", label: "GST No", maxLength: 15 },
     { key: "pan_no", label: "PAN No", maxLength: 10 },
     { key: "tan_no", label: "TAN No", maxLength: 10 },
@@ -145,65 +179,149 @@ export default function SettingsPage() {
   ];
 
   return (
-    <>
-      <div className="mb-6">
-        <h2 className="text-2xl font-bold text-gray-800">System Settings</h2>
-        <p className="text-gray-500 text-sm mt-1">
-          View and update company information
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold">System Settings</h1>
+        <p className="text-muted-foreground text-sm mt-1">
+          View and update company information and theme preferences
         </p>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 max-w-2xl p-6">
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {fields.map(({ key, label, type, required, maxLength }) => (
-            <div key={key}>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                {label}{required ? " *" : ""}
-              </label>
-              {key === "reg_address" ? (
-                <textarea
-                  value={form[key]}
-                  onChange={(e) => handleChange(key, e.target.value)}
-                  maxLength={maxLength}
-                  rows={3}
-                  className="w-full border border-gray-300 rounded-lg px-4 py-2 text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              ) : (
-                <input
-                  type={type || "text"}
-                  required={required}
-                  value={form[key]}
-                  onChange={(e) => handleChange(key, e.target.value)}
-                  maxLength={maxLength}
-                  className="w-full border border-gray-300 rounded-lg px-4 py-2 text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              )}
+      {/* Company Information */}
+      <Card className="max-w-2xl">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <Settings className="h-5 w-5" />
+            Company Information
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {fields.map(({ key, label, type, required, maxLength, textarea }) => (
+              <div key={key}>
+                <Label>{label}{required ? " *" : ""}</Label>
+                {textarea ? (
+                  <Textarea
+                    value={form[key]}
+                    onChange={(e) => handleChange(key, e.target.value)}
+                    maxLength={maxLength}
+                    rows={3}
+                    className="mt-1.5"
+                  />
+                ) : (
+                  <Input
+                    type={type || "text"}
+                    required={required}
+                    value={form[key]}
+                    onChange={(e) => handleChange(key, e.target.value)}
+                    maxLength={maxLength}
+                    className="mt-1.5"
+                  />
+                )}
+              </div>
+            ))}
+
+            {error && (
+              <p className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded p-2">
+                {error}
+              </p>
+            )}
+
+            {success && (
+              <p className="text-sm text-green-700 bg-green-50 border border-green-200 rounded p-2">
+                {success}
+              </p>
+            )}
+
+            <div className="flex justify-end pt-2">
+              <Button type="submit" disabled={submitting}>
+                {submitting ? "Saving..." : "Save Changes"}
+              </Button>
             </div>
-          ))}
+          </form>
+        </CardContent>
+      </Card>
 
-          {error && (
-            <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded p-2">
-              {error}
-            </p>
-          )}
-
-          {success && (
-            <p className="text-sm text-green-600 bg-green-50 border border-green-200 rounded p-2">
-              {success}
-            </p>
-          )}
-
-          <div className="flex justify-end pt-2">
-            <button
-              type="submit"
-              disabled={submitting}
-              className="bg-blue-700 hover:bg-blue-800 text-white font-semibold px-5 py-2 rounded-lg transition disabled:opacity-60"
-            >
-              {submitting ? "Saving..." : "Save Changes"}
-            </button>
+      {/* Theme Management */}
+      <Card className="max-w-2xl">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <Palette className="h-5 w-5" />
+            Theme Management
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* Theme selector */}
+          <div>
+            <Label className="mb-1.5 block">Color Theme</Label>
+            <Select value={theme.name} onValueChange={setThemeName}>
+              <SelectTrigger className="w-[200px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {DEFAULT_THEMES.map((t) => (
+                  <SelectItem key={t.name} value={t.name}>
+                    {t.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
-        </form>
-      </div>
-    </>
+
+          {/* Theme preview strip */}
+          <div>
+            <Label className="mb-1.5 block">Preview</Label>
+            <div className="flex gap-2">
+              {(() => {
+                const colors = mode === "dark" ? theme.dark : theme.light;
+                const swatches = [
+                  { label: "Primary", value: colors.primary },
+                  { label: "Sidebar", value: colors.sidebar },
+                  { label: "Active", value: colors.sidebarActive },
+                  { label: "Background", value: colors.background },
+                  { label: "Muted", value: colors.muted },
+                  { label: "Destructive", value: colors.destructive },
+                ];
+                return swatches.map((s) => (
+                  <div key={s.label} className="flex flex-col items-center gap-1">
+                    <div
+                      className="h-8 w-8 rounded-md border border-border"
+                      style={{ backgroundColor: `hsl(${s.value})` }}
+                    />
+                    <span className="text-xs text-muted-foreground">{s.label}</span>
+                  </div>
+                ));
+              })()}
+            </div>
+          </div>
+
+          {/* Dark mode toggle */}
+          <div className="flex items-center justify-between">
+            <div>
+              <Label>Dark Mode</Label>
+              <p className="text-xs text-muted-foreground">
+                Toggle between light and dark appearance
+              </p>
+            </div>
+            <Switch
+              checked={mode === "dark"}
+              onCheckedChange={toggleMode}
+            />
+          </div>
+
+          {themeSuccess && (
+            <p className="text-sm text-green-700 bg-green-50 border border-green-200 rounded p-2">
+              {themeSuccess}
+            </p>
+          )}
+
+          <div className="flex justify-end">
+            <Button onClick={handleThemeSave} disabled={themeSubmitting} variant="outline">
+              {themeSubmitting ? "Saving..." : "Save Theme"}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   );
 }

@@ -11,6 +11,18 @@ import {
   TicketPayementCreate,
   Ticket,
 } from "@/types";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Plus, X, Trash2 } from "lucide-react";
 
 /* ── Local grid types ── */
 
@@ -467,100 +479,94 @@ export default function MultiTicketingPage() {
   return (
     <>
       <div className="flex flex-col flex-1 overflow-hidden">
+        {/* ── Page header ── */}
         <div className="flex items-center justify-between mb-4 shrink-0">
-            <h1 className="text-2xl font-bold text-gray-800">Multi-Ticketing</h1>
-            {initData && (
-              <button
-                onClick={addTicket}
-                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium"
-              >
-                + Add Ticket
-              </button>
-            )}
-          </div>
-
-          {initError && (
-            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4">
-              {initError}
-              <button
-                onClick={fetchInit}
-                className="ml-3 underline text-red-600 hover:text-red-800 text-sm"
-              >
-                Retry
-              </button>
-            </div>
-          )}
-
+          <h1 className="text-2xl font-bold">Multi-Ticketing</h1>
           {initData && (
-            <div className="flex flex-col flex-1 overflow-hidden">
-              {/* ── Header info bar ── */}
-              <div className="bg-white rounded-lg shadow p-4 mb-6 shrink-0">
+            <Button onClick={addTicket}>
+              <Plus className="h-4 w-4 mr-2" /> Add Ticket
+            </Button>
+          )}
+        </div>
+
+        {/* ── Error banner ── */}
+        {initError && (
+          <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg text-destructive text-sm mb-4">
+            {initError}
+            <Button variant="link" onClick={fetchInit} className="ml-2 h-auto p-0 text-sm">
+              Retry
+            </Button>
+          </div>
+        )}
+
+        {initData && (
+          <div className="flex flex-col flex-1 overflow-hidden">
+            {/* ── Header info bar ── */}
+            <Card className="mb-6 shrink-0">
+              <CardContent className="py-4">
                 <div className="flex flex-wrap items-center gap-x-8 gap-y-2 text-sm">
                   <div>
-                    <span className="text-black font-medium">Route:</span>{" "}
-                    <span className="font-semibold text-gray-800">{initData.route_name}</span>
+                    <span className="text-foreground font-medium">Route:</span>{" "}
+                    <span className="font-semibold text-foreground">{initData.route_name}</span>
                   </div>
                   <div>
-                    <span className="text-black font-medium">Branch:</span>{" "}
-                    <span className="font-semibold text-gray-800">{initData.branch_name}</span>
+                    <span className="text-foreground font-medium">Branch:</span>{" "}
+                    <span className="font-semibold text-foreground">{initData.branch_name}</span>
                   </div>
                   <div>
-                    <span className="text-black font-medium">Date:</span>{" "}
-                    <span className="font-semibold text-gray-800">{formatDateDDMMYYYY(now)}</span>
+                    <span className="text-foreground font-medium">Date:</span>{" "}
+                    <span className="font-semibold text-foreground">{formatDateDDMMYYYY(now)}</span>
                   </div>
                   <div>
-                    <span className="text-black font-medium">Time:</span>{" "}
-                    <span className="font-mono font-semibold text-gray-800">{formatTime(now)}</span>
+                    <span className="text-foreground font-medium">Time:</span>{" "}
+                    <span className="font-mono font-semibold text-foreground">{formatTime(now)}</span>
                   </div>
                   {initData.first_ferry_time && (
                     <div>
-                      <span className="text-black font-medium">First Ferry:</span>{" "}
-                      <span className="text-gray-800">{initData.first_ferry_time}</span>
+                      <span className="text-foreground font-medium">First Ferry:</span>{" "}
+                      <span className="text-foreground">{initData.first_ferry_time}</span>
                     </div>
                   )}
                   {initData.last_ferry_time && (
                     <div>
-                      <span className="text-black font-medium">Last Ferry:</span>{" "}
-                      <span className="text-gray-800">{initData.last_ferry_time}</span>
+                      <span className="text-foreground font-medium">Last Ferry:</span>{" "}
+                      <span className="text-foreground">{initData.last_ferry_time}</span>
                     </div>
                   )}
                   <div>
                     {initData.is_off_hours ? (
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                        Off-Hours Active
-                      </span>
+                      <Badge variant="default">Off-Hours Active</Badge>
                     ) : (
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                        Ferry Hours Active - Ticketing Disabled
-                      </span>
+                      <Badge variant="destructive">Ferry Hours Active - Ticketing Disabled</Badge>
                     )}
                   </div>
                 </div>
-              </div>
+              </CardContent>
+            </Card>
 
-              {/* ── Ticket grids ── */}
-              <div className="space-y-6 flex-1 overflow-y-auto">
-                {tickets.map((ticket, ticketIdx) => {
-                  const tTotal = ticketTotal(ticket);
-                  return (
-                    <div
-                      key={ticket.tempId}
-                      data-ticket-id={ticket.tempId}
-                      className="bg-white border border-gray-200 rounded-lg p-4"
-                    >
+            {/* ── Ticket grids ── */}
+            <div className="space-y-6 flex-1 overflow-y-auto">
+              {tickets.map((ticket, ticketIdx) => {
+                const tTotal = ticketTotal(ticket);
+                return (
+                  <Card
+                    key={ticket.tempId}
+                    data-ticket-id={ticket.tempId}
+                  >
+                    <CardContent className="p-4">
                       {/* Card header */}
                       <div className="flex items-center justify-between mb-3">
-                        <h3 className="text-lg font-semibold text-gray-800">
+                        <h3 className="text-lg font-semibold text-foreground">
                           Ticket #{ticketIdx + 1}
                         </h3>
                         <div className="flex items-center gap-3">
-                          <label className="text-sm text-black">Payment Mode:</label>
+                          <label className="text-sm text-foreground">Payment Mode:</label>
                           <select
                             value={ticket.paymentModeId}
                             onChange={(e) =>
                               updateTicketPaymentMode(ticket.tempId, Number(e.target.value))
                             }
-                            className="border border-gray-300 rounded px-2 py-1 text-sm"
+                            className="border border-input rounded px-2 py-1 text-sm bg-background text-foreground"
                           >
                             <option value={0}>-- Select --</option>
                             {initData.payment_modes.map((pm) => (
@@ -570,224 +576,228 @@ export default function MultiTicketingPage() {
                             ))}
                           </select>
                           {tickets.length > 1 && (
-                            <button
+                            <Button
+                              variant="destructive"
+                              size="sm"
                               onClick={() => removeTicket(ticket.tempId)}
-                              className="bg-red-500 hover:bg-red-600 text-white text-xs px-2 py-1 rounded"
                             >
+                              <Trash2 className="h-4 w-4 mr-1" />
                               Remove Ticket
-                            </button>
+                            </Button>
                           )}
                         </div>
                       </div>
 
                       {/* Items table */}
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                          <thead>
-                            <tr className="bg-gray-100">
-                              <th className="text-left px-3 py-2 w-[70px]">ID</th>
-                              <th className="text-left px-3 py-2">Item</th>
-                              <th className="text-left px-3 py-2">Rate</th>
-                              <th className="text-left px-3 py-2">Levy</th>
-                              <th className="text-left px-3 py-2">Qty</th>
-                              <th className="text-left px-3 py-2">Vehicle No</th>
-                              <th className="text-right px-3 py-2">Amount</th>
-                              <th className="text-center px-3 py-2 w-16">
-                                {(() => {
-                                  const hasInvalidRow = ticket.items.some(
-                                    (it) => isRowInvalid(it, findItem)
-                                  );
-                                  return (
-                                    <button
-                                      type="button"
-                                      tabIndex={-1}
-                                      onClick={() => addItemRow(ticket.tempId)}
-                                      disabled={hasInvalidRow}
-                                      className="text-xs bg-blue-700 hover:bg-blue-800 text-white font-semibold px-3 py-1.5 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="w-[70px]">ID</TableHead>
+                            <TableHead>Item</TableHead>
+                            <TableHead>Rate</TableHead>
+                            <TableHead>Levy</TableHead>
+                            <TableHead>Qty</TableHead>
+                            <TableHead>Vehicle No</TableHead>
+                            <TableHead className="text-right">Amount</TableHead>
+                            <TableHead className="text-center w-16">
+                              {(() => {
+                                const hasInvalidRow = ticket.items.some(
+                                  (it) => isRowInvalid(it, findItem)
+                                );
+                                return (
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="default"
+                                    tabIndex={-1}
+                                    onClick={() => addItemRow(ticket.tempId)}
+                                    disabled={hasInvalidRow}
+                                  >
+                                    <Plus className="h-4 w-4" />
+                                  </Button>
+                                );
+                              })()}
+                            </TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {ticket.items.map((item) => {
+                            const itemDef = findItem(item.itemId);
+                            const isVehicle = itemDef?.is_vehicle ?? false;
+                            const amt = rowAmount(item);
+                            const locked = !!item.isSfItem;
+
+                            const hasValidItem = item.itemId > 0 && !!itemDef;
+
+                            return (
+                              <TableRow key={item.tempId} className={locked ? "bg-amber-50 hover:bg-amber-50/80" : ""}>
+                                {/* ID column */}
+                                <TableCell className="px-3 py-2">
+                                  {locked ? (
+                                    <span className="text-xs text-amber-700 font-mono">{item.itemId}</span>
+                                  ) : (
+                                    <input
+                                      type="number"
+                                      min={1}
+                                      value={item.itemId || ""}
+                                      placeholder="ID"
+                                      data-item-id-input
+                                      onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }}
+                                      onChange={(e) => {
+                                        const id = parseInt(e.target.value) || 0;
+                                        updateItemField(
+                                          ticket.tempId,
+                                          item.tempId,
+                                          "itemId",
+                                          id
+                                        );
+                                      }}
+                                      className="border border-input rounded px-2 py-1 text-sm w-full bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                                    />
+                                  )}
+                                </TableCell>
+                                {/* Item dropdown */}
+                                <TableCell className="px-3 py-2">
+                                  {locked ? (
+                                    <span className="font-semibold text-sm text-amber-800">
+                                      {itemDef?.name ?? "SPECIAL FERRY"}
+                                    </span>
+                                  ) : (
+                                    <select
+                                      tabIndex={hasValidItem ? -1 : 0}
+                                      value={item.itemId}
+                                      onChange={(e) =>
+                                        updateItemField(
+                                          ticket.tempId,
+                                          item.tempId,
+                                          "itemId",
+                                          Number(e.target.value)
+                                        )
+                                      }
+                                      className="border border-input rounded px-2 py-1 text-sm w-full min-w-[160px] bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                                     >
-                                      +
-                                    </button>
-                                  );
-                                })()}
-                              </th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {ticket.items.map((item) => {
-                              const itemDef = findItem(item.itemId);
-                              const isVehicle = itemDef?.is_vehicle ?? false;
-                              const amt = rowAmount(item);
-                              const locked = !!item.isSfItem;
-
-                              const hasValidItem = item.itemId > 0 && !!itemDef;
-
-                              return (
-                                <tr key={item.tempId} className={`border-t border-gray-200 ${locked ? "bg-amber-50" : ""}`}>
-                                  {/* ID column */}
-                                  <td className="px-3 py-2">
-                                    {locked ? (
-                                      <span className="text-xs text-amber-700 font-mono">{item.itemId}</span>
-                                    ) : (
-                                      <input
-                                        type="number"
-                                        min={1}
-                                        value={item.itemId || ""}
-                                        placeholder="ID"
-                                        data-item-id-input
-                                        onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }}
-                                        onChange={(e) => {
-                                          const id = parseInt(e.target.value) || 0;
-                                          updateItemField(
-                                            ticket.tempId,
-                                            item.tempId,
-                                            "itemId",
-                                            id
-                                          );
-                                        }}
-                                        className="border border-gray-300 rounded px-2 py-1 text-sm w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                      />
-                                    )}
-                                  </td>
-                                  {/* Item dropdown */}
-                                  <td className="px-3 py-2">
-                                    {locked ? (
-                                      <span className="font-semibold text-sm text-amber-800">
-                                        {itemDef?.name ?? "SPECIAL FERRY"}
-                                      </span>
-                                    ) : (
-                                      <select
-                                        tabIndex={hasValidItem ? -1 : 0}
-                                        value={item.itemId}
-                                        onChange={(e) =>
-                                          updateItemField(
-                                            ticket.tempId,
-                                            item.tempId,
-                                            "itemId",
-                                            Number(e.target.value)
-                                          )
-                                        }
-                                        className="border border-gray-300 rounded px-2 py-1 text-sm w-full min-w-[160px] focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                      >
-                                        <option value={0}>-- Select Item --</option>
-                                        {initData.items.map((it) => (
-                                          <option key={it.id} value={it.id}>
-                                            {it.name}
-                                          </option>
-                                        ))}
-                                      </select>
-                                    )}
-                                  </td>
-                                  <td className="px-3 py-2 text-black">
-                                    {item.rate.toFixed(2)}
-                                  </td>
-                                  <td className="px-3 py-2 text-black">
-                                    {item.levy.toFixed(2)}
-                                  </td>
-                                  <td className="px-3 py-2">
-                                    {locked ? (
-                                      <span className="text-sm font-medium">{item.qty}</span>
-                                    ) : (
-                                      <input
-                                        type="number"
-                                        min={0}
-                                        value={item.qty}
-                                        onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }}
-                                        onChange={(e) =>
-                                          updateItemField(
-                                            ticket.tempId,
-                                            item.tempId,
-                                            "qty",
-                                            Math.max(0, parseInt(e.target.value) || 0)
-                                          )
-                                        }
-                                        className="border border-gray-300 rounded px-2 py-1 text-sm w-20 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                      />
-                                    )}
-                                  </td>
-                                  <td className="px-3 py-2">
-                                    {locked ? (
-                                      <span className="text-black text-xs">N/A</span>
-                                    ) : isVehicle ? (
-                                      <input
-                                        type="text"
-                                        value={item.vehicleNo}
-                                        onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }}
-                                        onChange={(e) =>
-                                          updateItemField(
-                                            ticket.tempId,
-                                            item.tempId,
-                                            "vehicleNo",
-                                            e.target.value
-                                          )
-                                        }
-                                        placeholder="Vehicle No"
-                                        className="border border-gray-300 rounded px-2 py-1 text-sm w-full min-w-[120px] focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                      />
-                                    ) : (
-                                      <span className="text-black text-xs">N/A</span>
-                                    )}
-                                  </td>
-                                  <td className="px-3 py-2 text-right font-medium text-gray-800">
-                                    {amt.toFixed(2)}
-                                  </td>
-                                  <td className="px-3 py-2 text-center">
-                                    {!locked && (
-                                      <button
-                                        tabIndex={-1}
-                                        onClick={() =>
-                                          removeItemRow(ticket.tempId, item.tempId)
-                                        }
-                                        className="bg-red-500 hover:bg-red-600 text-white text-xs px-2 py-1 rounded"
-                                      >
-                                        X
-                                      </button>
-                                    )}
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
+                                      <option value={0}>-- Select Item --</option>
+                                      {initData.items.map((it) => (
+                                        <option key={it.id} value={it.id}>
+                                          {it.name}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  )}
+                                </TableCell>
+                                <TableCell className="px-3 py-2 text-foreground">
+                                  {item.rate.toFixed(2)}
+                                </TableCell>
+                                <TableCell className="px-3 py-2 text-foreground">
+                                  {item.levy.toFixed(2)}
+                                </TableCell>
+                                <TableCell className="px-3 py-2">
+                                  {locked ? (
+                                    <span className="text-sm font-medium">{item.qty}</span>
+                                  ) : (
+                                    <input
+                                      type="number"
+                                      min={0}
+                                      value={item.qty}
+                                      onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }}
+                                      onChange={(e) =>
+                                        updateItemField(
+                                          ticket.tempId,
+                                          item.tempId,
+                                          "qty",
+                                          Math.max(0, parseInt(e.target.value) || 0)
+                                        )
+                                      }
+                                      className="border border-input rounded px-2 py-1 text-sm w-20 bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                                    />
+                                  )}
+                                </TableCell>
+                                <TableCell className="px-3 py-2">
+                                  {locked ? (
+                                    <span className="text-muted-foreground text-xs">N/A</span>
+                                  ) : isVehicle ? (
+                                    <input
+                                      type="text"
+                                      value={item.vehicleNo}
+                                      onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }}
+                                      onChange={(e) =>
+                                        updateItemField(
+                                          ticket.tempId,
+                                          item.tempId,
+                                          "vehicleNo",
+                                          e.target.value
+                                        )
+                                      }
+                                      placeholder="Vehicle No"
+                                      className="border border-input rounded px-2 py-1 text-sm w-full min-w-[120px] bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                                    />
+                                  ) : (
+                                    <span className="text-muted-foreground text-xs">N/A</span>
+                                  )}
+                                </TableCell>
+                                <TableCell className="px-3 py-2 text-right font-medium text-foreground">
+                                  {amt.toFixed(2)}
+                                </TableCell>
+                                <TableCell className="px-3 py-2 text-center">
+                                  {!locked && (
+                                    <Button
+                                      size="sm"
+                                      variant="destructive"
+                                      tabIndex={-1}
+                                      onClick={() =>
+                                        removeItemRow(ticket.tempId, item.tempId)
+                                      }
+                                    >
+                                      <X className="h-4 w-4" />
+                                    </Button>
+                                  )}
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
 
                       {/* Card footer */}
-                      <div className="flex items-center justify-end mt-3 pt-3 border-t border-gray-200">
-                        <div className="text-lg font-bold text-gray-800">
-                          Ticket Total: <span className="text-blue-700">{tTotal.toFixed(2)}</span>
+                      <div className="flex items-center justify-end mt-3 pt-3 border-t">
+                        <div className="text-lg font-bold text-foreground">
+                          Ticket Total: <span className="text-primary">{tTotal.toFixed(2)}</span>
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    </CardContent>
+                  </Card>
+                );
+              })}
 
-                {/* ── Grand total ── */}
-                <div className="mt-6 bg-white rounded-lg shadow p-4 flex items-center justify-between">
-                  <span className="text-xl font-bold text-gray-800">Grand Total:</span>
-                  <span className="text-2xl font-bold text-blue-700">
+              {/* ── Grand total ── */}
+              <Card className="mt-6">
+                <CardContent className="py-4 flex items-center justify-between">
+                  <span className="text-xl font-bold text-foreground">Grand Total:</span>
+                  <span className="text-2xl font-bold text-primary">
                     {grandTotal(tickets).toFixed(2)}
                   </span>
-                </div>
+                </CardContent>
+              </Card>
 
-                {/* ── Footer buttons ── */}
-                <div className="mt-6 flex items-center gap-4">
-                  <button
-                    onClick={() => router.push("/dashboard")}
-                    className="bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    ref={saveRef}
-                    onClick={handleSaveAndPrint}
-                    disabled={submitting || tickets.some((t) => !t.paymentModeId || t.items.some((it) => isRowInvalid(it, findItem)))}
-                    className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {submitting ? "Saving..." : "Save & Print"}
-                  </button>
-                </div>
+              {/* ── Footer buttons ── */}
+              <div className="mt-6 flex items-center gap-4">
+                <Button
+                  variant="outline"
+                  onClick={() => router.push("/dashboard")}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  ref={saveRef}
+                  onClick={handleSaveAndPrint}
+                  disabled={submitting || tickets.some((t) => !t.paymentModeId || t.items.some((it) => isRowInvalid(it, findItem)))}
+                >
+                  {submitting ? "Saving..." : "Save & Print"}
+                </Button>
               </div>
             </div>
-          )}
+          </div>
+        )}
       </div>
 
       {/* ── Print View ── */}

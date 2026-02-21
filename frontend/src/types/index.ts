@@ -382,6 +382,7 @@ export interface Company {
   contact: string | null;
   email: string | null;
   sf_item_id: number | null;
+  active_theme: string | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -397,6 +398,7 @@ export interface CompanyUpdate {
   contact?: string | null;
   email?: string | null;
   sf_item_id?: number | null;
+  active_theme?: string | null;
 }
 
 // ── Booking types ──

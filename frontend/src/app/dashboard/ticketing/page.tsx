@@ -18,6 +18,35 @@ import {
   FerrySchedule,
   RateLookupResponse,
 } from "@/types";
+import DataTable, { Column } from "@/components/dashboard/DataTable";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Plus } from "lucide-react";
 
 interface FormItem {
   tempId: string;
@@ -40,7 +69,7 @@ function isFormRowInvalid(fi: FormItem, items: Item[]): boolean {
 
 const PAGE_SIZE_OPTIONS = [5, 10, 25, 50, 100];
 
-/* ── Searchable item dropdown ── */
+/* -- Searchable item dropdown -- */
 function ItemSearchSelect({
   items,
   selectedId,
@@ -527,7 +556,7 @@ export default function TicketingPage() {
           )
         );
       } else {
-        // New item in edit mode (no DB id) — just remove
+        // New item in edit mode (no DB id) -- just remove
         setFormItems((prev) => prev.filter((fi) => fi.tempId !== tempId));
       }
     } else {
@@ -948,11 +977,6 @@ export default function TicketingPage() {
     setPage(1);
   };
 
-  const sortIndicator = (column: string) => {
-    if (sortBy !== column) return "";
-    return sortOrder === "asc" ? " \u25B2" : " \u25BC";
-  };
-
   const handlePageSizeChange = (newSize: number) => {
     setPageSize(newSize);
     setPage(1);
@@ -985,56 +1009,145 @@ export default function TicketingPage() {
     idEndInput ||
     idOp !== "eq";
 
+  // DataTable columns
+  const columns: Column<Ticket>[] = [
+    {
+      key: "id",
+      label: "ID",
+      sortable: true,
+      render: (ticket) => <span className="text-muted-foreground">{ticket.id}</span>,
+    },
+    {
+      key: "ticket_no",
+      label: "Ticket No",
+      sortable: true,
+      render: (ticket) => <span className="font-medium">{ticket.ticket_no}</span>,
+    },
+    {
+      key: "branch_id",
+      label: "Branch",
+      sortable: true,
+      render: (ticket) => ticket.branch_name || ticket.branch_id,
+    },
+    {
+      key: "route_id",
+      label: "Route",
+      sortable: true,
+      render: (ticket) => ticket.route_name || ticket.route_id,
+    },
+    {
+      key: "ticket_date",
+      label: "Date",
+      sortable: true,
+    },
+    {
+      key: "departure",
+      label: "Departure",
+      sortable: true,
+      render: (ticket) => ticket.departure || "-",
+    },
+    {
+      key: "amount",
+      label: "Amount",
+      sortable: true,
+      className: "text-right",
+      render: (ticket) => ticket.amount.toFixed(2),
+    },
+    {
+      key: "discount",
+      label: "Discount",
+      sortable: true,
+      className: "text-right",
+      render: (ticket) => (ticket.discount || 0).toFixed(2),
+    },
+    {
+      key: "net_amount",
+      label: "Net Amount",
+      sortable: true,
+      className: "text-right",
+      render: (ticket) => <span className="font-medium">{ticket.net_amount.toFixed(2)}</span>,
+    },
+    {
+      key: "is_cancelled",
+      label: "Status",
+      sortable: true,
+      render: (ticket) => (
+        <Badge variant={ticket.is_cancelled ? "destructive" : "default"}>
+          {ticket.is_cancelled ? "Cancelled" : "Active"}
+        </Badge>
+      ),
+    },
+    {
+      key: "actions",
+      label: "Actions",
+      className: "text-right",
+      render: (ticket) => (
+        <div className="flex justify-end gap-1">
+          <Button variant="ghost" size="sm" onClick={() => handleView(ticket)}>
+            View
+          </Button>
+          {(user?.role === "SUPER_ADMIN" || user?.role === "ADMIN") && (
+            <Button variant="ghost" size="sm" onClick={() => handleEdit(ticket)}>
+              Edit
+            </Button>
+          )}
+        </div>
+      ),
+    },
+  ];
+
   return (
     <>
+      {/* Page Header */}
       <div className="flex items-center justify-between mb-6">
-            <div>
-              <h2 className="text-2xl font-bold text-gray-800">Ticket Management</h2>
-              <p className="text-gray-500 text-sm mt-1">
-                Create and manage ferry tickets
-              </p>
-            </div>
-            <button
-              onClick={openCreateModal}
-              className="bg-blue-700 hover:bg-blue-800 text-white font-semibold px-5 py-2.5 rounded-lg transition"
-            >
-              + New Ticket
-            </button>
-          </div>
+        <div>
+          <h1 className="text-2xl font-bold">Ticket Management</h1>
+          <p className="text-muted-foreground text-sm mt-1">Create and manage ferry tickets</p>
+        </div>
+        <Button onClick={openCreateModal}>
+          <Plus className="h-4 w-4 mr-2" /> New Ticket
+        </Button>
+      </div>
 
-          {error && (
-            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
-              {error}
-            </div>
-          )}
+      {/* Error Banner */}
+      {error && (
+        <div className="mb-4 p-3 bg-destructive/10 border border-destructive/20 rounded-lg text-destructive text-sm">
+          {error}
+        </div>
+      )}
 
-          {/* Filters */}
-          <div className="flex flex-wrap items-end gap-3 mb-4">
+      {/* Filters */}
+      <Card className="mb-4">
+        <CardContent className="pt-6">
+          <div className="flex flex-wrap items-end gap-3">
             {/* ID filter operator */}
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">ID</label>
+              <Label className="text-xs text-muted-foreground mb-1 block">ID</Label>
               <div className="flex">
-                <select
+                <Select
                   value={idOp}
-                  onChange={(e) => {
-                    const op = e.target.value;
-                    setIdOp(op);
-                    if (op !== "between") {
+                  onValueChange={(val) => {
+                    setIdOp(val);
+                    if (val !== "between") {
                       setIdEndInput("");
                       setIdFilterEnd("");
                     }
                     setPage(1);
                   }}
-                  className="border border-gray-300 rounded-l-lg px-2 py-2 text-black text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
                 >
-                  <option value="eq">=</option>
-                  <option value="lt">&lt;</option>
-                  <option value="gt">&gt;</option>
-                  <option value="between">Between</option>
-                </select>
-                <input
+                  <SelectTrigger className="h-10 w-[90px] rounded-r-none border-r-0">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="eq">=</SelectItem>
+                    <SelectItem value="lt">&lt;</SelectItem>
+                    <SelectItem value="gt">&gt;</SelectItem>
+                    <SelectItem value="between">Between</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Input
                   type="number"
-                  min="1"
+                  min={1}
                   placeholder={idOp === "between" ? "From" : "ID"}
                   value={idInput}
                   onChange={(e) => {
@@ -1046,18 +1159,16 @@ export default function TicketingPage() {
                       setPage(1);
                     }, 400);
                   }}
-                  className={`w-20 border border-l-0 border-gray-300 px-2 py-2 text-black text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    idOp !== "between" ? "rounded-r-lg" : ""
-                  }`}
+                  className={`w-20 rounded-l-none ${idOp !== "between" ? "" : "rounded-r-none border-r-0"}`}
                 />
                 {idOp === "between" && (
                   <>
-                    <span className="flex items-center px-1.5 border-y border-gray-300 bg-gray-50 text-gray-400 text-xs">
+                    <span className="flex items-center px-1.5 border-y border-input bg-muted text-muted-foreground text-xs">
                       &ndash;
                     </span>
-                    <input
+                    <Input
                       type="number"
-                      min="1"
+                      min={1}
                       placeholder="To"
                       value={idEndInput}
                       onChange={(e) => {
@@ -1069,7 +1180,7 @@ export default function TicketingPage() {
                           setPage(1);
                         }, 400);
                       }}
-                      className="w-20 border border-l-0 border-gray-300 rounded-r-lg px-2 py-2 text-black text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-20 rounded-l-none"
                     />
                   </>
                 )}
@@ -1078,12 +1189,10 @@ export default function TicketingPage() {
 
             {/* Ticket No filter */}
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">
-                Ticket No
-              </label>
-              <input
+              <Label className="text-xs text-muted-foreground mb-1 block">Ticket No</Label>
+              <Input
                 type="number"
-                min="1"
+                min={1}
                 placeholder="Ticket No"
                 value={ticketNoInput}
                 onChange={(e) => {
@@ -1096,1286 +1205,982 @@ export default function TicketingPage() {
                     setPage(1);
                   }, 400);
                 }}
-                className="w-28 border border-gray-300 rounded-lg px-3 py-2 text-black text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-28"
               />
             </div>
 
             {/* Branch filter */}
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">
-                Branch
-              </label>
-              <select
-                value={branchFilter}
-                onChange={(e) => {
-                  setBranchFilter(e.target.value);
+              <Label className="text-xs text-muted-foreground mb-1 block">Branch</Label>
+              <Select
+                value={branchFilter || "__all__"}
+                onValueChange={(val) => {
+                  setBranchFilter(val === "__all__" ? "" : val);
                   setPage(1);
                 }}
-                className="border border-gray-300 rounded-lg px-3 py-2 text-black text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                <option value="">All Branches</option>
-                {branches.map((b) => (
-                  <option key={b.id} value={String(b.id)}>
-                    {b.name}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger className="h-10 w-[160px]">
+                  <SelectValue placeholder="All Branches" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">All Branches</SelectItem>
+                  {branches.map((b) => (
+                    <SelectItem key={b.id} value={String(b.id)}>
+                      {b.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             {/* Route filter */}
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">
-                Route
-              </label>
-              <select
-                value={routeFilter}
-                onChange={(e) => {
-                  setRouteFilter(e.target.value);
+              <Label className="text-xs text-muted-foreground mb-1 block">Route</Label>
+              <Select
+                value={routeFilter || "__all__"}
+                onValueChange={(val) => {
+                  setRouteFilter(val === "__all__" ? "" : val);
                   setPage(1);
                 }}
-                className="border border-gray-300 rounded-lg px-3 py-2 text-black text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                <option value="">All Routes</option>
-                {allRoutes.map((r) => (
-                  <option key={r.id} value={String(r.id)}>
-                    {r.branch_one_name} - {r.branch_two_name}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger className="h-10 w-[200px]">
+                  <SelectValue placeholder="All Routes" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">All Routes</SelectItem>
+                  {allRoutes.map((r) => (
+                    <SelectItem key={r.id} value={String(r.id)}>
+                      {r.branch_one_name} - {r.branch_two_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             {/* Date From */}
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">
-                Date From
-              </label>
-              <input
+              <Label className="text-xs text-muted-foreground mb-1 block">Date From</Label>
+              <Input
                 type="date"
                 value={dateFrom}
                 onChange={(e) => {
                   setDateFrom(e.target.value);
                   setPage(1);
                 }}
-                className="border border-gray-300 rounded-lg px-3 py-2 text-black text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-[150px]"
               />
             </div>
 
             {/* Date To */}
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">
-                Date To
-              </label>
-              <input
+              <Label className="text-xs text-muted-foreground mb-1 block">Date To</Label>
+              <Input
                 type="date"
                 value={dateTo}
                 onChange={(e) => {
                   setDateTo(e.target.value);
                   setPage(1);
                 }}
-                className="border border-gray-300 rounded-lg px-3 py-2 text-black text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-[150px]"
               />
             </div>
 
             {/* Status filter */}
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">
-                Status
-              </label>
-              <select
-                value={statusFilter}
-                onChange={(e) => {
-                  setStatusFilter(e.target.value);
+              <Label className="text-xs text-muted-foreground mb-1 block">Status</Label>
+              <Select
+                value={statusFilter || "__all__"}
+                onValueChange={(val) => {
+                  setStatusFilter(val === "__all__" ? "" : val);
                   setPage(1);
                 }}
-                className="border border-gray-300 rounded-lg px-3 py-2 text-black text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                <option value="">All</option>
-                <option value="active">Active</option>
-                <option value="cancelled">Cancelled</option>
-              </select>
+                <SelectTrigger className="h-10 w-[120px]">
+                  <SelectValue placeholder="All" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">All</SelectItem>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="cancelled">Cancelled</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             {/* Clear filters */}
             {hasActiveFilters && (
-              <button
-                onClick={clearFilters}
-                className="text-sm text-gray-500 hover:text-gray-700 underline pb-2"
-              >
+              <Button variant="ghost" size="sm" onClick={clearFilters} className="text-muted-foreground">
                 Clear filters
-              </button>
+              </Button>
             )}
           </div>
+        </CardContent>
+      </Card>
 
-          {/* Tickets Table */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-auto max-h-[calc(100vh-220px)]">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
-                <tr>
-                  <th
-                    onClick={() => handleSort("id")}
-                    className="text-left px-6 py-3 font-semibold text-gray-600 cursor-pointer select-none hover:text-blue-700"
-                  >
-                    ID{sortIndicator("id")}
-                  </th>
-                  <th
-                    onClick={() => handleSort("ticket_no")}
-                    className="text-left px-6 py-3 font-semibold text-gray-600 cursor-pointer select-none hover:text-blue-700"
-                  >
-                    Ticket No{sortIndicator("ticket_no")}
-                  </th>
-                  <th
-                    onClick={() => handleSort("branch_id")}
-                    className="text-left px-6 py-3 font-semibold text-gray-600 cursor-pointer select-none hover:text-blue-700"
-                  >
-                    Branch{sortIndicator("branch_id")}
-                  </th>
-                  <th
-                    onClick={() => handleSort("route_id")}
-                    className="text-left px-6 py-3 font-semibold text-gray-600 cursor-pointer select-none hover:text-blue-700"
-                  >
-                    Route{sortIndicator("route_id")}
-                  </th>
-                  <th
-                    onClick={() => handleSort("ticket_date")}
-                    className="text-left px-6 py-3 font-semibold text-gray-600 cursor-pointer select-none hover:text-blue-700"
-                  >
-                    Date{sortIndicator("ticket_date")}
-                  </th>
-                  <th
-                    onClick={() => handleSort("departure")}
-                    className="text-left px-6 py-3 font-semibold text-gray-600 cursor-pointer select-none hover:text-blue-700"
-                  >
-                    Departure{sortIndicator("departure")}
-                  </th>
-                  <th
-                    onClick={() => handleSort("amount")}
-                    className="text-right px-6 py-3 font-semibold text-gray-600 cursor-pointer select-none hover:text-blue-700"
-                  >
-                    Amount{sortIndicator("amount")}
-                  </th>
-                  <th
-                    onClick={() => handleSort("discount")}
-                    className="text-right px-6 py-3 font-semibold text-gray-600 cursor-pointer select-none hover:text-blue-700"
-                  >
-                    Discount{sortIndicator("discount")}
-                  </th>
-                  <th
-                    onClick={() => handleSort("net_amount")}
-                    className="text-right px-6 py-3 font-semibold text-gray-600 cursor-pointer select-none hover:text-blue-700"
-                  >
-                    Net Amount{sortIndicator("net_amount")}
-                  </th>
-                  {/* Payment Mode column hidden for now */}
-                  <th
-                    onClick={() => handleSort("is_cancelled")}
-                    className="text-left px-6 py-3 font-semibold text-gray-600 cursor-pointer select-none hover:text-blue-700"
-                  >
-                    Status{sortIndicator("is_cancelled")}
-                  </th>
-                  <th className="text-right px-6 py-3 font-semibold text-gray-600">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {tableLoading ? (
-                  <tr>
-                    <td colSpan={11} className="text-center py-8 text-gray-400">
-                      Loading tickets...
-                    </td>
-                  </tr>
-                ) : tickets.length === 0 ? (
-                  <tr>
-                    <td colSpan={11} className="text-center py-8 text-gray-400">
-                      No tickets found. Click &quot;+ New Ticket&quot; to create one.
-                    </td>
-                  </tr>
-                ) : (
-                  tickets.map((ticket) => (
-                    <tr
-                      key={ticket.id}
-                      className="border-b border-gray-100 hover:bg-gray-50 transition"
-                    >
-                      <td className="px-6 py-4 text-gray-500">{ticket.id}</td>
-                      <td className="px-6 py-4 font-medium text-gray-800">
-                        {ticket.ticket_no}
-                      </td>
-                      <td className="px-6 py-4 text-gray-600">
-                        {ticket.branch_name || ticket.branch_id}
-                      </td>
-                      <td className="px-6 py-4 text-gray-600">
-                        {ticket.route_name || ticket.route_id}
-                      </td>
-                      <td className="px-6 py-4 text-gray-600">{ticket.ticket_date}</td>
-                      <td className="px-6 py-4 text-gray-600">
-                        {ticket.departure || "-"}
-                      </td>
-                      <td className="px-6 py-4 text-right text-gray-600">
-                        {ticket.amount.toFixed(2)}
-                      </td>
-                      <td className="px-6 py-4 text-right text-gray-600">
-                        {(ticket.discount || 0).toFixed(2)}
-                      </td>
-                      <td className="px-6 py-4 text-right font-medium text-gray-800">
-                        {ticket.net_amount.toFixed(2)}
-                      </td>
-                      {/* Payment Mode cell hidden for now */}
-                      <td className="px-6 py-4">
-                        <span
-                          className={`inline-block text-xs font-semibold px-2.5 py-1 rounded-full ${
-                            ticket.is_cancelled
-                              ? "bg-red-50 text-red-700"
-                              : "bg-green-50 text-green-700"
-                          }`}
-                        >
-                          {ticket.is_cancelled ? "Cancelled" : "Active"}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-right space-x-3">
-                        <button
-                          onClick={() => handleView(ticket)}
-                          className="text-indigo-600 hover:text-indigo-800 font-medium text-sm transition"
-                        >
-                          View
-                        </button>
-                        {(user?.role === "SUPER_ADMIN" || user?.role === "ADMIN") && (
-                          <button
-                            onClick={() => handleEdit(ticket)}
-                            className="text-blue-600 hover:text-blue-800 font-medium text-sm transition"
-                          >
-                            Edit
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+      {/* Tickets Table */}
+      <DataTable<Ticket>
+        columns={columns}
+        data={tickets}
+        totalCount={totalCount}
+        page={page}
+        pageSize={pageSize}
+        sortBy={sortBy}
+        sortOrder={sortOrder}
+        onPageChange={setPage}
+        onPageSizeChange={handlePageSizeChange}
+        onSort={handleSort}
+        loading={tableLoading}
+        emptyMessage='No tickets found. Click "+ New Ticket" to create one.'
+      />
 
-          {/* Pagination */}
-          <div className="flex items-center justify-between mt-4 text-sm text-gray-600">
-            <div className="flex items-center gap-2">
-              <span>Rows per page:</span>
-              <select
-                value={pageSize}
-                onChange={(e) => handlePageSizeChange(Number(e.target.value))}
-                className="border border-gray-300 rounded-md px-2 py-1 text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                {PAGE_SIZE_OPTIONS.map((size) => (
-                  <option key={size} value={size}>
-                    {size}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="flex items-center gap-2">
-              <span>
-                {totalCount === 0
-                  ? "No records"
-                  : `${(page - 1) * pageSize + 1}\u2013${Math.min(
-                      page * pageSize,
-                      totalCount
-                    )} of ${totalCount}`}
-              </span>
-              <button
-                onClick={() => setPage(1)}
-                disabled={page <= 1}
-                className="w-8 h-8 flex items-center justify-center border border-gray-300 rounded-md hover:bg-gray-100 transition disabled:opacity-40 disabled:cursor-not-allowed"
-                title="First page"
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 20 20"
-                  fill="currentColor"
-                  className="w-4 h-4"
-                >
-                  <path
-                    fillRule="evenodd"
-                    d="M15.79 14.77a.75.75 0 01-1.06.02l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 111.04 1.08L11.832 10l3.938 3.71a.75.75 0 01.02 1.06zm-6 0a.75.75 0 01-1.06.02l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 111.04 1.08L5.832 10l3.938 3.71a.75.75 0 01.02 1.06z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-              </button>
-              <button
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page <= 1}
-                className="w-8 h-8 flex items-center justify-center border border-gray-300 rounded-md hover:bg-gray-100 transition disabled:opacity-40 disabled:cursor-not-allowed"
-                title="Previous page"
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 20 20"
-                  fill="currentColor"
-                  className="w-4 h-4"
-                >
-                  <path
-                    fillRule="evenodd"
-                    d="M12.79 14.77a.75.75 0 01-1.06.02l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 111.04 1.08L8.832 10l3.938 3.71a.75.75 0 01.02 1.06z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-              </button>
-              <button
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                disabled={page >= totalPages}
-                className="w-8 h-8 flex items-center justify-center border border-gray-300 rounded-md hover:bg-gray-100 transition disabled:opacity-40 disabled:cursor-not-allowed"
-                title="Next page"
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 20 20"
-                  fill="currentColor"
-                  className="w-4 h-4"
-                >
-                  <path
-                    fillRule="evenodd"
-                    d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-              </button>
-              <button
-                onClick={() => setPage(totalPages)}
-                disabled={page >= totalPages}
-                className="w-8 h-8 flex items-center justify-center border border-gray-300 rounded-md hover:bg-gray-100 transition disabled:opacity-40 disabled:cursor-not-allowed"
-                title="Last page"
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 20 20"
-                  fill="currentColor"
-                  className="w-4 h-4"
-                >
-                  <path
-                    fillRule="evenodd"
-                    d="M4.21 14.77a.75.75 0 01.02-1.06L8.168 10 4.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02zm6 0a.75.75 0 01.02-1.06L14.168 10 10.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-              </button>
-            </div>
-          </div>
+      {/* View Modal (read-only popup) */}
+      <Dialog open={!!viewTicket} onOpenChange={(open) => !open && setViewTicket(null)}>
+        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Ticket Details - #{viewTicket?.id}</DialogTitle>
+          </DialogHeader>
 
-          {/* View Modal (read-only popup) */}
           {viewTicket && (
-            <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-              <div className="bg-white rounded-2xl shadow-xl w-full max-w-5xl mx-4 p-6 max-h-[90vh] overflow-y-auto">
-                <h3 className="text-lg font-bold text-gray-800 mb-4">
-                  Ticket Details - #{viewTicket.id}
-                </h3>
-                <div className="grid grid-cols-2 gap-4 mb-6">
-                  <div className="flex justify-between">
-                    <span className="text-sm font-medium text-gray-500">ID</span>
-                    <span className="text-sm text-gray-800">{viewTicket.id}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm font-medium text-gray-500">Ticket No</span>
-                    <span className="text-sm text-gray-800">{viewTicket.ticket_no}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm font-medium text-gray-500">Branch</span>
-                    <span className="text-sm text-gray-800">
-                      {viewTicket.branch_name || viewTicket.branch_id}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm font-medium text-gray-500">Route</span>
-                    <span className="text-sm text-gray-800">
-                      {viewTicket.route_name || viewTicket.route_id}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm font-medium text-gray-500">Ticket Date</span>
-                    <span className="text-sm text-gray-800">
-                      {viewTicket.ticket_date}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm font-medium text-gray-500">Departure</span>
-                    <span className="text-sm text-gray-800">
-                      {viewTicket.departure || "-"}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm font-medium text-gray-500">Amount</span>
-                    <span className="text-sm text-gray-800">
-                      {viewTicket.amount.toFixed(2)}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm font-medium text-gray-500">Discount</span>
-                    <span className="text-sm text-gray-800">
-                      {(viewTicket.discount || 0).toFixed(2)}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm font-medium text-gray-500">Net Amount</span>
-                    <span className="text-sm font-semibold text-gray-800">
-                      {viewTicket.net_amount.toFixed(2)}
-                    </span>
-                  </div>
-                  {/* Payment Mode hidden for now */}
-                  <div className="flex justify-between">
-                    <span className="text-sm font-medium text-gray-500">Status</span>
-                    <span
-                      className={`inline-block text-xs font-semibold px-2.5 py-1 rounded-full ${
-                        viewTicket.is_cancelled
-                          ? "bg-red-50 text-red-700"
-                          : "bg-green-50 text-green-700"
-                      }`}
-                    >
-                      {viewTicket.is_cancelled ? "Cancelled" : "Active"}
-                    </span>
-                  </div>
+            <>
+              <div className="grid grid-cols-2 gap-4 mb-6">
+                <div className="flex justify-between">
+                  <span className="text-sm font-medium text-muted-foreground">ID</span>
+                  <span className="text-sm">{viewTicket.id}</span>
                 </div>
-
-                {/* Ticket Items table */}
-                {viewTicket.items && viewTicket.items.length > 0 && (
-                  <div>
-                    <h4 className="text-sm font-bold text-gray-700 mb-2">
-                      Ticket Items
-                    </h4>
-                    <div className="border border-gray-200 rounded-lg overflow-hidden">
-                      <table className="w-full text-sm">
-                        <thead className="bg-gray-50 border-b border-gray-200">
-                          <tr>
-                            <th className="text-left px-4 py-2 font-semibold text-gray-600">
-                              Item
-                            </th>
-                            <th className="text-right px-4 py-2 font-semibold text-gray-600">
-                              Rate
-                            </th>
-                            <th className="text-right px-4 py-2 font-semibold text-gray-600">
-                              Levy
-                            </th>
-                            <th className="text-right px-4 py-2 font-semibold text-gray-600">
-                              Qty
-                            </th>
-                            <th className="text-left px-4 py-2 font-semibold text-gray-600">
-                              Vehicle No
-                            </th>
-                            <th className="text-right px-4 py-2 font-semibold text-gray-600">
-                              Amount
-                            </th>
-                            <th className="text-left px-4 py-2 font-semibold text-gray-600">
-                              Status
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {viewTicket.items.map((ti) => (
-                            <tr
-                              key={ti.id}
-                              className={`border-b border-gray-100 ${
-                                ti.is_cancelled ? "opacity-50" : ""
-                              }`}
-                            >
-                              <td className="px-4 py-2 text-gray-800">
-                                {ti.item_name || ti.item_id}
-                              </td>
-                              <td className="px-4 py-2 text-right text-gray-600">
-                                {ti.rate.toFixed(2)}
-                              </td>
-                              <td className="px-4 py-2 text-right text-gray-600">
-                                {ti.levy.toFixed(2)}
-                              </td>
-                              <td className="px-4 py-2 text-right text-gray-600">
-                                {ti.quantity}
-                              </td>
-                              <td className="px-4 py-2 text-gray-600">
-                                {ti.vehicle_no || "-"}
-                              </td>
-                              <td className="px-4 py-2 text-right font-medium text-gray-800">
-                                {ti.amount.toFixed(2)}
-                              </td>
-                              <td className="px-4 py-2">
-                                <span
-                                  className={`inline-block text-xs font-semibold px-2 py-0.5 rounded-full ${
-                                    ti.is_cancelled
-                                      ? "bg-red-50 text-red-700"
-                                      : "bg-green-50 text-green-700"
-                                  }`}
-                                >
-                                  {ti.is_cancelled ? "Cancelled" : "Active"}
-                                </span>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-
-                <div className="flex justify-end pt-4">
-                  <button
-                    onClick={() => setViewTicket(null)}
-                    className="px-4 py-2 text-gray-600 hover:text-gray-800 font-medium text-sm transition"
-                  >
-                    Close
-                  </button>
+                <div className="flex justify-between">
+                  <span className="text-sm font-medium text-muted-foreground">Ticket No</span>
+                  <span className="text-sm">{viewTicket.ticket_no}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm font-medium text-muted-foreground">Branch</span>
+                  <span className="text-sm">
+                    {viewTicket.branch_name || viewTicket.branch_id}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm font-medium text-muted-foreground">Route</span>
+                  <span className="text-sm">
+                    {viewTicket.route_name || viewTicket.route_id}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm font-medium text-muted-foreground">Ticket Date</span>
+                  <span className="text-sm">
+                    {viewTicket.ticket_date}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm font-medium text-muted-foreground">Departure</span>
+                  <span className="text-sm">
+                    {viewTicket.departure || "-"}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm font-medium text-muted-foreground">Amount</span>
+                  <span className="text-sm">
+                    {viewTicket.amount.toFixed(2)}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm font-medium text-muted-foreground">Discount</span>
+                  <span className="text-sm">
+                    {(viewTicket.discount || 0).toFixed(2)}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm font-medium text-muted-foreground">Net Amount</span>
+                  <span className="text-sm font-semibold">
+                    {viewTicket.net_amount.toFixed(2)}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm font-medium text-muted-foreground">Status</span>
+                  <Badge variant={viewTicket.is_cancelled ? "destructive" : "default"}>
+                    {viewTicket.is_cancelled ? "Cancelled" : "Active"}
+                  </Badge>
                 </div>
               </div>
-            </div>
+
+              {/* Ticket Items table */}
+              {viewTicket.items && viewTicket.items.length > 0 && (
+                <div>
+                  <h4 className="text-sm font-bold mb-2">Ticket Items</h4>
+                  <div className="rounded-lg border border-border overflow-hidden">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-muted/50">
+                          <TableHead>Item</TableHead>
+                          <TableHead className="text-right">Rate</TableHead>
+                          <TableHead className="text-right">Levy</TableHead>
+                          <TableHead className="text-right">Qty</TableHead>
+                          <TableHead>Vehicle No</TableHead>
+                          <TableHead className="text-right">Amount</TableHead>
+                          <TableHead>Status</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {viewTicket.items.map((ti) => (
+                          <TableRow
+                            key={ti.id}
+                            className={ti.is_cancelled ? "opacity-50" : ""}
+                          >
+                            <TableCell>{ti.item_name || ti.item_id}</TableCell>
+                            <TableCell className="text-right">{ti.rate.toFixed(2)}</TableCell>
+                            <TableCell className="text-right">{ti.levy.toFixed(2)}</TableCell>
+                            <TableCell className="text-right">{ti.quantity}</TableCell>
+                            <TableCell>{ti.vehicle_no || "-"}</TableCell>
+                            <TableCell className="text-right font-medium">{ti.amount.toFixed(2)}</TableCell>
+                            <TableCell>
+                              <Badge variant={ti.is_cancelled ? "destructive" : "default"}>
+                                {ti.is_cancelled ? "Cancelled" : "Active"}
+                              </Badge>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
+              )}
+
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setViewTicket(null)}>
+                  Close
+                </Button>
+              </DialogFooter>
+            </>
           )}
+        </DialogContent>
+      </Dialog>
 
-          {/* Payment Confirmation Modal */}
-          {showPaymentModal && (
-            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]">
-              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl mx-4 p-6 max-h-[90vh] overflow-y-auto">
-                <h3 className="text-lg font-bold text-gray-800 mb-6">
-                  Payment Confirmation
-                </h3>
+      {/* Payment Confirmation Modal */}
+      <Dialog open={showPaymentModal} onOpenChange={(open) => !open && setShowPaymentModal(false)}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Payment Confirmation</DialogTitle>
+          </DialogHeader>
 
-                <div className="space-y-4">
-                  {/* Net Amount (display only) */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-600 mb-1">
-                      Net Amount
-                    </label>
-                    <div className="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-gray-800 text-right font-semibold text-lg bg-gray-50">
-                      {formNetAmount.toFixed(2)}
-                    </div>
-                  </div>
-
-                  {/* Payment Table */}
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <label className="block text-sm font-medium text-gray-600">
-                        Payment Details
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const cashMode = paymentModes.find((pm) => pm.description.toUpperCase() === "CASH");
-                          setPaymentRows((prev) => [
-                            ...prev,
-                            {
-                              tempId: crypto.randomUUID(),
-                              payment_mode_id: cashMode?.id || (paymentModes.length > 0 ? paymentModes[0].id : 0),
-                              amount: 0,
-                              amountStr: "0.00",
-                              reference_id: "",
-                            },
-                          ]);
-                        }}
-                        className="text-xs bg-blue-700 hover:bg-blue-800 text-white font-semibold px-3 py-1.5 rounded-lg transition"
-                      >
-                        + Add Row
-                      </button>
-                    </div>
-                    <div className="border border-gray-200 rounded-lg overflow-hidden">
-                      <table className="w-full text-sm">
-                        <thead className="bg-gray-50 border-b border-gray-200">
-                          <tr>
-                            <th className="text-left px-3 py-2 font-semibold text-gray-600 w-[150px]">
-                              Payment Mode
-                            </th>
-                            <th className="text-right px-3 py-2 font-semibold text-gray-600 w-[140px]">
-                              Amount
-                            </th>
-                            <th className="text-left px-3 py-2 font-semibold text-gray-600">
-                              Reference ID
-                            </th>
-                            <th className="text-center px-3 py-2 font-semibold text-gray-600 w-[70px]">
-                              Action
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {paymentRows.length === 0 ? (
-                            <tr>
-                              <td colSpan={4} className="text-center py-4 text-gray-400">
-                                No payment rows. Click &quot;+ Add Row&quot; to add one.
-                              </td>
-                            </tr>
-                          ) : (
-                            paymentRows.map((pr) => {
-                              const selectedMode = paymentModes.find((pm) => pm.id === pr.payment_mode_id);
-                              const isUpi = selectedMode?.description.toUpperCase() === "UPI";
-                              return (
-                                <tr key={pr.tempId} className="border-b border-gray-100">
-                                  <td className="px-3 py-2">
-                                    <select
-                                      value={pr.payment_mode_id}
-                                      onChange={(e) => {
-                                        const modeId = Number(e.target.value);
-                                        setPaymentRows((prev) =>
-                                          prev.map((row) =>
-                                            row.tempId === pr.tempId
-                                              ? { ...row, payment_mode_id: modeId, reference_id: "" }
-                                              : row
-                                          )
-                                        );
-                                      }}
-                                      className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-black text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    >
-                                      <option value={0}>-- Select --</option>
-                                      {paymentModes.map((pm) => (
-                                        <option key={pm.id} value={pm.id}>
-                                          {pm.description}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  </td>
-                                  <td className="px-3 py-2">
-                                    <input
-                                      type="text"
-                                      inputMode="decimal"
-                                      autoFocus={paymentRows.length === 1 && paymentRows[0].tempId === pr.tempId}
-                                      value={pr.amountStr}
-                                      onChange={(e) => {
-                                        const val = e.target.value;
-                                        if (val === "" || /^\d*\.?\d{0,2}$/.test(val)) {
-                                          setPaymentRows((prev) =>
-                                            prev.map((row) =>
-                                              row.tempId === pr.tempId
-                                                ? { ...row, amountStr: val, amount: parseFloat(val) || 0 }
-                                                : row
-                                            )
-                                          );
-                                        }
-                                      }}
-                                      onFocus={(e) => e.target.select()}
-                                      onBlur={() =>
-                                        setPaymentRows((prev) =>
-                                          prev.map((row) =>
-                                            row.tempId === pr.tempId
-                                              ? { ...row, amountStr: row.amount.toFixed(2) }
-                                              : row
-                                          )
-                                        )
-                                      }
-                                      onKeyDown={(e) => {
-                                        if (e.key === "Enter") {
-                                          e.preventDefault();
-                                          handleSaveAndPrint();
-                                        }
-                                      }}
-                                      className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-black text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    />
-                                  </td>
-                                  <td className="px-3 py-2">
-                                    <input
-                                      type="text"
-                                      disabled={!isUpi}
-                                      placeholder={isUpi ? "Transaction ID" : "-"}
-                                      value={pr.reference_id}
-                                      onChange={(e) =>
-                                        setPaymentRows((prev) =>
-                                          prev.map((row) =>
-                                            row.tempId === pr.tempId
-                                              ? { ...row, reference_id: e.target.value }
-                                              : row
-                                          )
-                                        )
-                                      }
-                                      onKeyDown={(e) => {
-                                        if (e.key === "Enter") {
-                                          e.preventDefault();
-                                          handleSaveAndPrint();
-                                        }
-                                      }}
-                                      className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-black text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed disabled:text-gray-400"
-                                    />
-                                  </td>
-                                  <td className="px-3 py-2 text-center">
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        setPaymentRows((prev) =>
-                                          prev.filter((row) => row.tempId !== pr.tempId)
-                                        )
-                                      }
-                                      className="text-red-600 hover:text-red-800 font-medium text-xs transition"
-                                    >
-                                      Remove
-                                    </button>
-                                  </td>
-                                </tr>
-                              );
-                            })
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-
-                  {/* Received Amount (computed from payment rows) */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-600 mb-1">
-                      Received Amount
-                    </label>
-                    <div
-                      className={`w-full border border-gray-200 rounded-lg px-4 py-2.5 text-right font-semibold text-lg bg-gray-50 ${
-                        receivedAmountRounded >= formNetAmount
-                          ? "text-gray-800"
-                          : "text-red-600"
-                      }`}
-                    >
-                      {receivedAmountRounded.toFixed(2)}
-                    </div>
-                  </div>
-
-                  {/* Re-Payment / Change Amount (display only) */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-600 mb-1">
-                      Re-Payment Amount (Change)
-                    </label>
-                    <div
-                      className={`w-full border border-gray-200 rounded-lg px-4 py-2.5 text-right font-semibold text-lg bg-gray-50 ${
-                        receivedAmountRounded >= formNetAmount
-                          ? "text-green-700"
-                          : "text-red-600"
-                      }`}
-                    >
-                      {(Math.round((receivedAmountRounded - formNetAmount) * 100) / 100).toFixed(2)}
-                    </div>
-                  </div>
-                </div>
-
-                {paymentError && (
-                  <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg p-2 mt-4">
-                    {paymentError}
-                  </p>
-                )}
-
-                <div className="flex justify-end gap-3 mt-6">
-                  <button
-                    type="button"
-                    onClick={() => setShowPaymentModal(false)}
-                    className="px-4 py-2 text-gray-600 hover:text-gray-800 font-medium text-sm transition"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleSaveAndPrint}
-                    disabled={submitting || receivedAmountRounded < formNetAmount}
-                    className="bg-blue-700 hover:bg-blue-800 text-white font-semibold px-5 py-2 rounded-lg transition disabled:opacity-60 disabled:cursor-not-allowed"
-                  >
-                    {submitting ? "Saving..." : "Save & Print"}
-                  </button>
-                </div>
+          <div className="space-y-4">
+            {/* Net Amount (display only) */}
+            <div>
+              <Label>Net Amount</Label>
+              <div className="w-full border border-border rounded-lg px-4 py-2.5 text-right font-semibold text-lg bg-muted">
+                {formNetAmount.toFixed(2)}
               </div>
             </div>
-          )}
 
-          {/* Create/Edit Modal */}
-          {showModal && (
-            <div className="fixed inset-0 z-50">
-              <div
-                ref={modalRef}
-                className="bg-white w-full h-full p-6 overflow-y-auto"
-                onFocusCapture={(e) => {
-                  const el = e.target;
-                  if (el instanceof HTMLInputElement && (el.type === "text" || el.type === "number" || el.type === "date")) {
-                    el.select();
-                  }
-                }}
-                onKeyDownCapture={(e) => {
-                  if ((e.key === "ArrowUp" || e.key === "ArrowDown") && (e.target as HTMLElement)?.tagName === "INPUT" && (e.target as HTMLInputElement).type === "number") {
-                    e.preventDefault();
-                  }
-                }}
-                onWheelCapture={(e) => {
-                  if ((e.target as HTMLElement)?.tagName === "INPUT" && (e.target as HTMLInputElement).type === "number") {
-                    (e.target as HTMLInputElement).blur();
-                  }
-                }}
-                onKeyDown={(e) => {
-                  if (e.key !== "Tab") return;
-                  e.preventDefault();
-                  const container = e.currentTarget;
-                  const focusable = Array.from(
-                    container.querySelectorAll<HTMLElement>(
-                      'input:not([disabled]):not([readonly]):not([tabindex="-1"]), select:not([disabled]):not([tabindex="-1"])'
-                    )
-                  );
-                  if (focusable.length === 0) return;
-                  const idx = focusable.indexOf(document.activeElement as HTMLElement);
-                  if (e.shiftKey) {
-                    focusable[idx <= 0 ? focusable.length - 1 : idx - 1].focus();
-                  } else {
-                    focusable[idx === -1 || idx >= focusable.length - 1 ? 0 : idx + 1].focus();
-                  }
-                }}
-              >
-                <h3 className="text-lg font-bold text-gray-800 mb-4">
-                  {editingTicket
-                    ? `Edit Ticket #${editingTicket.id}`
-                    : "New Ticket"}
-                </h3>
-                <form onSubmit={handleSubmit}>
-                  {/* Master section */}
-                  <div className="grid grid-cols-2 gap-4 mb-6">
-                    {/* Route */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Route *
-                      </label>
-                      {isRouteRestricted || editingTicket ? (
-                        <input
-                          type="text"
-                          readOnly
-                          value={
-                            allRoutes.find((r) => r.id === formRouteId)
-                              ? `${allRoutes.find((r) => r.id === formRouteId)!.branch_one_name} - ${allRoutes.find((r) => r.id === formRouteId)!.branch_two_name}`
-                              : `Route #${formRouteId}`
-                          }
-                          tabIndex={-1}
-                          className="w-full border border-gray-300 rounded-lg px-4 py-2 text-black bg-gray-100 cursor-not-allowed focus:outline-none"
-                        />
-                      ) : (
-                        <select
-                          required
-                          value={formRouteId}
-                          onChange={async (e) => {
-                            const newRouteId = Number(e.target.value);
-                            handleRouteChange(newRouteId);
-                            if (newRouteId && formItems.length > 0) {
-                              const updatedItems = await Promise.all(
-                                formItems.map(async (fi) => {
-                                  if (!fi.item_id || fi.is_cancelled) return fi;
-                                  try {
-                                    const res = await api.get<RateLookupResponse>(
-                                      `/api/tickets/rate-lookup?item_id=${fi.item_id}&route_id=${newRouteId}`
-                                    );
-                                    return { ...fi, rate: res.data.rate, levy: res.data.levy };
-                                  } catch {
-                                    return { ...fi, rate: 0, levy: 0 };
-                                  }
-                                })
-                              );
-                              setFormItems(updatedItems);
-                            }
-                          }}
-                          className="w-full border border-gray-300 rounded-lg px-4 py-2 text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        >
-                          <option value={0}>-- Select Route --</option>
-                          {allRoutes.map((r) => (
-                            <option key={r.id} value={r.id}>
-                              {r.branch_one_name} - {r.branch_two_name}
-                            </option>
-                          ))}
-                        </select>
-                      )}
-                    </div>
-
-                    {/* Branch */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Branch *
-                      </label>
-                      {isRouteRestricted || editingTicket ? (
-                        <input
-                          type="text"
-                          readOnly
-                          value={
-                            branches.find((b) => b.id === formBranchId)?.name ||
-                            getSelectedBranchName() ||
-                            `Branch #${formBranchId}`
-                          }
-                          tabIndex={-1}
-                          className="w-full border border-gray-300 rounded-lg px-4 py-2 text-black bg-gray-100 cursor-not-allowed focus:outline-none"
-                        />
-                      ) : (
-                        <select
-                          required
-                          value={formBranchId}
-                          onChange={(e) => handleBranchChange(Number(e.target.value))}
-                          className="w-full border border-gray-300 rounded-lg px-4 py-2 text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        >
-                          <option value={0}>-- Select Branch --</option>
-                          {filteredBranches.map((b) => (
-                            <option key={b.id} value={b.id}>
-                              {b.name}
-                            </option>
-                          ))}
-                        </select>
-                      )}
-                    </div>
-
-                    {/* Ticket Date */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Ticket Date *
-                      </label>
-                      <input
-                        type="date"
-                        required
-                        readOnly={user?.role === "BILLING_OPERATOR"}
-                        tabIndex={user?.role === "BILLING_OPERATOR" ? -1 : undefined}
-                        value={formTicketDate}
-                        onChange={(e) => setFormTicketDate(e.target.value)}
-                        className={`w-full border border-gray-300 rounded-lg px-4 py-2 text-black focus:outline-none ${
-                          user?.role === "BILLING_OPERATOR"
-                            ? "bg-gray-100 cursor-not-allowed"
-                            : "focus:ring-2 focus:ring-blue-500"
-                        }`}
-                      />
-                    </div>
-
-                    {/* Departure */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Departure
-                      </label>
-                      <select
-                        ref={departureRef}
-                        value={formDeparture}
-                        onChange={(e) => setFormDeparture(e.target.value)}
-                        className="w-full border border-gray-300 rounded-lg px-4 py-2 text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      >
-                        <option value="">-- Select Departure --</option>
-                        {ferrySchedules
-                          .filter((fs) => !formBranchId || fs.branch_id === formBranchId)
-                          .map((fs) => (
-                            <option key={fs.id} value={fs.departure}>
-                              {fs.departure}
-                            </option>
-                          ))}
-                      </select>
-                    </div>
-
-                    {/* Payment Mode hidden for now */}
-
-                    {/* Ticket No (read-only, edit mode only) */}
-                    {editingTicket && (
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Ticket No
-                        </label>
-                        <input
-                          type="text"
-                          readOnly
-                          tabIndex={-1}
-                          value={editingTicket.ticket_no}
-                          className="w-full border border-gray-300 rounded-lg px-4 py-2 text-black bg-gray-100 cursor-not-allowed focus:outline-none"
-                        />
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Detail section - Ticket Items */}
-                  <div className="mb-4">
-                    <div className="border border-gray-200 rounded-lg overflow-hidden">
-                      <table className="w-full text-sm">
-                        <thead className="bg-gray-50 border-b border-gray-200">
-                          <tr>
-                            <th className="text-left px-3 py-2 font-semibold text-gray-600 w-[70px]">
-                              ID
-                            </th>
-                            <th className="text-left px-3 py-2 font-semibold text-gray-600 w-[30%]">
-                              Item
-                            </th>
-                            <th className="text-right px-3 py-2 font-semibold text-gray-600 w-[100px]">
-                              Rate
-                            </th>
-                            <th className="text-right px-3 py-2 font-semibold text-gray-600 w-[100px]">
-                              Levy
-                            </th>
-                            <th className="text-right px-3 py-2 font-semibold text-gray-600 w-[70px]">
-                              Qty
-                            </th>
-                            <th className="text-left px-3 py-2 font-semibold text-gray-600 w-[140px]">
-                              Vehicle No
-                            </th>
-                            <th className="text-right px-3 py-2 font-semibold text-gray-600 w-[110px]">
-                              Amount
-                            </th>
-                            <th className="text-center px-3 py-2 w-[100px]">
-                              <button
-                                type="button"
-                                tabIndex={-1}
-                                onClick={handleAddItem}
-                                disabled={formItems.some((fi) => isFormRowInvalid(fi, items))}
-                                className="text-xs bg-blue-700 hover:bg-blue-800 text-white font-semibold px-3 py-1.5 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
+            {/* Payment Table */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <Label>Payment Details</Label>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => {
+                    const cashMode = paymentModes.find((pm) => pm.description.toUpperCase() === "CASH");
+                    setPaymentRows((prev) => [
+                      ...prev,
+                      {
+                        tempId: crypto.randomUUID(),
+                        payment_mode_id: cashMode?.id || (paymentModes.length > 0 ? paymentModes[0].id : 0),
+                        amount: 0,
+                        amountStr: "0.00",
+                        reference_id: "",
+                      },
+                    ]);
+                  }}
+                >
+                  <Plus className="h-3 w-3 mr-1" /> Add Row
+                </Button>
+              </div>
+              <div className="rounded-lg border border-border overflow-hidden">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/50">
+                      <TableHead className="w-[150px]">Payment Mode</TableHead>
+                      <TableHead className="text-right w-[140px]">Amount</TableHead>
+                      <TableHead>Reference ID</TableHead>
+                      <TableHead className="text-center w-[70px]">Action</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {paymentRows.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={4} className="text-center py-4 text-muted-foreground">
+                          No payment rows. Click &quot;+ Add Row&quot; to add one.
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      paymentRows.map((pr) => {
+                        const selectedMode = paymentModes.find((pm) => pm.id === pr.payment_mode_id);
+                        const isUpi = selectedMode?.description.toUpperCase() === "UPI";
+                        return (
+                          <TableRow key={pr.tempId}>
+                            <TableCell className="px-3 py-2">
+                              <select
+                                value={pr.payment_mode_id}
+                                onChange={(e) => {
+                                  const modeId = Number(e.target.value);
+                                  setPaymentRows((prev) =>
+                                    prev.map((row) =>
+                                      row.tempId === pr.tempId
+                                        ? { ...row, payment_mode_id: modeId, reference_id: "" }
+                                        : row
+                                    )
+                                  );
+                                }}
+                                className="w-full border border-input rounded-md px-2 py-1.5 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-ring"
                               >
-                                + Add Item
-                              </button>
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {formItems.length === 0 ? (
-                            <tr>
-                              <td
-                                colSpan={8}
-                                className="text-center py-4 text-gray-400"
-                              >
-                                No items added. Click &quot;+ Add Item&quot; to add one.
-                              </td>
-                            </tr>
-                          ) : (
-                            formItems.map((fi) => {
-                              const selectedItem = items.find((i) => i.id === fi.item_id);
-                              const isVehicle = selectedItem?.is_vehicle === true;
-                              const rowAmount = fi.is_cancelled
-                                ? 0
-                                : fi.quantity * (fi.rate + fi.levy);
-                              return (
-                                <tr
-                                  key={fi.tempId}
-                                  className={`border-b border-gray-100 ${
-                                    fi.is_cancelled ? "opacity-40 bg-gray-50" : ""
-                                  }`}
-                                >
-                                  <td className="px-3 py-2">
-                                    <input
-                                      type="number"
-                                      min="1"
-                                      disabled={fi.is_cancelled}
-                                      value={fi.item_id || ""}
-                                      placeholder="ID"
-                                      onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }}
-                                      onChange={(e) => {
-                                        const id = parseInt(e.target.value) || 0;
-                                        if (id && items.some((i) => i.id === id)) {
-                                          handleItemChange(fi.tempId, id);
-                                        } else {
-                                          setFormItems((prev) =>
-                                            prev.map((item) =>
-                                              item.tempId === fi.tempId
-                                                ? { ...item, item_id: id, rate: 0, levy: 0 }
-                                                : item
-                                            )
-                                          );
-                                        }
-                                      }}
-
-                                      className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-black text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
-                                    />
-                                  </td>
-                                  <td className="px-3 py-2">
-                                    <ItemSearchSelect
-                                      items={items}
-                                      selectedId={fi.item_id}
-                                      disabled={fi.is_cancelled}
-                                      onSelect={(id) => handleItemChange(fi.tempId, id)}
-                                      tabIndex={fi.item_id && items.some((i) => i.id === fi.item_id) ? -1 : 0}
-                                    />
-                                  </td>
-                                  <td className="px-3 py-2">
-                                    <input
-                                      tabIndex={-1}
-                                      type="text"
-                                      readOnly
-                                      value={fi.rate.toFixed(2)}
-                                      className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-black text-sm text-right bg-gray-100 cursor-not-allowed focus:outline-none"
-                                    />
-                                  </td>
-                                  <td className="px-3 py-2">
-                                    <input
-                                      tabIndex={-1}
-                                      type="text"
-                                      readOnly
-                                      value={fi.levy.toFixed(2)}
-                                      className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-black text-sm text-right bg-gray-100 cursor-not-allowed focus:outline-none"
-                                    />
-                                  </td>
-                                  <td className="px-3 py-2">
-                                    <input
-                                      id={`qty-${fi.tempId}`}
-                                      type="number"
-                                      min="1"
-                                      disabled={fi.is_cancelled}
-                                      value={fi.quantity}
-                                      onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }}
-                                      onChange={(e) =>
-                                        setFormItems((prev) =>
-                                          prev.map((item) =>
-                                            item.tempId === fi.tempId
-                                              ? {
-                                                  ...item,
-                                                  quantity:
-                                                    parseInt(e.target.value) || 1,
-                                                }
-                                              : item
-                                          )
-                                        )
-                                      }
-                                      className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-black text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
-                                    />
-                                  </td>
-                                  <td className="px-3 py-2">
-                                    <input
-                                      type="text"
-                                      disabled={fi.is_cancelled || !isVehicle}
-                                      readOnly={!isVehicle}
-                                      tabIndex={!isVehicle ? -1 : undefined}
-                                      value={fi.vehicle_no}
-                                      onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }}
-                                      onChange={(e) =>
-                                        setFormItems((prev) =>
-                                          prev.map((item) =>
-                                            item.tempId === fi.tempId
-                                              ? {
-                                                  ...item,
-                                                  vehicle_no: e.target.value,
-                                                }
-                                              : item
-                                          )
-                                        )
-                                      }
-                                      placeholder={isVehicle ? "Vehicle No" : ""}
-                                      className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-black text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
-                                    />
-                                  </td>
-                                  <td className="px-3 py-2">
-                                    <input
-                                      tabIndex={-1}
-                                      type="text"
-                                      readOnly
-                                      value={rowAmount.toFixed(2)}
-                                      className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-black text-sm text-right bg-gray-100 cursor-not-allowed focus:outline-none"
-                                    />
-                                  </td>
-                                  <td className="px-3 py-2 text-center">
-                                    {fi.is_cancelled ? (
-                                      <button
-                                        type="button"
-                                        tabIndex={-1}
-                                        onClick={() => handleRestoreItem(fi.tempId)}
-                                        className="text-green-600 hover:text-green-800 font-medium text-xs transition"
-                                      >
-                                        Restore
-                                      </button>
-                                    ) : (
-                                      <button
-                                        type="button"
-                                        tabIndex={-1}
-                                        onClick={() => handleCancelItem(fi.tempId)}
-                                        className="text-red-600 hover:text-red-800 font-medium text-xs transition"
-                                      >
-                                        Cancel
-                                      </button>
-                                    )}
-                                  </td>
-                                </tr>
-                              );
-                            })
-                          )}
-                        </tbody>
-                        <tfoot className="border-t border-gray-200">
-                          <tr>
-                            <td colSpan={6} className="px-3 py-2 text-right text-sm font-medium text-gray-600">
-                              Amount
-                            </td>
-                            <td className="px-3 py-2">
-                              <input
-                                type="text"
-                                readOnly
-                                tabIndex={-1}
-                                value={formAmount.toFixed(2)}
-                                className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-black text-sm text-right bg-gray-100 cursor-not-allowed focus:outline-none"
-                              />
-                            </td>
-                            <td></td>
-                          </tr>
-                          <tr>
-                            <td colSpan={6} className="px-3 py-2 text-right text-sm font-medium text-gray-600">
-                              Discount
-                            </td>
-                            <td className="px-3 py-2">
-                              <input
+                                <option value={0}>-- Select --</option>
+                                {paymentModes.map((pm) => (
+                                  <option key={pm.id} value={pm.id}>
+                                    {pm.description}
+                                  </option>
+                                ))}
+                              </select>
+                            </TableCell>
+                            <TableCell className="px-3 py-2">
+                              <Input
                                 type="text"
                                 inputMode="decimal"
-                                tabIndex={-1}
-                                value={discountStr}
+                                autoFocus={paymentRows.length === 1 && paymentRows[0].tempId === pr.tempId}
+                                value={pr.amountStr}
                                 onChange={(e) => {
                                   const val = e.target.value;
                                   if (val === "" || /^\d*\.?\d{0,2}$/.test(val)) {
-                                    setDiscountStr(val);
-                                    setFormDiscount(parseFloat(val) || 0);
+                                    setPaymentRows((prev) =>
+                                      prev.map((row) =>
+                                        row.tempId === pr.tempId
+                                          ? { ...row, amountStr: val, amount: parseFloat(val) || 0 }
+                                          : row
+                                      )
+                                    );
                                   }
                                 }}
-                                onBlur={() => setDiscountStr(formDiscount.toFixed(2))}
-                                className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-black text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                onFocus={(e) => e.target.select()}
+                                onBlur={() =>
+                                  setPaymentRows((prev) =>
+                                    prev.map((row) =>
+                                      row.tempId === pr.tempId
+                                        ? { ...row, amountStr: row.amount.toFixed(2) }
+                                        : row
+                                    )
+                                  )
+                                }
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") {
+                                    e.preventDefault();
+                                    handleSaveAndPrint();
+                                  }
+                                }}
+                                className="text-right"
                               />
-                            </td>
-                            <td></td>
-                          </tr>
-                          <tr>
-                            <td colSpan={6} className="px-3 py-2 text-right text-sm font-semibold text-gray-800">
-                              Net Amount
-                            </td>
-                            <td className="px-3 py-2">
-                              <input
+                            </TableCell>
+                            <TableCell className="px-3 py-2">
+                              <Input
                                 type="text"
-                                readOnly
-                                tabIndex={-1}
-                                value={formNetAmount.toFixed(2)}
-                                className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-black text-sm text-right font-semibold bg-gray-100 cursor-not-allowed focus:outline-none"
+                                disabled={!isUpi}
+                                placeholder={isUpi ? "Transaction ID" : "-"}
+                                value={pr.reference_id}
+                                onChange={(e) =>
+                                  setPaymentRows((prev) =>
+                                    prev.map((row) =>
+                                      row.tempId === pr.tempId
+                                        ? { ...row, reference_id: e.target.value }
+                                        : row
+                                    )
+                                  )
+                                }
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") {
+                                    e.preventDefault();
+                                    handleSaveAndPrint();
+                                  }
+                                }}
                               />
-                            </td>
-                            <td></td>
-                          </tr>
-                        </tfoot>
-                      </table>
-                    </div>
-                  </div>
-
-                  {formError && (
-                    <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded p-2 mb-4">
-                      {formError}
-                    </p>
-                  )}
-
-                  <div className="flex items-center justify-between pt-2">
-                    {/* Last ticket quick info */}
-                    {!editingTicket && lastTicketInfo ? (
-                      <div className="flex items-center gap-5 px-3 py-2 text-sm text-gray-600 border border-blue-200 rounded-lg bg-blue-50">
-                        <span className="font-bold text-blue-700 uppercase tracking-wide">Last Ticket:</span>
-                        <span>
-                          Mode: <span className="font-bold text-gray-900">{lastTicketInfo.paymentModes.join(", ")}</span>
-                        </span>
-                        <span>
-                          Amt: <span className="font-bold text-gray-900">{lastTicketInfo.amount.toFixed(2)}</span>
-                        </span>
-                        <span>
-                          Change: <span className="font-bold text-gray-900">{lastTicketInfo.repayment.toFixed(2)}</span>
-                        </span>
-                        {lastTicketInfo.refNo && (
-                          <span>
-                            Ref: <span className="font-bold text-gray-900">{lastTicketInfo.refNo}</span>
-                          </span>
-                        )}
-                      </div>
-                    ) : (
-                      <div />
+                            </TableCell>
+                            <TableCell className="px-3 py-2 text-center">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="text-destructive hover:text-destructive"
+                                onClick={() =>
+                                  setPaymentRows((prev) =>
+                                    prev.filter((row) => row.tempId !== pr.tempId)
+                                  )
+                                }
+                              >
+                                Remove
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })
                     )}
-
-                    <div className="flex gap-3">
-                      <button
-                        type="button"
-                        tabIndex={-1}
-                        onClick={closeModal}
-                        className="px-4 py-2 text-gray-600 hover:text-gray-800 font-medium text-sm transition"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        ref={submitRef}
-                        type="submit"
-                        tabIndex={-1}
-                        disabled={submitting || formItems.some((fi) => isFormRowInvalid(fi, items))}
-                        className="bg-blue-700 hover:bg-blue-800 text-white font-semibold px-5 py-2 rounded-lg transition disabled:opacity-60 disabled:cursor-not-allowed"
-                      >
-                      {submitting
-                        ? "Saving..."
-                        : editingTicket
-                          ? "Update Ticket"
-                          : "Create Ticket"}
-                      </button>
-                    </div>
-                  </div>
-                </form>
+                  </TableBody>
+                </Table>
               </div>
             </div>
+
+            {/* Received Amount (computed from payment rows) */}
+            <div>
+              <Label>Received Amount</Label>
+              <div
+                className={`w-full border border-border rounded-lg px-4 py-2.5 text-right font-semibold text-lg bg-muted ${
+                  receivedAmountRounded >= formNetAmount
+                    ? ""
+                    : "text-destructive"
+                }`}
+              >
+                {receivedAmountRounded.toFixed(2)}
+              </div>
+            </div>
+
+            {/* Re-Payment / Change Amount (display only) */}
+            <div>
+              <Label>Re-Payment Amount (Change)</Label>
+              <div
+                className={`w-full border border-border rounded-lg px-4 py-2.5 text-right font-semibold text-lg bg-muted ${
+                  receivedAmountRounded >= formNetAmount
+                    ? "text-green-700"
+                    : "text-destructive"
+                }`}
+              >
+                {(Math.round((receivedAmountRounded - formNetAmount) * 100) / 100).toFixed(2)}
+              </div>
+            </div>
+          </div>
+
+          {paymentError && (
+            <p className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded p-2 mt-4">
+              {paymentError}
+            </p>
           )}
+
+          <DialogFooter className="mt-6">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShowPaymentModal(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={handleSaveAndPrint}
+              disabled={submitting || receivedAmountRounded < formNetAmount}
+            >
+              {submitting ? "Saving..." : "Save & Print"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create/Edit Modal */}
+      <Dialog open={showModal} onOpenChange={(open) => !open && closeModal()}>
+        <DialogContent className="max-w-none w-full h-full max-h-full rounded-none border-none p-0 [&>button]:hidden">
+          <div
+            ref={modalRef}
+            className="w-full h-full p-6 overflow-y-auto"
+            onFocusCapture={(e) => {
+              const el = e.target;
+              if (el instanceof HTMLInputElement && (el.type === "text" || el.type === "number" || el.type === "date")) {
+                el.select();
+              }
+            }}
+            onKeyDownCapture={(e) => {
+              if ((e.key === "ArrowUp" || e.key === "ArrowDown") && (e.target as HTMLElement)?.tagName === "INPUT" && (e.target as HTMLInputElement).type === "number") {
+                e.preventDefault();
+              }
+            }}
+            onWheelCapture={(e) => {
+              if ((e.target as HTMLElement)?.tagName === "INPUT" && (e.target as HTMLInputElement).type === "number") {
+                (e.target as HTMLInputElement).blur();
+              }
+            }}
+            onKeyDown={(e) => {
+              if (e.key !== "Tab") return;
+              e.preventDefault();
+              const container = e.currentTarget;
+              const focusable = Array.from(
+                container.querySelectorAll<HTMLElement>(
+                  'input:not([disabled]):not([readonly]):not([tabindex="-1"]), select:not([disabled]):not([tabindex="-1"])'
+                )
+              );
+              if (focusable.length === 0) return;
+              const idx = focusable.indexOf(document.activeElement as HTMLElement);
+              if (e.shiftKey) {
+                focusable[idx <= 0 ? focusable.length - 1 : idx - 1].focus();
+              } else {
+                focusable[idx === -1 || idx >= focusable.length - 1 ? 0 : idx + 1].focus();
+              }
+            }}
+          >
+            <h3 className="text-lg font-bold mb-4">
+              {editingTicket
+                ? `Edit Ticket #${editingTicket.id}`
+                : "New Ticket"}
+            </h3>
+            <form onSubmit={handleSubmit}>
+              {/* Master section */}
+              <div className="grid grid-cols-2 gap-4 mb-6">
+                {/* Route */}
+                <div>
+                  <Label className="mb-1 block">Route *</Label>
+                  {isRouteRestricted || editingTicket ? (
+                    <Input
+                      type="text"
+                      readOnly
+                      value={
+                        allRoutes.find((r) => r.id === formRouteId)
+                          ? `${allRoutes.find((r) => r.id === formRouteId)!.branch_one_name} - ${allRoutes.find((r) => r.id === formRouteId)!.branch_two_name}`
+                          : `Route #${formRouteId}`
+                      }
+                      tabIndex={-1}
+                      className="bg-muted cursor-not-allowed"
+                    />
+                  ) : (
+                    <select
+                      required
+                      value={formRouteId}
+                      onChange={async (e) => {
+                        const newRouteId = Number(e.target.value);
+                        handleRouteChange(newRouteId);
+                        if (newRouteId && formItems.length > 0) {
+                          const updatedItems = await Promise.all(
+                            formItems.map(async (fi) => {
+                              if (!fi.item_id || fi.is_cancelled) return fi;
+                              try {
+                                const res = await api.get<RateLookupResponse>(
+                                  `/api/tickets/rate-lookup?item_id=${fi.item_id}&route_id=${newRouteId}`
+                                );
+                                return { ...fi, rate: res.data.rate, levy: res.data.levy };
+                              } catch {
+                                return { ...fi, rate: 0, levy: 0 };
+                              }
+                            })
+                          );
+                          setFormItems(updatedItems);
+                        }
+                      }}
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                    >
+                      <option value={0}>-- Select Route --</option>
+                      {allRoutes.map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.branch_one_name} - {r.branch_two_name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+
+                {/* Branch */}
+                <div>
+                  <Label className="mb-1 block">Branch *</Label>
+                  {isRouteRestricted || editingTicket ? (
+                    <Input
+                      type="text"
+                      readOnly
+                      value={
+                        branches.find((b) => b.id === formBranchId)?.name ||
+                        getSelectedBranchName() ||
+                        `Branch #${formBranchId}`
+                      }
+                      tabIndex={-1}
+                      className="bg-muted cursor-not-allowed"
+                    />
+                  ) : (
+                    <select
+                      required
+                      value={formBranchId}
+                      onChange={(e) => handleBranchChange(Number(e.target.value))}
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                    >
+                      <option value={0}>-- Select Branch --</option>
+                      {filteredBranches.map((b) => (
+                        <option key={b.id} value={b.id}>
+                          {b.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+
+                {/* Ticket Date */}
+                <div>
+                  <Label className="mb-1 block">Ticket Date *</Label>
+                  <Input
+                    type="date"
+                    required
+                    readOnly={user?.role === "BILLING_OPERATOR"}
+                    tabIndex={user?.role === "BILLING_OPERATOR" ? -1 : undefined}
+                    value={formTicketDate}
+                    onChange={(e) => setFormTicketDate(e.target.value)}
+                    className={
+                      user?.role === "BILLING_OPERATOR"
+                        ? "bg-muted cursor-not-allowed"
+                        : ""
+                    }
+                  />
+                </div>
+
+                {/* Departure */}
+                <div>
+                  <Label className="mb-1 block">Departure</Label>
+                  <select
+                    ref={departureRef}
+                    value={formDeparture}
+                    onChange={(e) => setFormDeparture(e.target.value)}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                  >
+                    <option value="">-- Select Departure --</option>
+                    {ferrySchedules
+                      .filter((fs) => !formBranchId || fs.branch_id === formBranchId)
+                      .map((fs) => (
+                        <option key={fs.id} value={fs.departure}>
+                          {fs.departure}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+
+                {/* Payment Mode hidden for now */}
+
+                {/* Ticket No (read-only, edit mode only) */}
+                {editingTicket && (
+                  <div>
+                    <Label className="mb-1 block">Ticket No</Label>
+                    <Input
+                      type="text"
+                      readOnly
+                      tabIndex={-1}
+                      value={editingTicket.ticket_no}
+                      className="bg-muted cursor-not-allowed"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Detail section - Ticket Items */}
+              <div className="mb-4">
+                <div className="border border-border rounded-lg overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-muted/50 border-b border-border">
+                      <tr>
+                        <th className="text-left px-3 py-2 font-semibold text-muted-foreground w-[70px]">
+                          ID
+                        </th>
+                        <th className="text-left px-3 py-2 font-semibold text-muted-foreground w-[30%]">
+                          Item
+                        </th>
+                        <th className="text-right px-3 py-2 font-semibold text-muted-foreground w-[100px]">
+                          Rate
+                        </th>
+                        <th className="text-right px-3 py-2 font-semibold text-muted-foreground w-[100px]">
+                          Levy
+                        </th>
+                        <th className="text-right px-3 py-2 font-semibold text-muted-foreground w-[70px]">
+                          Qty
+                        </th>
+                        <th className="text-left px-3 py-2 font-semibold text-muted-foreground w-[140px]">
+                          Vehicle No
+                        </th>
+                        <th className="text-right px-3 py-2 font-semibold text-muted-foreground w-[110px]">
+                          Amount
+                        </th>
+                        <th className="text-center px-3 py-2 w-[100px]">
+                          <Button
+                            type="button"
+                            size="sm"
+                            tabIndex={-1}
+                            onClick={handleAddItem}
+                            disabled={formItems.some((fi) => isFormRowInvalid(fi, items))}
+                          >
+                            <Plus className="h-3 w-3 mr-1" /> Add Item
+                          </Button>
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {formItems.length === 0 ? (
+                        <tr>
+                          <td
+                            colSpan={8}
+                            className="text-center py-4 text-muted-foreground"
+                          >
+                            No items added. Click &quot;+ Add Item&quot; to add one.
+                          </td>
+                        </tr>
+                      ) : (
+                        formItems.map((fi) => {
+                          const selectedItem = items.find((i) => i.id === fi.item_id);
+                          const isVehicle = selectedItem?.is_vehicle === true;
+                          const rowAmount = fi.is_cancelled
+                            ? 0
+                            : fi.quantity * (fi.rate + fi.levy);
+                          return (
+                            <tr
+                              key={fi.tempId}
+                              className={`border-b border-border ${
+                                fi.is_cancelled ? "opacity-40 bg-muted" : ""
+                              }`}
+                            >
+                              <td className="px-3 py-2">
+                                <Input
+                                  type="number"
+                                  min={1}
+                                  disabled={fi.is_cancelled}
+                                  value={fi.item_id || ""}
+                                  placeholder="ID"
+                                  onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }}
+                                  onChange={(e) => {
+                                    const id = parseInt(e.target.value) || 0;
+                                    if (id && items.some((i) => i.id === id)) {
+                                      handleItemChange(fi.tempId, id);
+                                    } else {
+                                      setFormItems((prev) =>
+                                        prev.map((item) =>
+                                          item.tempId === fi.tempId
+                                            ? { ...item, item_id: id, rate: 0, levy: 0 }
+                                            : item
+                                        )
+                                      );
+                                    }
+                                  }}
+                                  className="h-8"
+                                />
+                              </td>
+                              <td className="px-3 py-2">
+                                <ItemSearchSelect
+                                  items={items}
+                                  selectedId={fi.item_id}
+                                  disabled={fi.is_cancelled}
+                                  onSelect={(id) => handleItemChange(fi.tempId, id)}
+                                  tabIndex={fi.item_id && items.some((i) => i.id === fi.item_id) ? -1 : 0}
+                                />
+                              </td>
+                              <td className="px-3 py-2">
+                                <Input
+                                  tabIndex={-1}
+                                  type="text"
+                                  readOnly
+                                  value={fi.rate.toFixed(2)}
+                                  className="h-8 text-right bg-muted cursor-not-allowed"
+                                />
+                              </td>
+                              <td className="px-3 py-2">
+                                <Input
+                                  tabIndex={-1}
+                                  type="text"
+                                  readOnly
+                                  value={fi.levy.toFixed(2)}
+                                  className="h-8 text-right bg-muted cursor-not-allowed"
+                                />
+                              </td>
+                              <td className="px-3 py-2">
+                                <Input
+                                  id={`qty-${fi.tempId}`}
+                                  type="number"
+                                  min={1}
+                                  disabled={fi.is_cancelled}
+                                  value={fi.quantity}
+                                  onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }}
+                                  onChange={(e) =>
+                                    setFormItems((prev) =>
+                                      prev.map((item) =>
+                                        item.tempId === fi.tempId
+                                          ? {
+                                              ...item,
+                                              quantity:
+                                                parseInt(e.target.value) || 1,
+                                            }
+                                          : item
+                                      )
+                                    )
+                                  }
+                                  className="h-8 text-right"
+                                />
+                              </td>
+                              <td className="px-3 py-2">
+                                <Input
+                                  type="text"
+                                  disabled={fi.is_cancelled || !isVehicle}
+                                  readOnly={!isVehicle}
+                                  tabIndex={!isVehicle ? -1 : undefined}
+                                  value={fi.vehicle_no}
+                                  onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }}
+                                  onChange={(e) =>
+                                    setFormItems((prev) =>
+                                      prev.map((item) =>
+                                        item.tempId === fi.tempId
+                                          ? {
+                                              ...item,
+                                              vehicle_no: e.target.value,
+                                            }
+                                          : item
+                                      )
+                                    )
+                                  }
+                                  placeholder={isVehicle ? "Vehicle No" : ""}
+                                  className="h-8"
+                                />
+                              </td>
+                              <td className="px-3 py-2">
+                                <Input
+                                  tabIndex={-1}
+                                  type="text"
+                                  readOnly
+                                  value={rowAmount.toFixed(2)}
+                                  className="h-8 text-right bg-muted cursor-not-allowed"
+                                />
+                              </td>
+                              <td className="px-3 py-2 text-center">
+                                {fi.is_cancelled ? (
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    tabIndex={-1}
+                                    onClick={() => handleRestoreItem(fi.tempId)}
+                                    className="text-green-600 hover:text-green-800"
+                                  >
+                                    Restore
+                                  </Button>
+                                ) : (
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    tabIndex={-1}
+                                    onClick={() => handleCancelItem(fi.tempId)}
+                                    className="text-destructive hover:text-destructive"
+                                  >
+                                    Cancel
+                                  </Button>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                    <tfoot className="border-t border-border">
+                      <tr>
+                        <td colSpan={6} className="px-3 py-2 text-right text-sm font-medium text-muted-foreground">
+                          Amount
+                        </td>
+                        <td className="px-3 py-2">
+                          <Input
+                            type="text"
+                            readOnly
+                            tabIndex={-1}
+                            value={formAmount.toFixed(2)}
+                            className="h-8 text-right bg-muted cursor-not-allowed"
+                          />
+                        </td>
+                        <td></td>
+                      </tr>
+                      <tr>
+                        <td colSpan={6} className="px-3 py-2 text-right text-sm font-medium text-muted-foreground">
+                          Discount
+                        </td>
+                        <td className="px-3 py-2">
+                          <Input
+                            type="text"
+                            inputMode="decimal"
+                            tabIndex={-1}
+                            value={discountStr}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              if (val === "" || /^\d*\.?\d{0,2}$/.test(val)) {
+                                setDiscountStr(val);
+                                setFormDiscount(parseFloat(val) || 0);
+                              }
+                            }}
+                            onBlur={() => setDiscountStr(formDiscount.toFixed(2))}
+                            className="h-8 text-right"
+                          />
+                        </td>
+                        <td></td>
+                      </tr>
+                      <tr>
+                        <td colSpan={6} className="px-3 py-2 text-right text-sm font-semibold">
+                          Net Amount
+                        </td>
+                        <td className="px-3 py-2">
+                          <Input
+                            type="text"
+                            readOnly
+                            tabIndex={-1}
+                            value={formNetAmount.toFixed(2)}
+                            className="h-8 text-right font-semibold bg-muted cursor-not-allowed"
+                          />
+                        </td>
+                        <td></td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
+
+              {formError && (
+                <p className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded p-2 mb-4">
+                  {formError}
+                </p>
+              )}
+
+              <div className="flex items-center justify-between pt-2">
+                {/* Last ticket quick info */}
+                {!editingTicket && lastTicketInfo ? (
+                  <div className="flex items-center gap-5 px-3 py-2 text-sm text-muted-foreground border border-blue-200 rounded-lg bg-blue-50">
+                    <span className="font-bold text-blue-700 uppercase tracking-wide">Last Ticket:</span>
+                    <span>
+                      Mode: <span className="font-bold text-foreground">{lastTicketInfo.paymentModes.join(", ")}</span>
+                    </span>
+                    <span>
+                      Amt: <span className="font-bold text-foreground">{lastTicketInfo.amount.toFixed(2)}</span>
+                    </span>
+                    <span>
+                      Change: <span className="font-bold text-foreground">{lastTicketInfo.repayment.toFixed(2)}</span>
+                    </span>
+                    {lastTicketInfo.refNo && (
+                      <span>
+                        Ref: <span className="font-bold text-foreground">{lastTicketInfo.refNo}</span>
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  <div />
+                )}
+
+                <div className="flex gap-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    tabIndex={-1}
+                    onClick={closeModal}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    ref={submitRef}
+                    type="submit"
+                    tabIndex={-1}
+                    disabled={submitting || formItems.some((fi) => isFormRowInvalid(fi, items))}
+                  >
+                  {submitting
+                    ? "Saving..."
+                    : editingTicket
+                      ? "Update Ticket"
+                      : "Create Ticket"}
+                  </Button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
