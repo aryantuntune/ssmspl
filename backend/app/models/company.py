@@ -19,6 +19,7 @@ class Company(AuditMixin, Base):
     contact: Mapped[str | None] = mapped_column(String(255), nullable=True)
     email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     sf_item_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    active_theme: Mapped[str | None] = mapped_column(String(50), nullable=True, default="ocean")
 
     def __repr__(self) -> str:
         return f"<Company id={self.id} name={self.name}>"

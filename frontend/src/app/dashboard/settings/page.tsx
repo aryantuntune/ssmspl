@@ -1,12 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import api from "@/lib/api";
-import { isAuthenticated } from "@/lib/auth";
-import { User, Company, CompanyUpdate } from "@/types";
-import Navbar from "@/components/Navbar";
-import Sidebar from "@/components/Sidebar";
+import { Company, CompanyUpdate } from "@/types";
 
 interface FormData {
   name: string;
@@ -50,8 +46,6 @@ function companyToForm(c: Company): FormData {
 }
 
 export default function SettingsPage() {
-  const router = useRouter();
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [company, setCompany] = useState<Company | null>(null);
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState<FormData>(emptyForm);
@@ -60,26 +54,12 @@ export default function SettingsPage() {
   const [success, setSuccess] = useState("");
 
   useEffect(() => {
-    if (!isAuthenticated()) {
-      router.push("/login");
-      return;
-    }
-
     const init = async () => {
       try {
-        const { data: user } = await api.get<User>("/api/auth/me");
-        setCurrentUser(user);
-
         const { data: comp } = await api.get<Company>("/api/company/");
         setCompany(comp);
         setForm(companyToForm(comp));
       } catch (err: unknown) {
-        const status = (err as { response?: { status?: number } })?.response?.status;
-        if (status === 401) {
-          router.push("/login");
-          return;
-        }
-        // For 403/404/other errors, stay on page and show error
         const detail =
           (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
           "Failed to load company settings.";
@@ -89,7 +69,7 @@ export default function SettingsPage() {
       }
     };
     init();
-  }, [router]);
+  }, []);
 
   const handleChange = (field: keyof FormData, value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -145,13 +125,11 @@ export default function SettingsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center text-gray-500">
+      <div className="flex items-center justify-center py-16 text-gray-500">
         Loading...
       </div>
     );
   }
-
-  if (!currentUser) return null;
 
   const fields: { key: keyof FormData; label: string; type?: string; required?: boolean; maxLength?: number }[] = [
     { key: "name", label: "Company Name", required: true, maxLength: 255 },
@@ -167,71 +145,65 @@ export default function SettingsPage() {
   ];
 
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50">
-      <Navbar user={currentUser} />
-      <div className="flex flex-1">
-        <Sidebar menuItems={currentUser.menu_items} />
-        <main className="flex-1 p-8">
-          <div className="mb-6">
-            <h2 className="text-2xl font-bold text-gray-800">System Settings</h2>
-            <p className="text-gray-500 text-sm mt-1">
-              View and update company information
-            </p>
-          </div>
-
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 max-w-2xl p-6">
-            <form onSubmit={handleSubmit} className="space-y-4">
-              {fields.map(({ key, label, type, required, maxLength }) => (
-                <div key={key}>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    {label}{required ? " *" : ""}
-                  </label>
-                  {key === "reg_address" ? (
-                    <textarea
-                      value={form[key]}
-                      onChange={(e) => handleChange(key, e.target.value)}
-                      maxLength={maxLength}
-                      rows={3}
-                      className="w-full border border-gray-300 rounded-lg px-4 py-2 text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  ) : (
-                    <input
-                      type={type || "text"}
-                      required={required}
-                      value={form[key]}
-                      onChange={(e) => handleChange(key, e.target.value)}
-                      maxLength={maxLength}
-                      className="w-full border border-gray-300 rounded-lg px-4 py-2 text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  )}
-                </div>
-              ))}
-
-              {error && (
-                <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded p-2">
-                  {error}
-                </p>
-              )}
-
-              {success && (
-                <p className="text-sm text-green-600 bg-green-50 border border-green-200 rounded p-2">
-                  {success}
-                </p>
-              )}
-
-              <div className="flex justify-end pt-2">
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="bg-blue-700 hover:bg-blue-800 text-white font-semibold px-5 py-2 rounded-lg transition disabled:opacity-60"
-                >
-                  {submitting ? "Saving..." : "Save Changes"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </main>
+    <>
+      <div className="mb-6">
+        <h2 className="text-2xl font-bold text-gray-800">System Settings</h2>
+        <p className="text-gray-500 text-sm mt-1">
+          View and update company information
+        </p>
       </div>
-    </div>
+
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 max-w-2xl p-6">
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {fields.map(({ key, label, type, required, maxLength }) => (
+            <div key={key}>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                {label}{required ? " *" : ""}
+              </label>
+              {key === "reg_address" ? (
+                <textarea
+                  value={form[key]}
+                  onChange={(e) => handleChange(key, e.target.value)}
+                  maxLength={maxLength}
+                  rows={3}
+                  className="w-full border border-gray-300 rounded-lg px-4 py-2 text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              ) : (
+                <input
+                  type={type || "text"}
+                  required={required}
+                  value={form[key]}
+                  onChange={(e) => handleChange(key, e.target.value)}
+                  maxLength={maxLength}
+                  className="w-full border border-gray-300 rounded-lg px-4 py-2 text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              )}
+            </div>
+          ))}
+
+          {error && (
+            <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded p-2">
+              {error}
+            </p>
+          )}
+
+          {success && (
+            <p className="text-sm text-green-600 bg-green-50 border border-green-200 rounded p-2">
+              {success}
+            </p>
+          )}
+
+          <div className="flex justify-end pt-2">
+            <button
+              type="submit"
+              disabled={submitting}
+              className="bg-blue-700 hover:bg-blue-800 text-white font-semibold px-5 py-2 rounded-lg transition disabled:opacity-60"
+            >
+              {submitting ? "Saving..." : "Save Changes"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </>
   );
 }

@@ -14,6 +14,7 @@ class CompanyUpdate(BaseModel):
     contact: str | None = Field(None, description="Contact number(s)")
     email: str | None = Field(None, description="Contact email")
     sf_item_id: int | None = Field(None, description="Special fare item ID")
+    active_theme: str | None = Field(None, description="Active UI theme name")
 
 
 class CompanyRead(BaseModel):
@@ -28,6 +29,7 @@ class CompanyRead(BaseModel):
     contact: str | None = Field(None, description="Contact number(s)")
     email: str | None = Field(None, description="Contact email")
     sf_item_id: int | None = Field(None, description="Special fare item ID")
+    active_theme: str | None = Field(None, description="Active UI theme name")
     created_at: datetime | None = Field(None, description="Record creation timestamp")
     updated_at: datetime | None = Field(None, description="Record last update timestamp")
 

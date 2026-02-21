@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import { useRouter } from "next/navigation";
 import api from "@/lib/api";
-import { isAuthenticated, getSelectedBranchId, getSelectedBranchName } from "@/lib/auth";
+import { getSelectedBranchId, getSelectedBranchName } from "@/lib/auth";
 import {
   User,
   Ticket,
@@ -19,8 +18,6 @@ import {
   FerrySchedule,
   RateLookupResponse,
 } from "@/types";
-import Navbar from "@/components/Navbar";
-import Sidebar from "@/components/Sidebar";
 
 interface FormItem {
   tempId: string;
@@ -184,11 +181,8 @@ function ItemSearchSelect({
 }
 
 export default function TicketingPage() {
-  const router = useRouter();
-
-  // Auth
+  // Current user (needed for role checks and route restrictions)
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
 
   // Data
   const [tickets, setTickets] = useState<Ticket[]>([]);
@@ -368,10 +362,6 @@ export default function TicketingPage() {
   ]);
 
   useEffect(() => {
-    if (!isAuthenticated()) {
-      router.push("/login");
-      return;
-    }
     api
       .get<User>("/api/auth/me")
       .then(async ({ data }) => {
@@ -395,9 +385,8 @@ export default function TicketingPage() {
         }
         return fetchTickets();
       })
-      .catch(() => router.push("/login"))
-      .finally(() => setLoading(false));
-  }, [router, fetchTickets]);
+      .catch(() => { /* handled by layout auth */ });
+  }, [fetchTickets]);
 
   // Whether the user is locked to their assigned route
   const isRouteRestricted = user?.route_id != null;
@@ -996,23 +985,9 @@ export default function TicketingPage() {
     idEndInput ||
     idOp !== "eq";
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center text-gray-500">
-        Loading...
-      </div>
-    );
-  }
-
-  if (!user) return null;
-
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50">
-      <Navbar user={user} />
-      <div className="flex flex-1">
-        <Sidebar menuItems={user.menu_items} />
-        <main className="flex-1 p-8">
-          <div className="flex items-center justify-between mb-6">
+    <>
+      <div className="flex items-center justify-between mb-6">
             <div>
               <h2 className="text-2xl font-bold text-gray-800">Ticket Management</h2>
               <p className="text-gray-500 text-sm mt-1">
@@ -2401,8 +2376,6 @@ export default function TicketingPage() {
               </div>
             </div>
           )}
-        </main>
-      </div>
-    </div>
+    </>
   );
 }

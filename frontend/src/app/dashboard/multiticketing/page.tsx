@@ -3,9 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
-import { isAuthenticated } from "@/lib/auth";
 import {
-  User,
   MultiTicketInit,
   MultiTicketInitItem,
   TicketCreate,
@@ -13,8 +11,6 @@ import {
   TicketPayementCreate,
   Ticket,
 } from "@/types";
-import Navbar from "@/components/Navbar";
-import Sidebar from "@/components/Sidebar";
 
 /* ── Local grid types ── */
 
@@ -136,10 +132,6 @@ function isRowInvalid(
 export default function MultiTicketingPage() {
   const router = useRouter();
 
-  // Auth & loading
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
-
   // Init data from backend
   const [initData, setInitData] = useState<MultiTicketInit | null>(null);
   const [initError, setInitError] = useState("");
@@ -186,21 +178,10 @@ export default function MultiTicketingPage() {
     }
   }, []);
 
-  /* ── Auth guard + init ── */
+  /* ── Load init data on mount ── */
   useEffect(() => {
-    if (!isAuthenticated()) {
-      router.push("/login");
-      return;
-    }
-    api
-      .get<User>("/api/auth/me")
-      .then(({ data }) => {
-        setUser(data);
-        return fetchInit();
-      })
-      .catch(() => router.push("/login"))
-      .finally(() => setLoading(false));
-  }, [router, fetchInit]);
+    fetchInit();
+  }, [fetchInit]);
 
   /* ── Form reset ── */
   const resetForm = useCallback(() => {
@@ -481,26 +462,12 @@ export default function MultiTicketingPage() {
 
   /* ── Loading / error states ── */
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <p className="text-gray-500 text-lg">Loading...</p>
-      </div>
-    );
-  }
-
-  if (!user) return null;
-
   /* ── Render ── */
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden">
-      <div className="print:hidden">
-        <Navbar user={user} />
-      </div>
-      <div className="flex flex-1 overflow-hidden">
-        <main className="flex-1 p-6 bg-gray-50 print:hidden flex flex-col overflow-hidden">
-          <div className="flex items-center justify-between mb-4 shrink-0">
+    <>
+      <div className="flex flex-col flex-1 overflow-hidden">
+        <div className="flex items-center justify-between mb-4 shrink-0">
             <h1 className="text-2xl font-bold text-gray-800">Multi-Ticketing</h1>
             {initData && (
               <button
@@ -821,7 +788,6 @@ export default function MultiTicketingPage() {
               </div>
             </div>
           )}
-        </main>
       </div>
 
       {/* ── Print View ── */}
@@ -876,6 +842,6 @@ export default function MultiTicketingPage() {
           ))}
         </div>
       )}
-    </div>
+    </>
   );
 }

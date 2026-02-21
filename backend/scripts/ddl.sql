@@ -242,6 +242,7 @@ CREATE TABLE IF NOT EXISTS company (
     contact             VARCHAR(255),
     email               VARCHAR(60) NOT NULL,
     sf_item_id          INTEGER,
+    active_theme        VARCHAR(50) DEFAULT 'ocean',
     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at          TIMESTAMPTZ NOT NULL,
     created_by          UUID DEFAULT uuid_generate_v4(),
