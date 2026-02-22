@@ -1,49 +1,81 @@
-import axios from "axios";
-import { getAccessToken, clearTokens } from "./auth";
-import { getPortalAccessToken, clearPortalTokens } from "./portalAuth";
+import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
 
 const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000",
   headers: { "Content-Type": "application/json" },
+  withCredentials: true,
 });
 
-// Attach Bearer token to every request — pick portal or admin token based on URL
-api.interceptors.request.use((config) => {
-  const url = config.url || "";
-  const isPortalRequest =
-    url.includes("/portal/") ||
-    (typeof window !== "undefined" && window.location.pathname.startsWith("/customer"));
+let isRefreshing = false;
+let failedQueue: Array<{
+  resolve: (value: unknown) => void;
+  reject: (reason: unknown) => void;
+  config: InternalAxiosRequestConfig;
+}> = [];
 
-  const token = isPortalRequest ? getPortalAccessToken() : getAccessToken();
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
+function processQueue(error: unknown) {
+  failedQueue.forEach(({ reject }) => reject(error));
+  failedQueue = [];
+}
 
-// On 401, clear tokens and redirect to the correct login page
+function retryQueue() {
+  failedQueue.forEach(({ resolve, config }) => resolve(api(config)));
+  failedQueue = [];
+}
+
+function isPortalContext(url: string): boolean {
+  if (url.includes("/portal/")) return true;
+  if (typeof window !== "undefined" && window.location.pathname.startsWith("/customer")) return true;
+  return false;
+}
+
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error: AxiosError) => {
     if (typeof window === "undefined") return Promise.reject(error);
 
-    const url = error.config?.url || "";
+    const originalRequest = error.config;
+    if (!originalRequest) return Promise.reject(error);
+
+    const url = originalRequest.url || "";
     const isAuthEndpoint =
       url.includes("/auth/login") ||
-      url.includes("/auth/register");
-    if (error.response?.status === 401 && !isAuthEndpoint) {
-      const isPortalRoute =
-        url.includes("/portal/") ||
-        window.location.pathname.startsWith("/customer");
-      if (isPortalRoute) {
-        clearPortalTokens();
+      url.includes("/auth/register") ||
+      url.includes("/auth/refresh");
+
+    if (error.response?.status !== 401 || isAuthEndpoint) {
+      return Promise.reject(error);
+    }
+
+    if (isRefreshing) {
+      return new Promise((resolve, reject) => {
+        failedQueue.push({ resolve, reject, config: originalRequest });
+      });
+    }
+
+    isRefreshing = true;
+
+    try {
+      const isPortal = isPortalContext(url);
+      const refreshUrl = isPortal
+        ? "/api/portal/auth/refresh"
+        : "/api/auth/refresh";
+
+      await api.post(refreshUrl);
+      retryQueue();
+      return api(originalRequest);
+    } catch {
+      processQueue(error);
+      const isPortal = isPortalContext(url);
+      if (isPortal) {
         window.location.href = "/customer/login";
       } else {
-        clearTokens();
         window.location.href = "/login";
       }
+      return Promise.reject(error);
+    } finally {
+      isRefreshing = false;
     }
-    return Promise.reject(error);
   }
 );
 
