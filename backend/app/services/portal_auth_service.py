@@ -7,7 +7,6 @@ from sqlalchemy import select
 from app.config import settings
 from app.core.security import verify_password, get_password_hash, create_access_token, create_refresh_token, decode_token
 from app.models.portal_user import PortalUser
-from app.schemas.auth import TokenResponse
 from app.schemas.portal_user import PortalUserRegister
 from app.services import token_service
 
@@ -20,7 +19,7 @@ async def authenticate_portal_user(db: AsyncSession, email: str, password: str) 
     return user
 
 
-async def login(db: AsyncSession, email: str, password: str) -> TokenResponse:
+async def login(db: AsyncSession, email: str, password: str) -> dict:
     user = await authenticate_portal_user(db, email, password)
     if not user:
         raise HTTPException(
@@ -39,7 +38,7 @@ async def login(db: AsyncSession, email: str, password: str) -> TokenResponse:
     await token_service.cleanup_expired(db)
 
     await db.commit()
-    return TokenResponse(access_token=access_token, refresh_token=refresh_token)
+    return {"access_token": access_token, "refresh_token": refresh_token}
 
 
 async def register(db: AsyncSession, data: PortalUserRegister) -> PortalUser:
@@ -64,7 +63,7 @@ async def register(db: AsyncSession, data: PortalUserRegister) -> PortalUser:
     return portal_user
 
 
-async def refresh_access_token(db: AsyncSession, refresh_token: str) -> TokenResponse:
+async def refresh_access_token(db: AsyncSession, refresh_token: str) -> dict:
     from jose import JWTError
     try:
         payload = decode_token(refresh_token)
@@ -97,7 +96,7 @@ async def refresh_access_token(db: AsyncSession, refresh_token: str) -> TokenRes
     await token_service.store_refresh_token(db, new_refresh, expires_at, portal_user_id=user.id)
 
     await db.commit()
-    return TokenResponse(access_token=new_access, refresh_token=new_refresh)
+    return {"access_token": new_access, "refresh_token": new_refresh}
 
 
 async def logout(db: AsyncSession, refresh_token: str | None) -> None:

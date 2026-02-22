@@ -1,12 +1,14 @@
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.middleware.rate_limit import limiter
-from app.schemas.auth import TokenResponse, RefreshRequest
+from app.schemas.auth import RefreshRequest
 from app.schemas.portal_user import PortalUserLogin, PortalUserRegister, PortalUserRead, PortalUserMeResponse
 from app.services import portal_auth_service
 from app.dependencies import get_current_portal_user
+from app.core.cookies import set_auth_cookies, clear_auth_cookies
 from app.models.portal_user import PortalUser
 
 router = APIRouter(prefix="/api/portal/auth", tags=["Portal Authentication"])
@@ -14,9 +16,8 @@ router = APIRouter(prefix="/api/portal/auth", tags=["Portal Authentication"])
 
 @router.post(
     "/login",
-    response_model=TokenResponse,
     summary="Authenticate portal user (customer)",
-    description="Validate email & password and return a JWT access token and refresh token for a customer.",
+    description="Validate email & password and return a JWT access token and refresh token via HttpOnly cookies.",
     responses={
         200: {"description": "Successfully authenticated"},
         401: {"description": "Invalid email or password"},
@@ -24,7 +25,14 @@ router = APIRouter(prefix="/api/portal/auth", tags=["Portal Authentication"])
 )
 @limiter.limit("10/minute")
 async def login(request: Request, body: PortalUserLogin, db: AsyncSession = Depends(get_db)):
-    return await portal_auth_service.login(db, body.email, body.password)
+    tokens = await portal_auth_service.login(db, body.email, body.password)
+    response = JSONResponse(content={"message": "Login successful", "token_type": "bearer"})
+    set_auth_cookies(
+        response, tokens["access_token"], tokens["refresh_token"],
+        cookie_prefix="ssmspl_portal",
+        refresh_path="/api/portal/auth/refresh",
+    )
+    return response
 
 
 @router.post(
@@ -45,7 +53,6 @@ async def register(request: Request, body: PortalUserRegister, db: AsyncSession 
 
 @router.post(
     "/refresh",
-    response_model=TokenResponse,
     summary="Refresh portal user access token",
     description="Exchange a valid refresh token for a new access/refresh token pair.",
     responses={
@@ -54,8 +61,21 @@ async def register(request: Request, body: PortalUserRegister, db: AsyncSession 
     },
 )
 @limiter.limit("20/minute")
-async def refresh(request: Request, body: RefreshRequest, db: AsyncSession = Depends(get_db)):
-    return await portal_auth_service.refresh_access_token(db, body.refresh_token)
+async def refresh(request: Request, body: RefreshRequest | None = None, db: AsyncSession = Depends(get_db)):
+    refresh_token = request.cookies.get("ssmspl_portal_refresh_token")
+    if not refresh_token and body:
+        refresh_token = body.refresh_token
+    if not refresh_token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="No refresh token provided")
+
+    tokens = await portal_auth_service.refresh_access_token(db, refresh_token)
+    response = JSONResponse(content={"message": "Token refreshed", "token_type": "bearer"})
+    set_auth_cookies(
+        response, tokens["access_token"], tokens["refresh_token"],
+        cookie_prefix="ssmspl_portal",
+        refresh_path="/api/portal/auth/refresh",
+    )
+    return response
 
 
 @router.get(
@@ -83,12 +103,16 @@ async def me(current_user: PortalUser = Depends(get_current_portal_user)):
 @router.post(
     "/logout",
     summary="Logout portal user",
-    description="Revoke the refresh token if provided in the request body. "
-                "If no body is sent, returns success without revoking (backward compatible).",
+    description="Revoke the refresh token and clear portal auth cookies.",
     responses={
         200: {"description": "Logout acknowledged"},
     },
 )
-async def logout(body: RefreshRequest | None = None, db: AsyncSession = Depends(get_db)):
-    await portal_auth_service.logout(db, body.refresh_token if body else None)
-    return {"message": "Logged out successfully"}
+async def logout(request: Request, body: RefreshRequest | None = None, db: AsyncSession = Depends(get_db)):
+    refresh_token = request.cookies.get("ssmspl_portal_refresh_token")
+    if not refresh_token and body:
+        refresh_token = body.refresh_token
+    await portal_auth_service.logout(db, refresh_token)
+    response = JSONResponse(content={"message": "Logged out successfully"})
+    clear_auth_cookies(response, cookie_prefix="ssmspl_portal", refresh_path="/api/portal/auth/refresh")
+    return response
