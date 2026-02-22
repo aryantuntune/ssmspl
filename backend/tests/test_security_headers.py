@@ -28,3 +28,18 @@ async def test_server_header_stripped(client: AsyncClient):
     response = await client.get("/health")
     server = response.headers.get("server", "")
     assert "uvicorn" not in server.lower()
+
+
+async def test_cors_headers_on_preflight(client: AsyncClient):
+    """CORS preflight should return specific methods, not wildcards."""
+    response = await client.options(
+        "/health",
+        headers={
+            "Origin": "http://localhost:3000",
+            "Access-Control-Request-Method": "POST",
+        },
+    )
+    allowed_methods = response.headers.get("access-control-allow-methods", "")
+    assert "*" not in allowed_methods
+    assert "GET" in allowed_methods
+    assert "POST" in allowed_methods
