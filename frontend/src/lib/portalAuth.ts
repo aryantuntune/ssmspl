@@ -1,28 +1,16 @@
-import Cookies from "js-cookie";
+/**
+ * Portal auth utilities. Token storage is handled by HttpOnly cookies
+ * set by the backend. This module only provides logout.
+ */
 
-const PORTAL_ACCESS_TOKEN_KEY = "ssmspl_portal_access_token";
-const PORTAL_REFRESH_TOKEN_KEY = "ssmspl_portal_refresh_token";
-
-const isSecure = typeof window !== "undefined" && window.location.protocol === "https:";
-
-export function setPortalTokens(accessToken: string, refreshToken: string): void {
-  Cookies.set(PORTAL_ACCESS_TOKEN_KEY, accessToken, { secure: isSecure, sameSite: "strict", expires: 1 });
-  Cookies.set(PORTAL_REFRESH_TOKEN_KEY, refreshToken, { secure: isSecure, sameSite: "strict", expires: 7 });
-}
-
-export function getPortalAccessToken(): string | undefined {
-  return Cookies.get(PORTAL_ACCESS_TOKEN_KEY);
-}
-
-export function getPortalRefreshToken(): string | undefined {
-  return Cookies.get(PORTAL_REFRESH_TOKEN_KEY);
-}
-
-export function clearPortalTokens(): void {
-  Cookies.remove(PORTAL_ACCESS_TOKEN_KEY);
-  Cookies.remove(PORTAL_REFRESH_TOKEN_KEY);
-}
-
-export function isPortalAuthenticated(): boolean {
-  return !!getPortalAccessToken();
+/**
+ * Clear portal auth session. Calls the logout API (which clears HttpOnly cookies).
+ */
+export async function portalLogout(): Promise<void> {
+  try {
+    const { default: api } = await import("./api");
+    await api.post("/api/portal/auth/logout");
+  } catch {
+    // Best-effort: even if the API call fails, cookies will expire naturally
+  }
 }
