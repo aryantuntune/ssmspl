@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     def allowed_origins_list(self) -> list[str]:
         return [o.strip() for o in self.ALLOWED_ORIGINS.split(",")]
 
+    # Rate limiting
+    TRUSTED_PROXY_HEADERS: str = "CF-Connecting-IP,X-Forwarded-For"
+
     # Razorpay
     RAZORPAY_KEY_ID: str = ""
     RAZORPAY_KEY_SECRET: str = ""

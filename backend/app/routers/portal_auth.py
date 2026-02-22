@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.middleware.rate_limit import limiter
 from app.schemas.auth import TokenResponse, RefreshRequest
 from app.schemas.portal_user import PortalUserLogin, PortalUserRegister, PortalUserRead, PortalUserMeResponse
 from app.services import portal_auth_service
@@ -21,7 +22,8 @@ router = APIRouter(prefix="/api/portal/auth", tags=["Portal Authentication"])
         401: {"description": "Invalid email or password"},
     },
 )
-async def login(body: PortalUserLogin, db: AsyncSession = Depends(get_db)):
+@limiter.limit("10/minute")
+async def login(request: Request, body: PortalUserLogin, db: AsyncSession = Depends(get_db)):
     return await portal_auth_service.login(db, body.email, body.password)
 
 
@@ -36,7 +38,8 @@ async def login(body: PortalUserLogin, db: AsyncSession = Depends(get_db)):
         409: {"description": "Email already registered"},
     },
 )
-async def register(body: PortalUserRegister, db: AsyncSession = Depends(get_db)):
+@limiter.limit("10/minute")
+async def register(request: Request, body: PortalUserRegister, db: AsyncSession = Depends(get_db)):
     return await portal_auth_service.register(db, body)
 
 
@@ -50,7 +53,8 @@ async def register(body: PortalUserRegister, db: AsyncSession = Depends(get_db))
         401: {"description": "Invalid or expired refresh token"},
     },
 )
-async def refresh(body: RefreshRequest, db: AsyncSession = Depends(get_db)):
+@limiter.limit("20/minute")
+async def refresh(request: Request, body: RefreshRequest, db: AsyncSession = Depends(get_db)):
     return await portal_auth_service.refresh_access_token(db, body.refresh_token)
 
 

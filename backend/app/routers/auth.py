@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.middleware.rate_limit import limiter
 from app.schemas.auth import LoginRequest, TokenResponse, RefreshRequest
 from app.schemas.user import UserMeResponse
 from app.services import auth_service
@@ -23,7 +24,8 @@ router = APIRouter(prefix="/api/auth", tags=["Authentication"])
         401: {"description": "Invalid username or password"},
     },
 )
-async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
+@limiter.limit("10/minute")
+async def login(request: Request, body: LoginRequest, db: AsyncSession = Depends(get_db)):
     return await auth_service.login(db, body.username, body.password)
 
 
@@ -37,7 +39,8 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
         401: {"description": "Invalid or expired refresh token"},
     },
 )
-async def refresh(body: RefreshRequest, db: AsyncSession = Depends(get_db)):
+@limiter.limit("20/minute")
+async def refresh(request: Request, body: RefreshRequest, db: AsyncSession = Depends(get_db)):
     return await auth_service.refresh_access_token(db, body.refresh_token)
 
 
