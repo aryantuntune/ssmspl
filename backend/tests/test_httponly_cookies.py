@@ -19,7 +19,7 @@ async def test_login_sets_httponly_cookies(client: AsyncClient, super_admin_user
 
     for cookie in cookies:
         assert "httponly" in cookie.lower()
-        assert "samesite=strict" in cookie.lower()
+        assert "samesite=lax" in cookie.lower()
 
 
 async def test_auth_via_cookie(client: AsyncClient, super_admin_user):

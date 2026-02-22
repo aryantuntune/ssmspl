@@ -136,6 +136,10 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
+    # Let FastAPI handle its own HTTPExceptions normally
+    from fastapi import HTTPException as FastAPIHTTPException
+    if isinstance(exc, FastAPIHTTPException):
+        raise exc
     request_id = getattr(request.state, "request_id", "unknown")
     logger.error(
         "Unhandled exception [request_id=%s]: %s",
