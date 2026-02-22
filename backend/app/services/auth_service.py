@@ -7,7 +7,6 @@ from app.config import settings
 from app.core.security import verify_password, create_access_token, create_refresh_token, decode_token
 from app.core.rbac import ROLE_MENU_ITEMS
 from app.models.user import User
-from app.schemas.auth import TokenResponse
 from app.services import token_service
 
 
@@ -19,7 +18,7 @@ async def authenticate_user(db: AsyncSession, username: str, password: str) -> U
     return user
 
 
-async def login(db: AsyncSession, username: str, password: str) -> TokenResponse:
+async def login(db: AsyncSession, username: str, password: str) -> dict:
     from fastapi import HTTPException, status
     user = await authenticate_user(db, username, password)
     if not user:
@@ -42,10 +41,10 @@ async def login(db: AsyncSession, username: str, password: str) -> TokenResponse
     await token_service.cleanup_expired(db)
 
     await db.commit()
-    return TokenResponse(access_token=access_token, refresh_token=refresh_token)
+    return {"access_token": access_token, "refresh_token": refresh_token}
 
 
-async def refresh_access_token(db: AsyncSession, refresh_token: str) -> TokenResponse:
+async def refresh_access_token(db: AsyncSession, refresh_token: str) -> dict:
     from fastapi import HTTPException, status
     from jose import JWTError
     try:
@@ -79,7 +78,7 @@ async def refresh_access_token(db: AsyncSession, refresh_token: str) -> TokenRes
     await token_service.store_refresh_token(db, new_refresh, expires_at, user_id=user.id)
 
     await db.commit()
-    return TokenResponse(access_token=new_access, refresh_token=new_refresh)
+    return {"access_token": new_access, "refresh_token": new_refresh}
 
 
 async def logout(db: AsyncSession, refresh_token: str | None) -> None:

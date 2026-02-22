@@ -1,4 +1,6 @@
-from fastapi import Depends, HTTPException, status
+from typing import Optional
+
+from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,11 +12,31 @@ from app.database import get_db
 from app.models.user import User
 from app.models.portal_user import PortalUser
 
-bearer_scheme = HTTPBearer()
+# auto_error=False so requests with cookies (no Bearer header) don't get 403
+bearer_scheme = HTTPBearer(auto_error=False)
+
+
+def _extract_token(
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials],
+    cookie_name: str,
+) -> str:
+    """Extract token from cookie first, then Bearer header."""
+    token = request.cookies.get(cookie_name)
+    if token:
+        return token
+    if credentials:
+        return credentials.credentials
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
 
 
 async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
     db: AsyncSession = Depends(get_db),
 ) -> User:
     credentials_exception = HTTPException(
@@ -22,8 +44,9 @@ async def get_current_user(
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    token = _extract_token(request, credentials, "ssmspl_access_token")
     try:
-        payload = decode_token(credentials.credentials)
+        payload = decode_token(token)
         if payload.get("type") != "access":
             raise credentials_exception
         user_id: str = payload.get("sub")
@@ -40,7 +63,8 @@ async def get_current_user(
 
 
 async def get_current_portal_user(
-    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
     db: AsyncSession = Depends(get_db),
 ) -> PortalUser:
     credentials_exception = HTTPException(
@@ -48,8 +72,9 @@ async def get_current_portal_user(
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    token = _extract_token(request, credentials, "ssmspl_portal_access_token")
     try:
-        payload = decode_token(credentials.credentials)
+        payload = decode_token(token)
         if payload.get("type") != "access":
             raise credentials_exception
         user_id: str = payload.get("sub")
@@ -69,7 +94,6 @@ async def get_current_portal_user(
 
 def require_roles(*roles: UserRole):
     """Factory that returns a dependency checking the user has one of the given roles."""
-
     async def role_checker(current_user: User = Depends(get_current_user)) -> User:
         if current_user.role not in roles:
             raise HTTPException(
@@ -77,5 +101,4 @@ def require_roles(*roles: UserRole):
                 detail=f"Access denied. Required roles: {[r.value for r in roles]}",
             )
         return current_user
-
     return role_checker

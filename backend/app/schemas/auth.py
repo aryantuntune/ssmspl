@@ -20,6 +20,12 @@ class TokenResponse(BaseModel):
     token_type: str = Field(default="bearer", description="Token type (always 'bearer')")
 
 
+class LoginResponse(BaseModel):
+    """Response body for cookie-based login (tokens are in Set-Cookie headers, not body)."""
+    message: str = Field(default="Login successful", description="Status message")
+    token_type: str = Field(default="bearer", description="Token type")
+
+
 class RefreshRequest(BaseModel):
     refresh_token: str = Field(..., description="A valid refresh token from a previous login or refresh")
 
