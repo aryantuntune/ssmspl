@@ -5,8 +5,8 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import api from "@/lib/api";
-import { setTokens, setSelectedBranch } from "@/lib/auth";
-import { TokenResponse, LoginRequest, User, RouteBranch } from "@/types";
+import { setSelectedBranch } from "@/lib/auth";
+import { LoginRequest, User, RouteBranch } from "@/types";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -27,8 +27,7 @@ export default function LoginPage() {
     setError("");
     setLoading(true);
     try {
-      const { data } = await api.post<TokenResponse>("/api/auth/login", form);
-      setTokens(data.access_token, data.refresh_token);
+      await api.post("/api/auth/login", form);
 
       // Fetch user profile to check for route/branches
       const { data: me } = await api.get<User>("/api/auth/me");

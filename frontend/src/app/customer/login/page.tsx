@@ -5,8 +5,6 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import api from "@/lib/api";
-import { setPortalTokens } from "@/lib/portalAuth";
-import { TokenResponse } from "@/types";
 import {
   Mail,
   Lock,
@@ -29,8 +27,7 @@ export default function CustomerLoginPage() {
     setError("");
     setLoading(true);
     try {
-      const { data } = await api.post<TokenResponse>("/api/portal/auth/login", form);
-      setPortalTokens(data.access_token, data.refresh_token);
+      await api.post("/api/portal/auth/login", form);
       router.push("/customer/dashboard");
     } catch (err: unknown) {
       const detail =
