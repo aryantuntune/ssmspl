@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
-import { isAuthenticated } from "@/lib/auth";
 import { User } from "@/types";
 import ThemeProvider from "@/components/ThemeProvider";
 import AppSidebar from "@/components/dashboard/AppSidebar";
@@ -17,14 +16,10 @@ export default function DashboardShell({ children }: { children: React.ReactNode
   const [activeTheme, setActiveTheme] = useState("ocean");
 
   useEffect(() => {
-    if (!isAuthenticated()) {
-      router.push("/login");
-      return;
-    }
     api.get("/api/auth/me").then((res) => {
       setUser(res.data);
     }).catch(() => {
-      router.push("/login");
+      // 401 interceptor handles redirect to login
     });
 
     api.get("/api/company/").then((res) => {

@@ -5,7 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import api from "@/lib/api";
-import { clearPortalTokens } from "@/lib/portalAuth";
+import { portalLogout } from "@/lib/portalAuth";
 import {
   Menu,
   X,
@@ -46,11 +46,8 @@ export default function CustomerLayout({
     api
       .get("/api/portal/auth/me")
       .then((res) => setCustomer(res.data))
-      .catch((err) => {
-        if (err.response?.status === 401 || err.response?.status === 403) {
-          clearPortalTokens();
-          router.push("/customer/login");
-        }
+      .catch(() => {
+        // 401 interceptor handles redirect to login
       });
   }, [router]);
 
@@ -67,8 +64,8 @@ export default function CustomerLayout({
     return () => document.removeEventListener("click", handler);
   }, [isProfileOpen]);
 
-  const handleLogout = () => {
-    clearPortalTokens();
+  const handleLogout = async () => {
+    await portalLogout();
     router.push("/customer/login");
   };
 

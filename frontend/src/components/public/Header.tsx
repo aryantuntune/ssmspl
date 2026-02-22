@@ -4,8 +4,9 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
-import { getAccessToken, clearTokens } from "@/lib/auth";
-import { getPortalAccessToken, clearPortalTokens } from "@/lib/portalAuth";
+import api from "@/lib/api";
+import { logout } from "@/lib/auth";
+import { portalLogout } from "@/lib/portalAuth";
 
 export default function Header() {
   const pathname = usePathname();
@@ -14,15 +15,26 @@ export default function Header() {
   const [isPortalUser, setIsPortalUser] = useState(false);
 
   useEffect(() => {
-    const portalToken = !!getPortalAccessToken();
-    const adminToken = !!getAccessToken();
-    setIsPortalUser(portalToken);
-    setIsLoggedIn(portalToken || adminToken);
+    // Try portal auth first, then admin auth
+    api.get("/api/portal/auth/me")
+      .then(() => {
+        setIsPortalUser(true);
+        setIsLoggedIn(true);
+      })
+      .catch(() => {
+        api.get("/api/auth/me")
+          .then(() => {
+            setIsPortalUser(false);
+            setIsLoggedIn(true);
+          })
+          .catch(() => {
+            setIsLoggedIn(false);
+          });
+      });
   }, []);
 
-  const handleLogout = () => {
-    clearTokens();
-    clearPortalTokens();
+  const handleLogout = async () => {
+    await Promise.all([logout(), portalLogout()]);
     setIsLoggedIn(false);
     window.location.href = "/";
   };

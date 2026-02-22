@@ -5,7 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { ChevronDown, ChevronLeft, LogOut } from "lucide-react";
-import { clearTokens } from "@/lib/auth";
+import { logout } from "@/lib/auth";
 import { User } from "@/types";
 import { cn } from "@/lib/utils";
 import {
@@ -70,8 +70,8 @@ export default function AppSidebar({
     });
   };
 
-  const handleLogout = () => {
-    clearTokens();
+  const handleLogout = async () => {
+    await logout();
     router.push("/login");
   };
 

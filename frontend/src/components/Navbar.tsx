@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { clearTokens } from "@/lib/auth";
+import { logout } from "@/lib/auth";
 import { User } from "@/types";
 
 interface NavbarProps {
@@ -20,8 +20,8 @@ const ROLE_LABELS: Record<string, string> = {
 export default function Navbar({ user }: NavbarProps) {
   const router = useRouter();
 
-  const handleLogout = () => {
-    clearTokens();
+  const handleLogout = async () => {
+    await logout();
     router.push("/login");
   };
 
