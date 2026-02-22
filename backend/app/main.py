@@ -1,5 +1,9 @@
-from fastapi import FastAPI
+import logging
+
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.config import settings
 from app.middleware.security import SecurityHeadersMiddleware
@@ -23,6 +27,7 @@ app = FastAPI(
     ),
     docs_url="/docs" if settings.DEBUG else None,
     redoc_url="/redoc" if settings.DEBUG else None,
+    openapi_url="/openapi.json" if settings.DEBUG else None,
     openapi_tags=[
         {
             "name": "Health",
@@ -113,6 +118,34 @@ app.add_middleware(
 
 app.add_middleware(SecurityHeadersMiddleware)
 
+logger = logging.getLogger("ssmspl")
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    return JSONResponse(
+        status_code=422,
+        content={"detail": exc.errors()},
+    )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    request_id = getattr(request.state, "request_id", "unknown")
+    logger.error(
+        "Unhandled exception [request_id=%s]: %s",
+        request_id,
+        str(exc),
+        exc_info=True,
+    )
+    if settings.DEBUG:
+        raise exc
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error"},
+    )
+
+
 app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(boats.router)
@@ -133,4 +166,7 @@ app.include_router(verification.router)
 
 @app.get("/health", tags=["Health"])
 async def health():
-    return {"status": "ok", "app": settings.APP_NAME, "env": settings.APP_ENV}
+    result = {"status": "ok", "app": settings.APP_NAME}
+    if settings.DEBUG:
+        result["env"] = settings.APP_ENV
+    return result
