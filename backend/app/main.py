@@ -15,6 +15,7 @@ from app.routers import auth, users, boats, branches, routes, items, item_rates,
 
 app = FastAPI(
     title=settings.APP_NAME,
+    redirect_slashes=False,
     version=settings.APP_VERSION,
     description=(
         "## SSMSPL Ferry Boat Ticketing System\n\n"
