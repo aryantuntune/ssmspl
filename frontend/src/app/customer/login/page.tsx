@@ -22,18 +22,25 @@ export default function CustomerLoginPage() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
+  const [unverifiedEmail, setUnverifiedEmail] = useState("");
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    setUnverifiedEmail("");
     setLoading(true);
     try {
       await api.post("/api/portal/auth/login", form);
       router.push("/customer/dashboard");
     } catch (err: unknown) {
+      const status = (err as { response?: { status?: number } })?.response?.status;
       const detail =
         (err as { response?: { data?: { detail?: unknown } } })?.response?.data
           ?.detail;
-      if (typeof detail === "string") {
+      if (status === 403 && typeof detail === "string" && detail.toLowerCase().includes("not verified")) {
+        setError(detail);
+        setUnverifiedEmail(form.email);
+      } else if (typeof detail === "string") {
         setError(detail);
       } else {
         setError("Login failed. Please check your credentials.");
@@ -125,6 +132,12 @@ export default function CustomerLoginPage() {
                   <label className="block text-sm font-medium text-white/80">
                     Password
                   </label>
+                  <Link
+                    href="/customer/forgot-password"
+                    className="text-sm text-sky-300 hover:text-sky-200 font-medium transition-colors"
+                  >
+                    Forgot Password?
+                  </Link>
                 </div>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
@@ -156,11 +169,21 @@ export default function CustomerLoginPage() {
 
               {/* Error */}
               {error && (
-                <div className="flex items-start gap-2.5 text-sm text-red-200 bg-red-500/15 border border-red-400/20 rounded-xl p-3.5">
-                  <svg className="w-5 h-5 text-red-400 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-5a.75.75 0 01.75.75v4.5a.75.75 0 01-1.5 0v-4.5A.75.75 0 0110 5zm0 10a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
-                  </svg>
-                  {error}
+                <div className="flex flex-col gap-2 text-sm text-red-200 bg-red-500/15 border border-red-400/20 rounded-xl p-3.5">
+                  <div className="flex items-start gap-2.5">
+                    <svg className="w-5 h-5 text-red-400 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-5a.75.75 0 01.75.75v4.5a.75.75 0 01-1.5 0v-4.5A.75.75 0 0110 5zm0 10a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                    </svg>
+                    {error}
+                  </div>
+                  {unverifiedEmail && (
+                    <Link
+                      href={`/customer/verify-email?email=${encodeURIComponent(unverifiedEmail)}`}
+                      className="text-sky-300 hover:text-sky-200 font-medium ml-7 transition-colors"
+                    >
+                      Verify your email &rarr;
+                    </Link>
+                  )}
                 </div>
               )}
 

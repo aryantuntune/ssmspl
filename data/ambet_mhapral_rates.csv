@@ -1,0 +1,21 @@
+sr_no,vehicle_type,ticket_rate,govt_tax,total_fare
+1,Bicycle,9.00,1.00,10.00
+2,Motorcycle (with driver),45.00,5.00,50.00
+3,Empty Three-Wheeler Rickshaw / Goods Tempo (with driver),68.00,7.00,75.00
+4,Empty Car 5-Seater / Tata Magic (with driver),106.00,14.00,120.00
+5,Empty Luxury Car 5-Seater / Passenger 08-Seater / Pickup (with driver),116.00,14.00,130.00
+6,Empty Medium Goods Heavy Vehicle (driver + assistant) Tata 407,136.00,14.00,150.00
+7,Empty Medium Goods Heavy Vehicle with assistant (Tata 709 / Eicher 1095),185.00,25.00,210.00
+8,Empty Trolley-size Tractor (with driver),155.00,20.00,175.00
+9,Empty Passenger Bus / Truck / Tanker (driver + 1 assistant),220.00,30.00,250.00
+10,Empty Large Goods Truck / JCB (driver + 1 assistant),350.00,50.00,400.00
+11,Goods per Half Ton,27.00,3.00,30.00
+12,Passenger - Adult (12 years and above),8.00,2.00,10.00
+13,Passenger - Child (3 to 12 years),4.00,1.00,5.00
+14,Passenger Luggage (20 kg per bundle) per kg,1.00,0.00,0.00
+15,Fish / Poultry / Fruits (per basket) / Dog / Goat / Sheep (per head),9.00,1.00,10.00
+16,Cow / Bull / Buffalo (per head),45.00,5.00,50.00
+17,Student Monthly Pass (Std 10th and below),180.00,20.00,200.00
+18,Student Monthly Pass (Std 10th and above),270.00,30.00,300.00
+19,Tourist (one-way travel only),18.00,2.00,20.00
+20,Extra Ferry (Night 11 PM to Morning 6 AM),150.00,0.00,150.00

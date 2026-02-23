@@ -1,7 +1,8 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
 
+// API calls use relative URLs — Next.js rewrites proxy /api/* to the backend.
+// This eliminates CORS and cross-origin cookie issues on all devices.
 const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000",
   headers: { "Content-Type": "application/json" },
   withCredentials: true,
 });

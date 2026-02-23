@@ -3,7 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --experimental-https --experimental-https-key ./certs/key.pem --experimental-https-cert ./certs/cert.pem",
+    "dev:http": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"
@@ -23,6 +24,7 @@
     "axios": "^1.13.5",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "html5-qrcode": "^2.3.8",
     "js-cookie": "^3.0.5",
     "jspdf": "^4.2.0",
     "jspdf-autotable": "^5.0.7",

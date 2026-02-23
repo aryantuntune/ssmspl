@@ -263,16 +263,24 @@ export default function LoginPage() {
                   </div>
                 </div>
 
-                {/* Remember Me */}
-                <div className="flex items-center gap-2 animate-slide-up-delayed-3">
-                  <input
-                    type="checkbox"
-                    id="remember"
-                    className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                  />
-                  <label htmlFor="remember" className="text-sm text-slate-500 select-none cursor-pointer">
-                    Remember me
-                  </label>
+                {/* Remember Me & Forgot Password */}
+                <div className="flex items-center justify-between animate-slide-up-delayed-3">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="remember"
+                      className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <label htmlFor="remember" className="text-sm text-slate-500 select-none cursor-pointer">
+                      Remember me
+                    </label>
+                  </div>
+                  <Link
+                    href="/forgot-password"
+                    className="text-sm text-indigo-600 hover:text-indigo-800 font-medium transition-colors"
+                  >
+                    Forgot Password?
+                  </Link>
                 </div>
 
                 {/* Error */}

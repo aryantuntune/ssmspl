@@ -4,13 +4,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.middleware.rate_limit import limiter
-from app.schemas.auth import LoginRequest, RefreshRequest
+from app.schemas.auth import LoginRequest, RefreshRequest, ForgotPasswordRequest, ResetPasswordRequest
 from app.schemas.user import UserMeResponse
 from app.services import auth_service
 from app.services.user_service import _resolve_route_name, _resolve_route_branches
 from app.dependencies import get_current_user
 from app.core.rbac import ROLE_MENU_ITEMS
 from app.core.cookies import set_auth_cookies, clear_auth_cookies
+from app.services.email_service import send_password_reset_email
+from app.config import settings
 from app.models.user import User
 
 router = APIRouter(prefix="/api/auth", tags=["Authentication"])
@@ -93,3 +95,36 @@ async def logout(request: Request, body: RefreshRequest | None = None, db: Async
     response = JSONResponse(content={"message": "Logged out successfully"})
     clear_auth_cookies(response)
     return response
+
+
+@router.post(
+    "/forgot-password",
+    summary="Request password reset",
+    description="Send a password reset email to the admin user's registered email address.",
+    responses={
+        200: {"description": "Reset email sent (or silently ignored if email not found)"},
+    },
+)
+@limiter.limit("5/minute")
+async def forgot_password(request: Request, body: ForgotPasswordRequest, db: AsyncSession = Depends(get_db)):
+    token = await auth_service.forgot_password(db, body.email)
+    if token:
+        reset_link = f"{settings.FRONTEND_URL}/reset-password?token={token}"
+        await send_password_reset_email(body.email, reset_link, "Admin User")
+    # Always return success to prevent email enumeration
+    return {"message": "If an account with that email exists, a password reset link has been sent."}
+
+
+@router.post(
+    "/reset-password",
+    summary="Reset password with token",
+    description="Set a new password using the token from the password reset email.",
+    responses={
+        200: {"description": "Password updated successfully"},
+        400: {"description": "Invalid or expired reset token"},
+    },
+)
+@limiter.limit("5/minute")
+async def reset_password(request: Request, body: ResetPasswordRequest, db: AsyncSession = Depends(get_db)):
+    await auth_service.reset_password(db, body.token, body.new_password)
+    return {"message": "Password has been reset successfully. You can now log in with your new password."}

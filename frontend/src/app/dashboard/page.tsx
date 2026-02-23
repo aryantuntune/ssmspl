@@ -50,36 +50,70 @@ export default function DashboardPage() {
   const [recentTickets, setRecentTickets] = useState<TicketRow[]>([]);
 
   useEffect(() => {
-    api.get<User>("/api/auth/me").then(({ data }) => setUser(data));
+    api.get<User>("/api/auth/me").then(({ data }) => {
+      setUser(data);
 
-    // Fetch stats in parallel
-    Promise.allSettled([
-      api.get("/api/tickets/", { params: { limit: 5, sort_by: "id", sort_order: "desc" } }),
-      api.get("/api/boats/", { params: { status: "active", limit: 1 } }),
-      api.get("/api/branches/", { params: { status: "active", limit: 1 } }),
-    ]).then(([ticketsRes, boatsRes, branchesRes]) => {
-      let ticketCount = 0;
-      let revenue = 0;
-      let activeFerries = 0;
-      let activeBranches = 0;
+      const menu = data.menu_items || [];
+      const canSeeTickets = menu.includes("Ticketing");
+      const canSeeFerries = menu.includes("Ferries");
+      const canSeeBranches = menu.includes("Branches");
 
-      if (ticketsRes.status === "fulfilled") {
-        const d = ticketsRes.value.data;
-        ticketCount = d.total || 0;
-        setRecentTickets(d.data || []);
-        revenue = (d.data || []).reduce(
-          (sum: number, t: TicketRow) => sum + (t.net_amount || 0),
-          0
+      // Only fetch APIs the user's role can access
+      const fetches: Promise<unknown>[] = [];
+      const fetchKeys: string[] = [];
+
+      if (canSeeTickets) {
+        fetches.push(
+          api.get("/api/tickets/", {
+            params: { limit: 5, sort_by: "id", sort_order: "desc" },
+          })
         );
+        fetchKeys.push("tickets");
       }
-      if (boatsRes.status === "fulfilled") {
-        activeFerries = boatsRes.value.data.total || 0;
+      if (canSeeFerries) {
+        fetches.push(
+          api.get("/api/boats/", { params: { status: "active", limit: 1 } })
+        );
+        fetchKeys.push("boats");
       }
-      if (branchesRes.status === "fulfilled") {
-        activeBranches = branchesRes.value.data.total || 0;
+      if (canSeeBranches) {
+        fetches.push(
+          api.get("/api/branches/", { params: { status: "active", limit: 1 } })
+        );
+        fetchKeys.push("branches");
       }
 
-      setStats({ ticketCount, revenue, activeFerries, activeBranches });
+      if (fetches.length === 0) return;
+
+      Promise.allSettled(fetches).then((results) => {
+        let ticketCount = 0;
+        let revenue = 0;
+        let activeFerries = 0;
+        let activeBranches = 0;
+
+        results.forEach((res, i) => {
+          if (res.status !== "fulfilled") return;
+          const d = (res as PromiseFulfilledResult<{ data: Record<string, unknown> }>).value.data;
+          switch (fetchKeys[i]) {
+            case "tickets":
+              ticketCount = (d.total as number) || 0;
+              setRecentTickets((d.data as TicketRow[]) || []);
+              revenue = ((d.data as TicketRow[]) || []).reduce(
+                (sum: number, t: TicketRow) => sum + (t.net_amount || 0),
+                0
+              );
+              break;
+            case "boats":
+              activeFerries = (d.total as number) || 0;
+              break;
+            case "branches":
+              activeBranches = (d.total as number) || 0;
+              break;
+          }
+        });
+
+        setStats({ ticketCount, revenue, activeFerries, activeBranches });
+      });
     });
   }, []);
 
@@ -112,17 +146,20 @@ export default function DashboardPage() {
     );
   }
 
+  const menu = user.menu_items || [];
   const roleLabel = user.role
     .replace(/_/g, " ")
     .replace(/\b\w/g, (c) => c.toUpperCase());
 
-  const statCards = [
+  // Only show stat cards the user can access
+  const allStatCards = [
     {
       label: "Tickets Issued",
       value: stats.ticketCount.toLocaleString("en-IN"),
       icon: Ticket,
       color: "text-blue-600",
       bg: "bg-blue-100",
+      requires: "Ticketing",
     },
     {
       label: "Revenue",
@@ -130,6 +167,7 @@ export default function DashboardPage() {
       icon: IndianRupee,
       color: "text-emerald-600",
       bg: "bg-emerald-100",
+      requires: "Ticketing",
     },
     {
       label: "Active Ferries",
@@ -137,6 +175,7 @@ export default function DashboardPage() {
       icon: Ship,
       color: "text-amber-600",
       bg: "bg-amber-100",
+      requires: "Ferries",
     },
     {
       label: "Active Branches",
@@ -144,16 +183,20 @@ export default function DashboardPage() {
       icon: MapPin,
       color: "text-violet-600",
       bg: "bg-violet-100",
+      requires: "Branches",
     },
   ];
+  const statCards = allStatCards.filter((s) => menu.includes(s.requires));
 
-  const quickActions = [
+  // Only show quick actions the user can access
+  const allQuickActions = [
     {
       label: "New Ticket",
       desc: "Issue a new ferry ticket",
       icon: Ticket,
       href: "/dashboard/ticketing",
       color: "text-blue-600",
+      requires: "Ticketing",
     },
     {
       label: "View Reports",
@@ -161,6 +204,7 @@ export default function DashboardPage() {
       icon: BarChart3,
       href: "/dashboard/reports",
       color: "text-emerald-600",
+      requires: "Reports",
     },
     {
       label: "Verify Tickets",
@@ -168,8 +212,12 @@ export default function DashboardPage() {
       icon: Shield,
       href: "/dashboard/verify",
       color: "text-amber-600",
+      requires: "Ticket Verification",
     },
   ];
+  const quickActions = allQuickActions.filter((a) => menu.includes(a.requires));
+
+  const canSeeTickets = menu.includes("Ticketing");
 
   return (
     <div className="space-y-6">
@@ -184,51 +232,55 @@ export default function DashboardPage() {
       </Card>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {statCards.map((s) => (
-          <Card key={s.label}>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">{s.label}</p>
-                  <p className="text-2xl font-bold mt-1">{s.value}</p>
-                </div>
-                <div className={`h-12 w-12 rounded-xl ${s.bg} flex items-center justify-center`}>
-                  <s.icon className={`h-6 w-6 ${s.color}`} />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      {/* Quick Actions */}
-      <div>
-        <h2 className="text-lg font-semibold mb-3">Quick Actions</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          {quickActions.map((a) => (
-            <Link key={a.label} href={a.href}>
-              <Card className="hover:shadow-md transition-shadow cursor-pointer h-full">
-                <CardContent className="pt-6">
-                  <div className="flex items-start gap-4">
-                    <div className={`${a.color}`}>
-                      <a.icon className="h-8 w-8" />
-                    </div>
-                    <div className="flex-1">
-                      <h3 className="font-semibold">{a.label}</h3>
-                      <p className="text-sm text-muted-foreground mt-0.5">{a.desc}</p>
-                    </div>
-                    <ArrowRight className="h-4 w-4 text-muted-foreground mt-1" />
+      {statCards.length > 0 && (
+        <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-${Math.min(statCards.length, 4)} gap-4`}>
+          {statCards.map((s) => (
+            <Card key={s.label}>
+              <CardContent className="pt-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-muted-foreground">{s.label}</p>
+                    <p className="text-2xl font-bold mt-1">{s.value}</p>
                   </div>
-                </CardContent>
-              </Card>
-            </Link>
+                  <div className={`h-12 w-12 rounded-xl ${s.bg} flex items-center justify-center`}>
+                    <s.icon className={`h-6 w-6 ${s.color}`} />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           ))}
         </div>
-      </div>
+      )}
 
-      {/* Recent Tickets */}
-      {recentTickets.length > 0 && (
+      {/* Quick Actions */}
+      {quickActions.length > 0 && (
+        <div>
+          <h2 className="text-lg font-semibold mb-3">Quick Actions</h2>
+          <div className={`grid grid-cols-1 sm:grid-cols-${Math.min(quickActions.length, 3)} gap-4`}>
+            {quickActions.map((a) => (
+              <Link key={a.label} href={a.href}>
+                <Card className="hover:shadow-md transition-shadow cursor-pointer h-full">
+                  <CardContent className="pt-6">
+                    <div className="flex items-start gap-4">
+                      <div className={`${a.color}`}>
+                        <a.icon className="h-8 w-8" />
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="font-semibold">{a.label}</h3>
+                        <p className="text-sm text-muted-foreground mt-0.5">{a.desc}</p>
+                      </div>
+                      <ArrowRight className="h-4 w-4 text-muted-foreground mt-1" />
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Recent Tickets - only for roles that can see tickets */}
+      {canSeeTickets && recentTickets.length > 0 && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-lg">Recent Tickets</CardTitle>

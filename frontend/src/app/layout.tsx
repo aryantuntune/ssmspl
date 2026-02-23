@@ -8,6 +8,9 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(
+    process.env.NEXT_PUBLIC_APP_URL || "https://carferry.online"
+  ),
   title: "Suvarnadurga Shipping & Marine Services - Ferry Boat Ticketing",
   description:
     "Maharashtra's premier ferry service connecting the Konkan coast since 2003. Book ferry tickets for Dabhol-Dhopave, Jaigad-Tawsal, Dighi-Agardande, and more routes.",

@@ -1,6 +1,7 @@
 from datetime import date
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -12,6 +13,7 @@ from app.schemas.ticket import (
     MultiTicketCreate, MultiTicketInitResponse,
 )
 from app.services import ticket_service
+from app.services.qr_service import generate_qr_png
 
 router = APIRouter(prefix="/api/tickets", tags=["Tickets"])
 
@@ -182,6 +184,31 @@ async def create_ticket(
     _=Depends(_ticket_roles),
 ):
     return await ticket_service.create_ticket(db, body)
+
+
+@router.get(
+    "/{ticket_id}/qr",
+    summary="Get QR code image for a ticket",
+    description="Returns a PNG QR code image for the ticket's verification code.",
+    responses={
+        200: {"description": "QR code PNG image", "content": {"image/png": {}}},
+        404: {"description": "Ticket not found or has no verification code"},
+    },
+)
+async def get_ticket_qr(
+    ticket_id: int,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(_ticket_roles),
+):
+    ticket_data = await ticket_service.get_ticket_by_id(db, ticket_id)
+    verification_code = ticket_data.get("verification_code")
+    if not verification_code:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Ticket has no verification code",
+        )
+    png_bytes = generate_qr_png(verification_code)
+    return Response(content=png_bytes, media_type="image/png")
 
 
 @router.get(

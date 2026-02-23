@@ -1,0 +1,14 @@
+sr_no,timing_from_agardanda,operator_from_agardanda,timing_from_dighi,operator_from_dighi
+1,8:00 AM,Suvarnadurg Shipping,8:00 AM,Dighi Jalvahatuk
+2,9:00 AM,Dighi Jalvahatuk,9:00 AM,Suvarnadurg Shipping
+3,10:00 AM,Suvarnadurg Shipping,10:00 AM,Dighi Jalvahatuk
+4,11:00 AM,Dighi Jalvahatuk,11:00 AM,Suvarnadurg Shipping
+5,12:00 PM,Suvarnadurg Shipping,12:00 PM,Dighi Jalvahatuk
+6,1:00 PM,Dighi Jalvahatuk,1:00 PM,Suvarnadurg Shipping
+7,2:30 PM,Suvarnadurg Shipping,2:30 PM,Dighi Jalvahatuk
+8,3:30 PM,Dighi Jalvahatuk,3:30 PM,Suvarnadurg Shipping
+9,4:30 PM,Suvarnadurg Shipping,4:30 PM,Dighi Jalvahatuk
+10,5:30 PM,Dighi Jalvahatuk,5:30 PM,Suvarnadurg Shipping
+11,6:30 PM,Suvarnadurg Shipping,6:30 PM,Dighi Jalvahatuk
+12,7:00 PM,Dighi Jalvahatuk,7:30 PM,Suvarnadurg Shipping
+13,8:30 PM,Suvarnadurg Shipping,9:00 PM,Dighi Jalvahatuk

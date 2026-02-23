@@ -138,6 +138,9 @@ class TicketRead(BaseModel):
     payment_mode_id: int = Field(..., description="Payment mode ID")
     is_cancelled: bool = Field(..., description="Whether ticket is cancelled")
     net_amount: float = Field(..., description="Net amount")
+    status: str = Field("CONFIRMED", description="Ticket status (CONFIRMED, VERIFIED, CANCELLED)")
+    checked_in_at: datetime | None = Field(None, description="Verification timestamp")
+    verification_code: str | None = Field(None, description="QR verification code (UUID)")
     # Enriched display fields
     branch_name: str | None = Field(None, description="Branch name")
     route_name: str | None = Field(None, description="Route display name")

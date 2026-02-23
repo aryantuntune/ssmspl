@@ -36,12 +36,12 @@ async def lookup_booking(
 @router.get(
     "/scan",
     response_model=VerificationResult,
-    summary="Look up booking by scanned QR payload",
+    summary="Look up booking or ticket by scanned QR payload",
     description="Accepts the full signed QR payload string, validates the HMAC signature, "
-                "and returns booking details. Use this when scanning QR codes.",
+                "and returns booking or ticket details. Use this when scanning QR codes.",
     responses={
         400: {"description": "Invalid or tampered QR code"},
-        404: {"description": "Booking not found"},
+        404: {"description": "Booking or ticket not found"},
     },
 )
 async def scan_qr(
@@ -62,26 +62,45 @@ async def scan_qr(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid verification code format",
         )
-    return await verification_service.lookup_booking_by_code(db, code_uuid)
+    return await verification_service.lookup_by_code(db, code_uuid)
 
 
 @router.post(
     "/check-in",
     response_model=CheckInResponse,
-    summary="Check in a booking",
-    description="Mark a booking as checked in using its QR verification code.",
+    summary="Verify a booking or ticket",
+    description="Mark a booking or ticket as VERIFIED using its QR verification code. "
+                "Each QR code can only be verified once. "
+                "Checkers can only verify tickets on their assigned route.",
     responses={
-        404: {"description": "Booking not found"},
-        400: {"description": "Booking is cancelled"},
-        409: {"description": "Already checked in"},
+        400: {"description": "Cancelled or payment pending"},
+        403: {"description": "Route mismatch - not assigned to this route"},
+        404: {"description": "Booking or ticket not found"},
+        409: {"description": "Already verified"},
     },
 )
 async def check_in(
     body: CheckInRequest,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(_verification_roles),
+):
+    return await verification_service.verify(db, body.verification_code, current_user)
+
+
+@router.get(
+    "/booking-number",
+    response_model=VerificationResult,
+    summary="Look up booking by booking number",
+    description="Look up a portal booking by its booking number. Optionally filter by branch.",
+    responses={404: {"description": "Booking not found"}},
+)
+async def lookup_booking_by_number(
+    booking_no: int = Query(..., description="Booking number (e.g. 1, 2, 3...)"),
+    branch_id: int | None = Query(None, description="Branch ID (optional)"),
+    db: AsyncSession = Depends(get_db),
     _user: User = Depends(_verification_roles),
 ):
-    return await verification_service.check_in_booking(db, body.verification_code)
+    return await verification_service.lookup_booking_by_number(db, booking_no, branch_id)
 
 
 @router.get(

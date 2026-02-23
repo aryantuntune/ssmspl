@@ -15,22 +15,21 @@ export default function Header() {
   const [isPortalUser, setIsPortalUser] = useState(false);
 
   useEffect(() => {
-    // Try portal auth first, then admin auth
-    api.get("/api/portal/auth/me")
-      .then(() => {
+    // Check both auth types in parallel to reduce latency
+    Promise.allSettled([
+      api.get("/api/portal/auth/me"),
+      api.get("/api/auth/me"),
+    ]).then(([portalResult, adminResult]) => {
+      if (portalResult.status === "fulfilled") {
         setIsPortalUser(true);
         setIsLoggedIn(true);
-      })
-      .catch(() => {
-        api.get("/api/auth/me")
-          .then(() => {
-            setIsPortalUser(false);
-            setIsLoggedIn(true);
-          })
-          .catch(() => {
-            setIsLoggedIn(false);
-          });
-      });
+      } else if (adminResult.status === "fulfilled") {
+        setIsPortalUser(false);
+        setIsLoggedIn(true);
+      } else {
+        setIsLoggedIn(false);
+      }
+    });
   }, []);
 
   const handleLogout = async () => {

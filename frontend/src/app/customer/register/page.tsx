@@ -75,11 +75,11 @@ export default function CustomerRegisterPage() {
       return;
     }
 
-    if (formData.password.length < 6) {
+    if (formData.password.length < 8) {
       showAlertModal(
         "error",
         "Weak Password",
-        "Password must be at least 6 characters."
+        "Password must be at least 8 characters."
       );
       return;
     }
@@ -91,11 +91,11 @@ export default function CustomerRegisterPage() {
       setLoading(false);
       showAlertModal(
         "success",
-        "Account Created!",
-        "Your account has been created successfully. Redirecting to login..."
+        "Verify Your Email",
+        "A verification code has been sent to your email. Redirecting..."
       );
       redirectTimer.current = setTimeout(() => {
-        router.push("/customer/login");
+        router.push(`/customer/verify-email?email=${encodeURIComponent(formData.email)}`);
       }, 2000);
     } catch (err: unknown) {
       setLoading(false);
@@ -271,7 +271,7 @@ export default function CustomerRegisterPage() {
                     className="input-glass w-full pl-12 pr-12 py-3.5 rounded-xl text-white placeholder-white/50 focus:outline-none"
                     placeholder="Create a strong password"
                     required
-                    minLength={6}
+                    minLength={8}
                   />
                   <button
                     type="button"
@@ -286,7 +286,7 @@ export default function CustomerRegisterPage() {
                   </button>
                 </div>
                 <p className="text-xs text-white/40 mt-2">
-                  Must be at least 6 characters
+                  Must be at least 8 characters
                 </p>
               </div>
 

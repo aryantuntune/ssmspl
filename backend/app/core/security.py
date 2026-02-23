@@ -37,6 +37,13 @@ def create_refresh_token(subject: str | Any) -> str:
     return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
 
+def create_password_reset_token(subject: str | Any, user_type: str = "admin") -> str:
+    """Create a short-lived JWT for password reset (15 minutes)."""
+    expire = datetime.now(timezone.utc) + timedelta(minutes=15)
+    payload = {"sub": str(subject), "exp": expire, "type": "password_reset", "user_type": user_type}
+    return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+
+
 def decode_token(token: str) -> dict:
     """
     Decode and validate a JWT token.

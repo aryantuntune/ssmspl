@@ -9,6 +9,7 @@ from app.models.payment_mode import PaymentMode
 from app.models.ticket import Ticket, TicketItem
 from app.models.ticket_payement import TicketPayement
 from app.models.portal_user import PortalUser
+from app.models.email_otp import EmailOtp
 from app.models.company import Company
 from app.models.booking import Booking
 from app.models.booking_item import BookingItem
@@ -28,6 +29,7 @@ __all__ = [
     "TicketItem",
     "TicketPayement",
     "PortalUser",
+    "EmailOtp",
     "Company",
     "Booking",
     "BookingItem",

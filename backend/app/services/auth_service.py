@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.config import settings
-from app.core.security import verify_password, create_access_token, create_refresh_token, decode_token
+from app.core.security import verify_password, get_password_hash, create_access_token, create_refresh_token, create_password_reset_token, decode_token
 from app.core.rbac import ROLE_MENU_ITEMS
 from app.models.user import User
 from app.services import token_service
@@ -86,3 +86,33 @@ async def logout(db: AsyncSession, refresh_token: str | None) -> None:
     if refresh_token:
         await token_service.revoke_token(db, refresh_token)
         await db.commit()
+
+
+async def forgot_password(db: AsyncSession, email: str) -> str | None:
+    """Generate a password reset token for an admin user. Returns token or None if user not found."""
+    result = await db.execute(select(User).where(User.email == email, User.is_active == True))
+    user = result.scalar_one_or_none()
+    if not user:
+        return None
+    return create_password_reset_token(subject=str(user.id), user_type="admin")
+
+
+async def reset_password(db: AsyncSession, token: str, new_password: str) -> None:
+    """Validate reset token and update the user's password."""
+    from fastapi import HTTPException, status
+    from jose import JWTError
+    try:
+        payload = decode_token(token)
+        if payload.get("type") != "password_reset" or payload.get("user_type") != "admin":
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid reset token")
+        user_id = payload.get("sub")
+    except JWTError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired reset token")
+
+    result = await db.execute(select(User).where(User.id == user_id, User.is_active == True))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    user.hashed_password = get_password_hash(new_password)
+    await db.commit()

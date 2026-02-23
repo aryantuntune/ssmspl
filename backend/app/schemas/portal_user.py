@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 
 class PortalUserRegister(BaseModel):
@@ -22,6 +22,7 @@ class PortalUserRead(BaseModel):
     last_name: str = Field(..., description="Last name")
     email: str = Field(..., description="Email address")
     mobile: str = Field(..., description="Mobile number")
+    is_verified: bool = Field(..., description="Whether email is verified")
     created_at: datetime = Field(..., description="Account creation timestamp")
 
     model_config = {"from_attributes": True}
@@ -29,3 +30,34 @@ class PortalUserRead(BaseModel):
 
 class PortalUserMeResponse(PortalUserRead):
     full_name: str = Field(..., description="Concatenated full name")
+
+
+class VerifyOtpRequest(BaseModel):
+    email: EmailStr = Field(..., description="Email address to verify")
+    otp: str = Field(..., description="6-digit OTP code")
+
+    @field_validator("otp")
+    @classmethod
+    def validate_otp(cls, v: str) -> str:
+        import re
+        if not re.match(r"^\d{6}$", v):
+            raise ValueError("OTP must be exactly 6 digits")
+        return v
+
+
+class ResendOtpRequest(BaseModel):
+    email: EmailStr = Field(..., description="Email address to resend OTP to")
+
+
+class ResetPasswordOtpRequest(BaseModel):
+    email: EmailStr = Field(..., description="Email address")
+    otp: str = Field(..., description="6-digit OTP code")
+    new_password: str = Field(..., min_length=8, description="New password (min 8 characters)")
+
+    @field_validator("otp")
+    @classmethod
+    def validate_otp(cls, v: str) -> str:
+        import re
+        if not re.match(r"^\d{6}$", v):
+            raise ValueError("OTP must be exactly 6 digits")
+        return v

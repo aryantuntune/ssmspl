@@ -1,15 +1,17 @@
 import logging
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from slowapi.errors import RateLimitExceeded
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.middleware.rate_limit import limiter, rate_limit_exceeded_handler
+from app.database import get_db
+from app.middleware.rate_limit import limiter, rate_limit_exceeded_handler, RateLimitExceeded, SLOWAPI_AVAILABLE
 from app.middleware.security import SecurityHeadersMiddleware
-from app.routers import auth, users, boats, branches, routes, items, item_rates, ferry_schedules, payment_modes, tickets, portal_auth, company, booking, portal_bookings, reports, verification
+from app.routers import auth, users, boats, branches, routes, items, item_rates, ferry_schedules, payment_modes, tickets, portal_auth, company, booking, portal_bookings, reports, verification, contact
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -109,8 +111,9 @@ app = FastAPI(
     },
 )
 
-app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
+if SLOWAPI_AVAILABLE:
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 
 app.add_middleware(
     CORSMiddleware,
@@ -171,11 +174,20 @@ app.include_router(booking.router)
 app.include_router(portal_bookings.router)
 app.include_router(reports.router)
 app.include_router(verification.router)
+app.include_router(contact.router)
 
 
 @app.get("/health", tags=["Health"])
-async def health():
+async def health(db: AsyncSession = Depends(get_db)):
     result = {"status": "ok", "app": settings.APP_NAME}
     if settings.DEBUG:
         result["env"] = settings.APP_ENV
+    try:
+        await db.execute(text("SELECT 1"))
+        result["db"] = "connected"
+    except Exception:
+        return JSONResponse(
+            status_code=503,
+            content={"status": "unhealthy", "app": settings.APP_NAME, "db": "disconnected"},
+        )
     return result

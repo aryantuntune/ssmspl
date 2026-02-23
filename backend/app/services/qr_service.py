@@ -6,7 +6,7 @@ from pathlib import Path
 import qrcode
 from qrcode.image.styledpil import StyledPilImage
 from qrcode.image.styles.moduledrawers.pil import StyledPilQRModuleDrawer
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFilter
 
 from app.config import settings
 
@@ -128,22 +128,22 @@ def generate_qr_png(verification_code: str) -> bytes:
             new_h, new_w = logo_size, int(logo_size * ratio)
         logo = logo.resize((new_w, new_h), Image.LANCZOS)
 
-        # Clear the center area of QR modules so logo is readable
-        padding = 10
-        clear_w = new_w + padding * 2
-        clear_h = new_h + padding * 2
-        cx = (qr_w - clear_w) // 2
-        cy = (qr_h - clear_h) // 2
-        clear = Image.new("RGBA", (clear_w, clear_h), (255, 255, 255, 255))
-        qr_img.paste(clear, (cx, cy))
+        # Build a white backing that follows the logo's shape (not a rectangle)
+        # so transparent areas of the logo let QR modules show through
+        logo_alpha = logo.split()[3]
+        expanded_alpha = logo_alpha.filter(ImageFilter.MaxFilter(size=15))
+        white_base = Image.new("RGBA", logo.size, (255, 255, 255, 255))
+        backing = Image.new("RGBA", logo.size, (0, 0, 0, 0))
+        backing.paste(white_base, mask=expanded_alpha)
 
-        # Paste logo with its own alpha (transparency preserved)
         lx = (qr_w - new_w) // 2
         ly = (qr_h - new_h) // 2
-        qr_img = Image.alpha_composite(
-            qr_img,
-            Image.new("RGBA", qr_img.size, (0, 0, 0, 0)).copy()
-        )
+
+        # Composite: QR → shape-matched white backing → logo
+        backing_layer = Image.new("RGBA", qr_img.size, (0, 0, 0, 0))
+        backing_layer.paste(backing, (lx, ly))
+        qr_img = Image.alpha_composite(qr_img, backing_layer)
+
         logo_layer = Image.new("RGBA", qr_img.size, (0, 0, 0, 0))
         logo_layer.paste(logo, (lx, ly), logo)
         qr_img = Image.alpha_composite(qr_img, logo_layer)

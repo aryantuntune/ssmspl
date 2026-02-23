@@ -1,4 +1,5 @@
 import datetime
+import uuid as uuid_mod
 from decimal import Decimal, ROUND_HALF_UP
 
 from fastapi import HTTPException, status
@@ -120,9 +121,12 @@ async def _enrich_ticket(db: AsyncSession, ticket: Ticket, include_items: bool =
         "payment_mode_id": ticket.payment_mode_id,
         "is_cancelled": ticket.is_cancelled,
         "net_amount": float(ticket.net_amount) if ticket.net_amount is not None else 0,
+        "status": ticket.status,
+        "checked_in_at": ticket.checked_in_at,
         "branch_name": branch_name,
         "route_name": route_name,
         "payment_mode_name": pm_name,
+        "verification_code": str(ticket.verification_code) if ticket.verification_code else None,
     }
 
     if include_items:
@@ -549,6 +553,7 @@ async def create_ticket(db: AsyncSession, data: TicketCreate) -> dict:
         payment_mode_id=data.payment_mode_id,
         is_cancelled=False,
         net_amount=computed_net,
+        verification_code=uuid_mod.uuid4(),
     )
     db.add(ticket)
 
@@ -611,6 +616,7 @@ async def update_ticket(db: AsyncSession, ticket_id: int, data: TicketUpdate) ->
 
     if update_data.get("is_cancelled") is True:
         ticket.is_cancelled = True
+        ticket.status = "CANCELLED"
         items_result = await db.execute(
             select(TicketItem).where(TicketItem.ticket_id == ticket_id)
         )

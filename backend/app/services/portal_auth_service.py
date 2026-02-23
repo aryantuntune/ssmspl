@@ -9,6 +9,8 @@ from app.core.security import verify_password, get_password_hash, create_access_
 from app.models.portal_user import PortalUser
 from app.schemas.portal_user import PortalUserRegister
 from app.services import token_service
+from app.services import otp_service
+from app.services.email_service import send_otp_email
 
 
 async def authenticate_portal_user(db: AsyncSession, email: str, password: str) -> PortalUser | None:
@@ -26,6 +28,13 @@ async def login(db: AsyncSession, email: str, password: str) -> dict:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
         )
+
+    if not user.is_verified:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Email not verified. Please verify your email before logging in.",
+        )
+
     extra = {"role": "PORTAL_USER"}
     access_token = create_access_token(subject=str(user.id), extra_claims=extra)
     refresh_token = create_refresh_token(subject=str(user.id))
@@ -44,7 +53,8 @@ async def login(db: AsyncSession, email: str, password: str) -> dict:
 async def register(db: AsyncSession, data: PortalUserRegister) -> PortalUser:
     # Check if email already exists
     result = await db.execute(select(PortalUser).where(PortalUser.email == data.email))
-    if result.scalar_one_or_none():
+    existing = result.scalar_one_or_none()
+    if existing:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="An account with this email already exists",
@@ -56,11 +66,51 @@ async def register(db: AsyncSession, data: PortalUserRegister) -> PortalUser:
         email=data.email,
         password=get_password_hash(data.password),
         mobile=data.mobile,
+        is_verified=False,
     )
     db.add(portal_user)
+    await db.flush()
+
+    # Generate and send OTP
+    raw_otp = await otp_service.create_otp(db, data.email, "registration")
     await db.commit()
     await db.refresh(portal_user)
+
+    await send_otp_email(data.email, raw_otp, data.first_name, "registration")
+
     return portal_user
+
+
+async def verify_registration_otp(db: AsyncSession, email: str, otp: str) -> None:
+    """Verify the registration OTP and mark the user as verified."""
+    await otp_service.verify_otp(db, email, "registration", otp)
+
+    result = await db.execute(select(PortalUser).where(PortalUser.email == email))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    user.is_verified = True
+    await db.commit()
+
+
+async def resend_otp(db: AsyncSession, email: str, purpose: str) -> None:
+    """Generate a new OTP and send it. Silent if user not found (prevent enumeration)."""
+    result = await db.execute(select(PortalUser).where(PortalUser.email == email))
+    user = result.scalar_one_or_none()
+    if not user:
+        return  # Silent — prevent email enumeration
+
+    if purpose == "registration" and user.is_verified:
+        return  # Already verified, no need to send OTP
+
+    raw_otp = await otp_service.create_otp(db, email, purpose)
+    await db.commit()
+
+    await send_otp_email(email, raw_otp, user.first_name, purpose)
 
 
 async def refresh_access_token(db: AsyncSession, refresh_token: str) -> dict:
@@ -104,3 +154,29 @@ async def logout(db: AsyncSession, refresh_token: str | None) -> None:
     if refresh_token:
         await token_service.revoke_token(db, refresh_token)
         await db.commit()
+
+
+async def forgot_password(db: AsyncSession, email: str) -> None:
+    """Generate an OTP for password reset and send via email. Silent if user not found."""
+    result = await db.execute(select(PortalUser).where(PortalUser.email == email))
+    user = result.scalar_one_or_none()
+    if not user:
+        return  # Silent — prevent email enumeration
+
+    raw_otp = await otp_service.create_otp(db, email, "password_reset")
+    await db.commit()
+
+    await send_otp_email(email, raw_otp, user.first_name, "password_reset")
+
+
+async def reset_password(db: AsyncSession, email: str, otp: str, new_password: str) -> None:
+    """Verify OTP and update the portal user's password."""
+    await otp_service.verify_otp(db, email, "password_reset", otp)
+
+    result = await db.execute(select(PortalUser).where(PortalUser.email == email))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    user.password = get_password_hash(new_password)
+    await db.commit()

@@ -1,0 +1,118 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ssmspl_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ssmspl_prod_pass}
+      POSTGRES_DB: ${POSTGRES_DB:-ssmspl_db_prod}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./backend/scripts/ddl.sql:/docker-entrypoint-initdb.d/01_ddl.sql
+      - ./backend/scripts/seed_data.sql:/docker-entrypoint-initdb.d/02_seed.sql
+    # No port exposure — only reachable internally
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ssmspl_user} -d ${POSTGRES_DB:-ssmspl_db_prod}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - internal
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      APP_ENV: production
+      POSTGRES_USER: ${POSTGRES_USER:-ssmspl_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ssmspl_prod_pass}
+      POSTGRES_DB: ${POSTGRES_DB:-ssmspl_db_prod}
+    env_file: ./backend/.env.production
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      interval: 30s
+      timeout: 10s
+      start_period: 15s
+      retries: 3
+    networks:
+      - internal
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: https://api.carferry.online
+        NEXT_PUBLIC_APP_URL: https://carferry.online
+        NEXT_PUBLIC_APP_NAME: SSMSPL
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"const http = require('http'); http.get('http://localhost:3000', (r) => { process.exit(r.statusCode === 200 ? 0 : 1) }).on('error', () => process.exit(1))\""]
+      interval: 30s
+      timeout: 10s
+      start_period: 20s
+      retries: 3
+    networks:
+      - internal
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  nginx:
+    image: nginx:alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./certbot/www:/var/www/certbot:ro
+      - ./certbot/conf:/etc/letsencrypt:ro
+    depends_on:
+      - backend
+      - frontend
+    networks:
+      - internal
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  # Run once to get initial certs, then set up cron for renewal
+  certbot:
+    image: certbot/certbot
+    volumes:
+      - ./certbot/www:/var/www/certbot
+      - ./certbot/conf:/etc/letsencrypt
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+    networks:
+      - internal
+
+volumes:
+  pg_data:
+
+networks:
+  internal:
+    driver: bridge

@@ -63,6 +63,7 @@ export default function BookingPage() {
   const [showPreview, setShowPreview] = useState(false);
   const [showError, setShowError] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [errorTitle, setErrorTitle] = useState("Missing Details");
   const [submitting, setSubmitting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
 
@@ -81,7 +82,7 @@ export default function BookingPage() {
   // Load branches on mount
   useEffect(() => {
     api
-      .get("/api/branches?status=active&limit=200")
+      .get("/api/booking/branches")
       .then((res) => {
         const data = res.data || [];
         setBranches(data.map((b: Record<string, unknown>) => ({ id: b.id, name: b.name })));
@@ -212,6 +213,7 @@ export default function BookingPage() {
   };
 
   const validateForm = () => {
+    setErrorTitle("Missing Details");
     if (!fromBranch) {
       setErrorMessage("Please select a departure point.");
       setShowError(true);
@@ -267,7 +269,7 @@ export default function BookingPage() {
   const handleConfirmBooking = async () => {
     setSubmitting(true);
     try {
-      await api.post("/api/portal/bookings", {
+      const res = await api.post("/api/portal/bookings", {
         from_branch_id: parseInt(fromBranch),
         to_branch_id: parseInt(toBranch),
         travel_date: travelDate,
@@ -279,18 +281,22 @@ export default function BookingPage() {
         })),
       });
       setShowPreview(false);
-      setShowSuccess(true);
-      // Reset form
-      setFromBranch("");
-      setToBranch("");
-      setFerryTime("");
-      setItems([{ id: 1, item_id: "", quantity: 1, vehicle_no: "", rate: 0, levy: 0 }]);
+      // Redirect to booking detail page for payment
+      window.location.href = `/customer/history/${res.data.id}`;
     } catch (error: unknown) {
-      const msg =
-        error instanceof Error
-          ? error.message
-          : (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
-            "Booking failed. Please try again.";
+      const axiosDetail = (error as { response?: { data?: { detail?: string | object[] } } })
+        ?.response?.data?.detail;
+      let msg: string;
+      if (typeof axiosDetail === "string") {
+        msg = axiosDetail;
+      } else if (Array.isArray(axiosDetail)) {
+        msg = axiosDetail.map((e: { msg?: string }) => e.msg).join(", ");
+      } else if (error instanceof Error) {
+        msg = error.message;
+      } else {
+        msg = "Booking failed. Please try again.";
+      }
+      setErrorTitle("Booking Error");
       setErrorMessage(msg);
       setShowError(true);
     } finally {
@@ -796,7 +802,7 @@ export default function BookingPage() {
                 <AlertTriangle className="w-8 h-8 text-red-600" />
               </div>
               <h2 className="text-xl font-bold text-slate-800 mb-2">
-                Missing Details
+                {errorTitle}
               </h2>
               <p className="text-slate-600 mb-6">{errorMessage}</p>
               <button

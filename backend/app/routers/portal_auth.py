@@ -5,7 +5,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.middleware.rate_limit import limiter
 from app.schemas.auth import RefreshRequest
-from app.schemas.portal_user import PortalUserLogin, PortalUserRegister, PortalUserRead, PortalUserMeResponse
+from app.schemas.portal_user import (
+    PortalUserLogin,
+    PortalUserRegister,
+    PortalUserMeResponse,
+    VerifyOtpRequest,
+    ResendOtpRequest,
+    ResetPasswordOtpRequest,
+)
 from app.services import portal_auth_service
 from app.dependencies import get_current_portal_user
 from app.core.cookies import set_auth_cookies, clear_auth_cookies
@@ -21,6 +28,7 @@ router = APIRouter(prefix="/api/portal/auth", tags=["Portal Authentication"])
     responses={
         200: {"description": "Successfully authenticated"},
         401: {"description": "Invalid email or password"},
+        403: {"description": "Email not verified"},
     },
 )
 @limiter.limit("10/minute")
@@ -37,18 +45,49 @@ async def login(request: Request, body: PortalUserLogin, db: AsyncSession = Depe
 
 @router.post(
     "/register",
-    response_model=PortalUserRead,
     status_code=status.HTTP_201_CREATED,
     summary="Register a new portal user (customer)",
-    description="Create a new customer account for ferry booking.",
+    description="Create a new customer account. A verification OTP will be sent to the provided email.",
     responses={
-        201: {"description": "Account created successfully"},
+        201: {"description": "Account created, verification OTP sent"},
         409: {"description": "Email already registered"},
     },
 )
 @limiter.limit("10/minute")
 async def register(request: Request, body: PortalUserRegister, db: AsyncSession = Depends(get_db)):
-    return await portal_auth_service.register(db, body)
+    user = await portal_auth_service.register(db, body)
+    return {"message": "A verification code has been sent to your email.", "email": user.email}
+
+
+@router.post(
+    "/verify-email",
+    summary="Verify registration email with OTP",
+    description="Submit the 6-digit OTP sent to the customer's email to verify the account.",
+    responses={
+        200: {"description": "Email verified successfully"},
+        400: {"description": "Invalid or expired OTP"},
+    },
+)
+@limiter.limit("10/minute")
+async def verify_email(request: Request, body: VerifyOtpRequest, db: AsyncSession = Depends(get_db)):
+    await portal_auth_service.verify_registration_otp(db, body.email, body.otp)
+    return {"message": "Email verified successfully. You can now log in."}
+
+
+@router.post(
+    "/resend-otp",
+    summary="Resend OTP for registration or password reset",
+    description="Generate and send a new OTP. The purpose query param determines the flow.",
+    responses={
+        200: {"description": "OTP sent (or silently ignored if email not found)"},
+    },
+)
+@limiter.limit("3/minute")
+async def resend_otp(request: Request, body: ResendOtpRequest, purpose: str = "registration", db: AsyncSession = Depends(get_db)):
+    if purpose not in ("registration", "password_reset"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid purpose")
+    await portal_auth_service.resend_otp(db, body.email, purpose)
+    return {"message": "If an account with that email exists, a new verification code has been sent."}
 
 
 @router.post(
@@ -95,6 +134,7 @@ async def me(current_user: PortalUser = Depends(get_current_portal_user)):
         last_name=current_user.last_name,
         email=current_user.email,
         mobile=current_user.mobile,
+        is_verified=current_user.is_verified,
         created_at=current_user.created_at,
         full_name=f"{current_user.first_name} {current_user.last_name}",
     )
@@ -116,3 +156,32 @@ async def logout(request: Request, body: RefreshRequest | None = None, db: Async
     response = JSONResponse(content={"message": "Logged out successfully"})
     clear_auth_cookies(response, cookie_prefix="ssmspl_portal", refresh_path="/api/portal/auth/refresh")
     return response
+
+
+@router.post(
+    "/forgot-password",
+    summary="Request portal user password reset via OTP",
+    description="Send a password reset OTP to the customer's registered email address.",
+    responses={
+        200: {"description": "OTP sent (or silently ignored if email not found)"},
+    },
+)
+@limiter.limit("2/minute")
+async def forgot_password(request: Request, body: ResendOtpRequest, db: AsyncSession = Depends(get_db)):
+    await portal_auth_service.forgot_password(db, body.email)
+    return {"message": "If an account with that email exists, a verification code has been sent."}
+
+
+@router.post(
+    "/reset-password",
+    summary="Reset portal user password with OTP",
+    description="Verify the OTP and set a new password.",
+    responses={
+        200: {"description": "Password updated successfully"},
+        400: {"description": "Invalid or expired OTP"},
+    },
+)
+@limiter.limit("5/minute")
+async def reset_password(request: Request, body: ResetPasswordOtpRequest, db: AsyncSession = Depends(get_db)):
+    await portal_auth_service.reset_password(db, body.email, body.otp, body.new_password)
+    return {"message": "Password has been reset successfully. You can now log in with your new password."}

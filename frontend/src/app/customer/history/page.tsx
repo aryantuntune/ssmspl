@@ -35,6 +35,7 @@ const formatCurrency = (amount: number) => {
 
 const StatusBadge = ({ status }: { status?: string }) => {
   const statusStyles: Record<string, string> = {
+    verified: "bg-emerald-100 text-emerald-800",
     confirmed: "bg-green-100 text-green-800",
     pending: "bg-amber-100 text-amber-800",
     cancelled: "bg-red-100 text-red-800",
@@ -86,19 +87,31 @@ export default function HistoryPage() {
   const [bookings, setBookings] = useState<PaginatedBookings | null>(null);
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
+  const [qrModal, setQrModal] = useState<{ url: string; bookingNo: number } | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const goToPage = (page: number) => {
+    setLoading(true);
+    setCurrentPage(page);
+  };
 
   useEffect(() => {
-    setLoading(true);
+    let cancelled = false;
     api
       .get(`/api/portal/bookings?page=${currentPage}&page_size=10`)
       .then((res) => {
-        setBookings(res.data);
-        setLoading(false);
+        if (!cancelled) {
+          setBookings(res.data);
+          setLoading(false);
+        }
       })
       .catch(() => {
-        setBookings(null);
-        setLoading(false);
+        if (!cancelled) {
+          setBookings(null);
+          setLoading(false);
+        }
       });
+    return () => { cancelled = true; };
   }, [currentPage]);
 
   const bookingData = bookings?.data || [];
@@ -125,6 +138,13 @@ export default function HistoryPage() {
             Book New Ferry
           </Link>
         </div>
+
+        {errorMsg && (
+          <div className="mb-4 rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700 flex items-center justify-between">
+            <span>{errorMsg}</span>
+            <button onClick={() => setErrorMsg(null)} className="text-red-500 hover:text-red-700 font-bold ml-4">&times;</button>
+          </div>
+        )}
 
         {loading ? (
           <div className="flex items-center justify-center py-20">
@@ -226,9 +246,10 @@ export default function HistoryPage() {
                                     { responseType: "blob" }
                                   );
                                   const url = URL.createObjectURL(res.data);
-                                  window.open(url, "_blank");
+                                  setQrModal({ url, bookingNo: booking.booking_no });
                                 } catch {
-                                  alert("Failed to load QR code. Please try again.");
+                                  setErrorMsg("Failed to load QR code. Please try again.");
+                                  setTimeout(() => setErrorMsg(null), 4000);
                                 }
                               }}
                               className="flex items-center gap-2 px-4 py-2 rounded-xl bg-sky-50 text-sky-700 font-medium hover:bg-sky-100 transition-colors"
@@ -264,9 +285,7 @@ export default function HistoryPage() {
                 </p>
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={() =>
-                      setCurrentPage((p) => Math.max(1, p - 1))
-                    }
+                    onClick={() => goToPage(Math.max(1, currentPage - 1))}
                     disabled={currentPage === 1}
                     className={`flex items-center gap-1 px-4 py-2 rounded-xl transition-colors ${
                       currentPage === 1
@@ -278,9 +297,7 @@ export default function HistoryPage() {
                     Previous
                   </button>
                   <button
-                    onClick={() =>
-                      setCurrentPage((p) => Math.min(totalPages, p + 1))
-                    }
+                    onClick={() => goToPage(Math.min(totalPages, currentPage + 1))}
                     disabled={currentPage === totalPages}
                     className={`flex items-center gap-1 px-4 py-2 rounded-xl transition-colors ${
                       currentPage === totalPages
@@ -318,6 +335,45 @@ export default function HistoryPage() {
           </div>
         )}
       </div>
+
+      {/* QR Code Modal */}
+      {qrModal && (
+        <div
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          onClick={() => {
+            URL.revokeObjectURL(qrModal.url);
+            setQrModal(null);
+          }}
+        >
+          <div
+            className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-8 text-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-xl font-bold text-slate-800 mb-1">
+              Booking #{qrModal.bookingNo}
+            </h2>
+            <p className="text-sm text-slate-500 mb-6">
+              Show this QR code at the jetty for boarding
+            </p>
+            <div className="flex justify-center mb-6">
+              <img
+                src={qrModal.url}
+                alt="Booking QR Code"
+                className="w-72 h-72 sm:w-80 sm:h-80"
+              />
+            </div>
+            <button
+              onClick={() => {
+                URL.revokeObjectURL(qrModal.url);
+                setQrModal(null);
+              }}
+              className="w-full py-3 rounded-xl bg-sky-600 text-white font-medium hover:bg-sky-700 transition-colors"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
     </CustomerLayout>
   );
 }

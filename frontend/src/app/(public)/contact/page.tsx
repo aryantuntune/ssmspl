@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useMemo, FormEvent } from "react";
+import { useState, FormEvent } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import api from "@/lib/api";
 
 /* ------------------------------------------------------------------ */
 /*  Data                                                               */
@@ -147,11 +148,13 @@ export default function ContactPage() {
   const [captchaInput, setCaptchaInput] = useState("");
 
   /* generate a simple math captcha (two single-digit numbers) */
-  const captcha = useMemo(() => {
+  function newCaptcha() {
     const a = Math.floor(Math.random() * 9) + 1;
     const b = Math.floor(Math.random() * 9) + 1;
     return { a, b, answer: a + b };
-  }, []);
+  }
+
+  const [captcha, setCaptcha] = useState(newCaptcha);
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
@@ -159,19 +162,40 @@ export default function ContactPage() {
     setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
-  const handleSubmit = (e: FormEvent) => {
+  const [submitStatus, setSubmitStatus] = useState<
+    "idle" | "loading" | "success" | "error" | "captcha_error"
+  >("idle");
+  const [errorMessage, setErrorMessage] = useState("");
+
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
 
     if (parseInt(captchaInput, 10) !== captcha.answer) {
-      alert("Incorrect captcha answer. Please try again.");
+      setSubmitStatus("captcha_error");
+      setCaptchaInput("");
+      setCaptcha(newCaptcha());
       return;
     }
 
-    alert(
-      "Thank you for contacting us! We will get back to you shortly.",
-    );
-    setFormData({ name: "", email: "", phone: "", message: "" });
-    setCaptchaInput("");
+    setSubmitStatus("loading");
+    setErrorMessage("");
+    try {
+      await api.post("/api/contact", formData);
+      setSubmitStatus("success");
+      setFormData({ name: "", email: "", phone: "", message: "" });
+      setCaptchaInput("");
+      setCaptcha(newCaptcha());
+    } catch (err: unknown) {
+      const detail = (
+        err as { response?: { data?: { detail?: unknown } } }
+      )?.response?.data?.detail;
+      if (typeof detail === "string") {
+        setErrorMessage(detail);
+      } else {
+        setErrorMessage("Failed to send message. Please try again later.");
+      }
+      setSubmitStatus("error");
+    }
   };
 
   /* ---------------------------------------------------------------- */
@@ -239,6 +263,16 @@ export default function ContactPage() {
               </h3>
 
               <form onSubmit={handleSubmit} className="space-y-5">
+                {submitStatus === "success" && (
+                  <div className="rounded-lg bg-green-50 border border-green-200 p-4 text-sm text-green-800">
+                    Thank you for contacting us! We will get back to you shortly.
+                  </div>
+                )}
+                {submitStatus === "captcha_error" && (
+                  <div className="rounded-lg bg-red-50 border border-red-200 p-4 text-sm text-red-800">
+                    Incorrect captcha answer. Please try again.
+                  </div>
+                )}
                 {/* Name */}
                 <div>
                   <label
@@ -342,12 +376,40 @@ export default function ContactPage() {
                   />
                 </div>
 
+                {/* Status Messages */}
+                {submitStatus === "captcha_error" && (
+                  <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                    Incorrect captcha answer. Please try again.
+                  </div>
+                )}
+                {submitStatus === "error" && (
+                  <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                    {errorMessage}
+                  </div>
+                )}
+                {submitStatus === "success" && (
+                  <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+                    Thank you! Your message has been sent. We will get back to you shortly.
+                  </div>
+                )}
+
                 {/* Submit */}
                 <button
                   type="submit"
-                  className="w-full cursor-pointer rounded-lg bg-gradient-to-r from-amber-500 to-orange-500 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-amber-500/30 transition hover:from-amber-600 hover:to-orange-600 hover:shadow-xl hover:shadow-amber-500/40"
+                  disabled={submitStatus === "loading"}
+                  className="w-full cursor-pointer rounded-lg bg-gradient-to-r from-amber-500 to-orange-500 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-amber-500/30 transition hover:from-amber-600 hover:to-orange-600 hover:shadow-xl hover:shadow-amber-500/40 disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  Send Message
+                  {submitStatus === "loading" ? (
+                    <span className="inline-flex items-center gap-2">
+                      <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                      Sending...
+                    </span>
+                  ) : (
+                    "Send Message"
+                  )}
                 </button>
               </form>
             </div>

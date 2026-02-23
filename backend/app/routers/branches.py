@@ -9,8 +9,8 @@ from app.services import branch_service
 
 router = APIRouter(prefix="/api/branches", tags=["Branches"])
 
-# Branch listing is accessible to BILLING_OPERATOR too (for ticket form dropdowns)
-_branch_read_roles = require_roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.BILLING_OPERATOR)
+# Branch listing is accessible to BILLING_OPERATOR and TICKET_CHECKER too (for form dropdowns)
+_branch_read_roles = require_roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.BILLING_OPERATOR, UserRole.TICKET_CHECKER)
 _branch_roles = require_roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER)
 
 

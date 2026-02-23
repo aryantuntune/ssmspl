@@ -1,11 +1,12 @@
 import uuid
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.dependencies import get_current_user, require_roles
 from app.core.rbac import UserRole
+from app.middleware.rate_limit import limiter
 from app.models.user import User
 from app.schemas.user import ChangePassword, UserCreate, UserRead, UserUpdate
 from app.services import user_service
@@ -27,7 +28,9 @@ _admin_roles = require_roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
         401: {"description": "Not authenticated"},
     },
 )
+@limiter.limit("5/minute")
 async def change_password(
+    request: Request,
     body: ChangePassword,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),

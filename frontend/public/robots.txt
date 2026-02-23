@@ -1,0 +1,21 @@
+User-agent: *
+Allow: /
+Allow: /about
+Allow: /contact
+Allow: /route/
+Allow: /houseboat-booking
+
+Disallow: /dashboard
+Disallow: /login
+Disallow: /customer/login
+Disallow: /customer/register
+Disallow: /customer/dashboard
+Disallow: /customer/history
+Disallow: /customer/bookings
+Disallow: /forgot-password
+Disallow: /reset-password
+Disallow: /customer/forgot-password
+Disallow: /customer/reset-password
+Disallow: /api/
+
+Sitemap: https://suvarnadurgashipping.com/sitemap.xml

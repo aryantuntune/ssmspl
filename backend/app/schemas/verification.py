@@ -12,7 +12,7 @@ class VerificationItemDetail(BaseModel):
 
 
 class VerificationResult(BaseModel):
-    source: str = Field(..., description="'booking' or 'ticket'")
+    source: str = Field(..., description="'booking' (Customer Portal) or 'ticket' (Billing Operator)")
     id: int
     reference_no: int = Field(..., description="booking_no or ticket_no")
     status: str
@@ -24,13 +24,16 @@ class VerificationResult(BaseModel):
     passenger_count: int = 0
     items: list[VerificationItemDetail] = []
     checked_in_at: datetime.datetime | None = None
+    verification_code: str | None = Field(None, description="Booking/ticket verification code (for check-in)")
 
 
 class CheckInRequest(BaseModel):
-    verification_code: uuid.UUID = Field(..., description="The booking QR verification code")
+    verification_code: uuid.UUID = Field(..., description="The QR verification code (booking or ticket)")
 
 
 class CheckInResponse(BaseModel):
     message: str
-    booking_id: int
+    source: str = Field(..., description="'booking' or 'ticket'")
+    id: int
+    reference_no: int
     checked_in_at: datetime.datetime

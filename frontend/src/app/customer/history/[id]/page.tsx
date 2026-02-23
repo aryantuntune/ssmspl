@@ -11,7 +11,6 @@ import {
   Ticket,
   ArrowLeft,
   Download,
-  QrCode,
   IndianRupee,
   Ship,
   CheckCircle,
@@ -19,11 +18,11 @@ import {
   AlertCircle,
   Loader2,
   Percent,
+  ShieldCheck,
 } from "lucide-react";
 
 const formatDate = (dateString: string) => {
   if (!dateString) return "-";
-  // Handle YYYY-MM-DD string directly
   const parts = dateString.split("-");
   if (parts.length === 3) {
     const date = new Date(
@@ -51,16 +50,38 @@ const formatCurrency = (amount: number) => {
   }).format(amount || 0);
 };
 
-const statusConfig: Record<string, { style: string; Icon: typeof CheckCircle }> = {
-  confirmed: { style: "bg-green-100 text-green-800 border-green-200", Icon: CheckCircle },
-  completed: { style: "bg-sky-100 text-sky-800 border-sky-200", Icon: CheckCircle },
-  pending: { style: "bg-amber-100 text-amber-800 border-amber-200", Icon: AlertCircle },
-  cancelled: { style: "bg-red-100 text-red-800 border-red-200", Icon: XCircle },
+const statusConfig: Record<
+  string,
+  { style: string; Icon: typeof CheckCircle }
+> = {
+  verified: {
+    style: "bg-emerald-100 text-emerald-800 border-emerald-200",
+    Icon: ShieldCheck,
+  },
+  confirmed: {
+    style: "bg-green-100 text-green-800 border-green-200",
+    Icon: CheckCircle,
+  },
+  completed: {
+    style: "bg-sky-100 text-sky-800 border-sky-200",
+    Icon: CheckCircle,
+  },
+  pending: {
+    style: "bg-amber-100 text-amber-800 border-amber-200",
+    Icon: AlertCircle,
+  },
+  cancelled: {
+    style: "bg-red-100 text-red-800 border-red-200",
+    Icon: XCircle,
+  },
 };
 
 const StatusBadge = ({ status }: { status?: string }) => {
   const key = status?.toLowerCase() || "";
-  const config = statusConfig[key] || { style: "bg-slate-100 text-slate-800 border-slate-200", Icon: AlertCircle };
+  const config = statusConfig[key] || {
+    style: "bg-slate-100 text-slate-800 border-slate-200",
+    Icon: AlertCircle,
+  };
   const { style, Icon } = config;
 
   return (
@@ -110,10 +131,12 @@ export default function BookingViewPage() {
   const bookingId = params.id;
   const [booking, setBooking] = useState<BookingData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [showQr, setShowQr] = useState(false);
   const [qrUrl, setQrUrl] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
+  const [paying, setPaying] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  // Fetch booking details
   useEffect(() => {
     if (!bookingId) return;
     api
@@ -124,6 +147,23 @@ export default function BookingViewPage() {
       })
       .catch(() => setLoading(false));
   }, [bookingId]);
+
+  // Auto-fetch QR when booking is confirmed or verified
+  useEffect(() => {
+    const s = booking?.status?.toUpperCase();
+    if (!booking || (s !== "CONFIRMED" && s !== "VERIFIED")) return;
+    api
+      .get(`/api/portal/bookings/${bookingId}/qr`, { responseType: "blob" })
+      .then((res) => {
+        const url = URL.createObjectURL(res.data);
+        setQrUrl(url);
+      })
+      .catch(() => {});
+    return () => {
+      if (qrUrl) URL.revokeObjectURL(qrUrl);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [booking?.status, bookingId]);
 
   if (loading) {
     return (
@@ -152,10 +192,14 @@ export default function BookingViewPage() {
     );
   }
 
-  // Split route_name (e.g. "Dighi - Agardanda") into from/to
   const routeParts = booking.route_name?.split(" - ") || [];
   const fromName = routeParts[0] || "N/A";
   const toName = routeParts[1] || "N/A";
+  const upperStatus = booking.status?.toUpperCase();
+  const isConfirmed = upperStatus === "CONFIRMED";
+  const isVerified = upperStatus === "VERIFIED";
+  const isPending = upperStatus === "PENDING";
+  const showQr = (isConfirmed || isVerified) && !!qrUrl;
 
   return (
     <CustomerLayout>
@@ -169,11 +213,18 @@ export default function BookingViewPage() {
           <span>Back to History</span>
         </Link>
 
+        {errorMsg && (
+          <div className="mb-4 rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700 flex items-center justify-between">
+            <span>{errorMsg}</span>
+            <button onClick={() => setErrorMsg(null)} className="text-red-500 hover:text-red-700 font-bold ml-4">&times;</button>
+          </div>
+        )}
+
         {/* Ticket Card */}
         <div className="bg-white rounded-3xl shadow-xl border border-sky-100 overflow-hidden">
-          {/* Header */}
+          {/* Header with QR */}
           <div className="bg-gradient-to-r from-sky-500 to-sky-600 px-6 py-8 text-white">
-            <div className="flex items-center justify-between">
+            <div className="flex items-start justify-between gap-4">
               <div className="flex items-center gap-4">
                 <div className="w-16 h-16 rounded-2xl bg-white/20 backdrop-blur flex items-center justify-center">
                   <Ticket className="w-8 h-8 text-white" />
@@ -183,10 +234,29 @@ export default function BookingViewPage() {
                   <p className="text-2xl font-bold font-mono">
                     #{booking.booking_no}
                   </p>
+                  <div className="mt-2">
+                    <StatusBadge status={booking.status} />
+                  </div>
                 </div>
               </div>
-              <StatusBadge status={booking.status} />
+              {/* QR Code - visible for confirmed and verified bookings */}
+              {showQr && (
+                <div className="flex-shrink-0 bg-white rounded-2xl p-2.5 shadow-lg">
+                  <img
+                    src={qrUrl}
+                    alt="Boarding QR Code"
+                    className="w-36 h-36 sm:w-40 sm:h-40"
+                  />
+                </div>
+              )}
             </div>
+            {showQr && (
+              <p className="text-sky-100 text-xs mt-3 text-right">
+                {isVerified
+                  ? "Boarding verified"
+                  : "Show this QR at the jetty for boarding"}
+              </p>
+            )}
           </div>
 
           {/* Content */}
@@ -205,15 +275,15 @@ export default function BookingViewPage() {
                 </div>
                 <div className="flex-1 text-right">
                   <p className="text-sm text-slate-500 mb-1">To</p>
-                  <p className="text-lg font-bold text-amber-600">
-                    {toName}
-                  </p>
+                  <p className="text-lg font-bold text-amber-600">{toName}</p>
                 </div>
               </div>
             </div>
 
             {/* Details Grid */}
-            <div className={`grid grid-cols-2 ${booking.discount > 0 ? "md:grid-cols-4" : "md:grid-cols-3"} gap-4`}>
+            <div
+              className={`grid grid-cols-2 ${booking.discount > 0 ? "md:grid-cols-4" : "md:grid-cols-3"} gap-4`}
+            >
               <div className="bg-slate-50 rounded-xl p-4">
                 <div className="flex items-center gap-2 text-slate-500 mb-1">
                   <Calendar className="w-4 h-4" />
@@ -292,22 +362,26 @@ export default function BookingViewPage() {
 
             {/* Actions */}
             <div className="border-t border-slate-100 pt-6 flex flex-wrap gap-3">
-              {booking.status?.toUpperCase() === "CONFIRMED" && (
+              {isPending && (
                 <button
                   onClick={async () => {
+                    setPaying(true);
                     try {
-                      const res = await api.get(`/api/portal/bookings/${bookingId}/qr`, { responseType: 'blob' });
-                      const url = URL.createObjectURL(res.data);
-                      setQrUrl(url);
-                      setShowQr(true);
+                      const res = await api.post(
+                        `/api/portal/bookings/${bookingId}/pay`
+                      );
+                      setBooking(res.data);
                     } catch {
-                      alert("Failed to load QR code. Please try again.");
+                      setErrorMsg("Payment failed. Please try again.");
+                      setTimeout(() => setErrorMsg(null), 4000);
                     }
+                    setPaying(false);
                   }}
-                  className="flex items-center gap-2 px-6 py-3 rounded-xl bg-sky-600 text-white font-semibold hover:bg-sky-700 transition-colors"
+                  disabled={paying}
+                  className="flex items-center gap-2 px-6 py-3 rounded-xl bg-green-600 text-white font-semibold hover:bg-green-700 transition-colors disabled:opacity-50"
                 >
-                  <QrCode className="w-5 h-5" />
-                  <span>Show QR Code</span>
+                  <IndianRupee className="w-5 h-5" />
+                  <span>{paying ? "Processing..." : "Pay Now"}</span>
                 </button>
               )}
               <button
@@ -317,16 +391,24 @@ export default function BookingViewPage() {
                 <Download className="w-5 h-5" />
                 <span>Download Ticket</span>
               </button>
-              {booking.status?.toUpperCase() === "CONFIRMED" && (
+              {isConfirmed && (
                 <button
                   onClick={async () => {
-                    if (!confirm("Are you sure you want to cancel this booking?")) return;
+                    if (
+                      !confirm(
+                        "Are you sure you want to cancel this booking?"
+                      )
+                    )
+                      return;
                     setCancelling(true);
                     try {
-                      const res = await api.post(`/api/portal/bookings/${bookingId}/cancel`);
+                      const res = await api.post(
+                        `/api/portal/bookings/${bookingId}/cancel`
+                      );
                       setBooking(res.data);
                     } catch {
-                      alert("Failed to cancel booking. Please try again.");
+                      setErrorMsg("Failed to cancel booking. Please try again.");
+                      setTimeout(() => setErrorMsg(null), 4000);
                     }
                     setCancelling(false);
                   }}
@@ -334,32 +416,15 @@ export default function BookingViewPage() {
                   className="flex items-center gap-2 px-6 py-3 rounded-xl bg-red-100 text-red-700 font-semibold hover:bg-red-200 transition-colors disabled:opacity-50"
                 >
                   <XCircle className="w-5 h-5" />
-                  <span>{cancelling ? "Cancelling..." : "Cancel Booking"}</span>
+                  <span>
+                    {cancelling ? "Cancelling..." : "Cancel Booking"}
+                  </span>
                 </button>
               )}
             </div>
           </div>
         </div>
       </div>
-
-      {/* QR Code Modal */}
-      {showQr && qrUrl && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6 text-center">
-            <h2 className="text-xl font-bold text-slate-800 mb-4">Booking QR Code</h2>
-            <div className="flex justify-center mb-4">
-              <img src={qrUrl} alt="Booking QR Code" className="w-64 h-64" />
-            </div>
-            <p className="text-sm text-slate-500 mb-4">Show this QR code at the jetty for boarding</p>
-            <button
-              onClick={() => { setShowQr(false); if (qrUrl) URL.revokeObjectURL(qrUrl); }}
-              className="w-full py-3 rounded-xl bg-sky-600 text-white font-medium hover:bg-sky-700 transition-colors"
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      )}
     </CustomerLayout>
   );
 }

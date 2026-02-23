@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field
 
 
 class LoginRequest(BaseModel):
@@ -29,3 +29,12 @@ class RefreshRequest(BaseModel):
 class TokenPayload(BaseModel):
     sub: str = Field(..., description="Subject — the user's UUID")
     type: str = Field(..., description="Token type: 'access' or 'refresh'")
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr = Field(..., description="Email address associated with the account")
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str = Field(..., description="Password reset token from the email link")
+    new_password: str = Field(..., min_length=8, description="New password (min 8 characters)")
