@@ -62,7 +62,7 @@ async def send_password_reset_email(to_email: str, reset_link: str, user_name: s
             port=settings.SMTP_PORT,
             username=settings.SMTP_USER,
             password=settings.SMTP_PASSWORD,
-            use_tls=True,
+            start_tls=True,
         )
         logger.info(f"Password reset email sent to {to_email}")
     except Exception as e:
@@ -119,7 +119,7 @@ async def send_otp_email(to_email: str, otp: str, user_name: str, purpose: str) 
             port=settings.SMTP_PORT,
             username=settings.SMTP_USER,
             password=settings.SMTP_PASSWORD,
-            use_tls=True,
+            start_tls=True,
         )
         logger.info(f"OTP email sent to {to_email} ({purpose})")
     except Exception as e:
@@ -185,7 +185,7 @@ async def send_contact_form_email(sender_name: str, sender_email: str, sender_ph
             port=settings.SMTP_PORT,
             username=settings.SMTP_USER,
             password=settings.SMTP_PASSWORD,
-            use_tls=True,
+            start_tls=True,
         )
         logger.info(f"Contact form email sent from {sender_email}")
     except Exception as e:
@@ -276,7 +276,7 @@ async def send_booking_confirmation(booking: dict, to_email: str) -> None:
             port=settings.SMTP_PORT,
             username=settings.SMTP_USER,
             password=settings.SMTP_PASSWORD,
-            use_tls=True,
+            start_tls=True,
         )
         logger.info(f"Booking confirmation email sent to {to_email}")
     except Exception as e:
