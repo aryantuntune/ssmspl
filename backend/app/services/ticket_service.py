@@ -127,6 +127,7 @@ async def _enrich_ticket(db: AsyncSession, ticket: Ticket, include_items: bool =
         "route_name": route_name,
         "payment_mode_name": pm_name,
         "verification_code": str(ticket.verification_code) if ticket.verification_code else None,
+        "created_at": ticket.created_at,
     }
 
     if include_items:

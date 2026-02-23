@@ -287,6 +287,9 @@ export interface Ticket {
   payment_mode_id: number;
   is_cancelled: boolean;
   net_amount: number;
+  status: string | null;
+  checked_in_at: string | null;
+  verification_code: string | null;
   branch_name: string | null;
   route_name: string | null;
   payment_mode_name: string | null;

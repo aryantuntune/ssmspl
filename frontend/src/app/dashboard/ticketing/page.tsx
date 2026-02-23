@@ -47,6 +47,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Plus } from "lucide-react";
+import {
+  printReceipt,
+  ReceiptData,
+  PaperWidth,
+  getReceiptPaperWidth,
+  setReceiptPaperWidth,
+} from "@/lib/print-receipt";
 
 interface FormItem {
   tempId: string;
@@ -259,6 +266,9 @@ export default function TicketingPage() {
 
   // View modal
   const [viewTicket, setViewTicket] = useState<Ticket | null>(null);
+
+  // Receipt paper width
+  const [paperWidth, setPaperWidth] = useState<PaperWidth>(() => getReceiptPaperWidth());
 
   // Payment confirmation modal
   const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -854,100 +864,48 @@ export default function TicketingPage() {
       const res = await api.post<Ticket>("/api/tickets/", create);
       const savedTicket = res.data;
 
-      // Build print content
-      const routeName = allRoutes.find((r) => r.id === formRouteId);
-      const branchName = branches.find((b) => b.id === formBranchId)?.name || "";
-      const repayment = Math.round((receivedAmountRounded - formNetAmount) * 100) / 100;
-      const itemRows = activeItems
-        .map((fi) => {
-          const itemName = items.find((i) => i.id === fi.item_id)?.name || `Item #${fi.item_id}`;
-          const lineAmt = (fi.quantity * (fi.rate + fi.levy)).toFixed(2);
-          return `<tr>
-            <td style="padding:4px 8px;border-bottom:1px solid #eee;">${itemName}</td>
-            <td style="padding:4px 8px;border-bottom:1px solid #eee;text-align:right;">${fi.rate.toFixed(2)}</td>
-            <td style="padding:4px 8px;border-bottom:1px solid #eee;text-align:right;">${fi.levy.toFixed(2)}</td>
-            <td style="padding:4px 8px;border-bottom:1px solid #eee;text-align:center;">${fi.quantity}</td>
-            <td style="padding:4px 8px;border-bottom:1px solid #eee;">${fi.vehicle_no || "-"}</td>
-            <td style="padding:4px 8px;border-bottom:1px solid #eee;text-align:right;">${lineAmt}</td>
-          </tr>`;
-        })
-        .join("");
-
-      const paymentPrintRows = paymentRows
-        .map((pr) => {
-          const modeName = paymentModes.find((pm) => pm.id === pr.payment_mode_id)?.description || "-";
-          return `<tr>
-            <td style="padding:4px 8px;border-bottom:1px solid #eee;">${modeName}</td>
-            <td style="padding:4px 8px;border-bottom:1px solid #eee;text-align:right;">${pr.amount.toFixed(2)}</td>
-            <td style="padding:4px 8px;border-bottom:1px solid #eee;">${pr.reference_id || "-"}</td>
-          </tr>`;
-        })
-        .join("");
-
-      const printHtml = `<!DOCTYPE html>
-<html><head><title>Ticket #${savedTicket.ticket_no || savedTicket.id}</title>
-<style>
-  body { font-family: Arial, sans-serif; margin: 20px; color: #333; }
-  .header { text-align: center; margin-bottom: 16px; }
-  .header h2 { margin: 0 0 4px; font-size: 18px; }
-  .header p { margin: 0; font-size: 12px; color: #666; }
-  .info { display: flex; flex-wrap: wrap; gap: 8px 24px; margin-bottom: 12px; font-size: 13px; }
-  .info span { font-weight: 600; }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 12px; }
-  th { background: #f5f5f5; padding: 6px 8px; text-align: left; border-bottom: 2px solid #ddd; }
-  .totals { text-align: right; font-size: 13px; margin-top: 8px; }
-  .totals div { margin-bottom: 4px; }
-  .totals .net { font-size: 15px; font-weight: 700; }
-  .section-title { font-size: 13px; font-weight: 700; margin: 12px 0 6px; }
-  @media print { body { margin: 0; } }
-</style></head><body>
-<div class="header">
-  <h2>SSMSPL - Ferry Ticket</h2>
-  <p>Suvarnadurga Shipping & Marine Services Pvt. Ltd.</p>
-</div>
-<div class="info">
-  <div>Ticket No: <span>${savedTicket.ticket_no || savedTicket.id}</span></div>
-  <div>Date: <span>${formTicketDate}</span></div>
-  <div>Branch: <span>${branchName}</span></div>
-  <div>Route: <span>${routeName ? `${routeName.branch_one_name} - ${routeName.branch_two_name}` : ""}</span></div>
-  <div>Departure: <span>${formDeparture || "-"}</span></div>
-</div>
-<table>
-  <thead><tr>
-    <th>Item</th><th style="text-align:right;">Rate</th><th style="text-align:right;">Levy</th>
-    <th style="text-align:center;">Qty</th><th>Vehicle</th><th style="text-align:right;">Amount</th>
-  </tr></thead>
-  <tbody>${itemRows}</tbody>
-</table>
-<div class="totals">
-  <div>Amount: ${formAmount.toFixed(2)}</div>
-  <div>Discount: ${(formDiscount || 0).toFixed(2)}</div>
-  <div class="net">Net Amount: ${formNetAmount.toFixed(2)}</div>
-</div>
-<div class="section-title">Payment Details</div>
-<table>
-  <thead><tr>
-    <th>Payment Mode</th><th style="text-align:right;">Amount</th><th>Reference ID</th>
-  </tr></thead>
-  <tbody>${paymentPrintRows}</tbody>
-  <tfoot><tr>
-    <td style="padding:4px 8px;font-weight:700;">Total Received</td>
-    <td style="padding:4px 8px;text-align:right;font-weight:700;">${receivedAmountRounded.toFixed(2)}</td>
-    <td></td>
-  </tr></tfoot>
-</table>
-<div class="totals">
-  <div>Return Change: ${repayment.toFixed(2)}</div>
-</div>
-</body></html>`;
-
-      const printWindow = window.open("", "_blank", "width=600,height=700");
-      if (printWindow) {
-        printWindow.document.write(printHtml);
-        printWindow.document.close();
-        printWindow.focus();
-        printWindow.print();
+      // Determine From -> To direction
+      const route = allRoutes.find((r) => r.id === formRouteId);
+      let fromTo = "";
+      if (route) {
+        const isFromBranchOne = formBranchId === route.branch_id_one;
+        fromTo = isFromBranchOne
+          ? `${route.branch_one_name} To ${route.branch_two_name}`
+          : `${route.branch_two_name} To ${route.branch_one_name}`;
       }
+
+      // Get branch info
+      const branch = branches.find((b) => b.id === formBranchId);
+      const branchName = branch?.name || "";
+      const branchPhone = branch?.contact_nos || "";
+
+      // Build receipt data
+      const receiptData: ReceiptData = {
+        ticketId: savedTicket.id,
+        ticketNo: savedTicket.ticket_no,
+        branchName,
+        branchPhone,
+        fromTo,
+        ticketDate: formTicketDate,
+        createdAt: savedTicket.created_at || null,
+        departure: formDeparture || null,
+        items: activeItems.map((fi) => ({
+          name: items.find((i) => i.id === fi.item_id)?.name || `Item #${fi.item_id}`,
+          quantity: fi.quantity,
+          rate: fi.rate,
+          levy: fi.levy,
+          amount: Math.round(fi.quantity * (fi.rate + fi.levy) * 100) / 100,
+          vehicleNo: fi.vehicle_no || null,
+        })),
+        netAmount: formNetAmount,
+        createdBy: user?.full_name || user?.username || "",
+        paperWidth,
+      };
+
+      // Print receipt (non-blocking - ticket already saved)
+      printReceipt(receiptData).catch(() => {
+        /* print failure is non-fatal */
+      });
 
       setShowPaymentModal(false);
       closeModal();
@@ -955,7 +913,7 @@ export default function TicketingPage() {
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { detail?: string } } })?.response?.data
-          ?.detail || "Operation failed.";
+          ?.detail || "Failed to save ticket. Please try again.";
       setPaymentError(msg);
     } finally {
       setSubmitting(false);
@@ -1652,21 +1610,38 @@ export default function TicketingPage() {
             </p>
           )}
 
-          <DialogFooter className="mt-6">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setShowPaymentModal(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              onClick={handleSaveAndPrint}
-              disabled={submitting || receivedAmountRounded < formNetAmount}
-            >
-              {submitting ? "Saving..." : "Save & Print"}
-            </Button>
+          <DialogFooter className="mt-6 flex items-center justify-between sm:justify-between">
+            <div className="flex items-center gap-2">
+              <Label className="text-xs text-muted-foreground whitespace-nowrap">Paper:</Label>
+              <select
+                value={paperWidth}
+                onChange={(e) => {
+                  const w = e.target.value as PaperWidth;
+                  setPaperWidth(w);
+                  setReceiptPaperWidth(w);
+                }}
+                className="h-8 border border-input rounded-md px-2 py-1 text-xs bg-background focus:outline-none focus:ring-2 focus:ring-ring"
+              >
+                <option value="80mm">80mm</option>
+                <option value="58mm">58mm</option>
+              </select>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowPaymentModal(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={handleSaveAndPrint}
+                disabled={submitting || receivedAmountRounded < formNetAmount}
+              >
+                {submitting ? "Saving..." : "Save & Print"}
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
