@@ -13,7 +13,7 @@ from app.services import user_service
 
 router = APIRouter(prefix="/api/users", tags=["Users"])
 
-# Only Super Admin and Admin can manage users
+# Only admin-level roles can manage users
 _admin_roles = require_roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
 
 
@@ -43,7 +43,7 @@ async def change_password(
     "/",
     response_model=list[UserRead],
     summary="List all users",
-    description="Paginated list of all users with filtering, sorting, and search. Requires **Super Admin** or **Admin** role.",
+    description="Paginated list of all users with filtering, sorting, and search. Requires **Admin** role.",
     responses={
         200: {"description": "List of users returned"},
         401: {"description": "Not authenticated"},
@@ -58,13 +58,14 @@ async def list_users(
     search: str | None = Query(None, description="Search by username, email, or full name (case-insensitive)"),
     search_column: str = Query("all", description="Column to search: all, username, email, or full_name"),
     match_type: str = Query("contains", description="Match type: contains, starts_with, or ends_with"),
-    role_filter: str | None = Query(None, description="Filter by role (SUPER_ADMIN, ADMIN, MANAGER, BILLING_OPERATOR, TICKET_CHECKER)"),
+    role_filter: str | None = Query(None, description="Filter by role (ADMIN, MANAGER, BILLING_OPERATOR, TICKET_CHECKER)"),
     status: str | None = Query(None, description="Filter by status: active, inactive, or all (default all)"),
     db: AsyncSession = Depends(get_db),
-    _=Depends(_admin_roles),
+    current_user: User = Depends(_admin_roles),
 ):
     return await user_service.get_all_users(
-        db, skip, limit, sort_by, sort_order, search, status, search_column, match_type, role_filter
+        db, skip, limit, sort_by, sort_order, search, status, search_column, match_type, role_filter,
+        current_user=current_user,
     )
 
 
@@ -72,7 +73,7 @@ async def list_users(
     "/count",
     response_model=int,
     summary="Get total user count",
-    description="Returns the total number of users matching filters. Requires **Super Admin** or **Admin** role.",
+    description="Returns the total number of users matching filters. Requires **Admin** role.",
     responses={
         200: {"description": "Total count returned"},
         401: {"description": "Not authenticated"},
@@ -86,9 +87,11 @@ async def count_users(
     role_filter: str | None = Query(None, description="Filter by role"),
     status: str | None = Query(None, description="Filter by status: active, inactive, or all (default all)"),
     db: AsyncSession = Depends(get_db),
-    _=Depends(_admin_roles),
+    current_user: User = Depends(_admin_roles),
 ):
-    return await user_service.count_users(db, search, status, search_column, match_type, role_filter)
+    return await user_service.count_users(db, search, status, search_column, match_type, role_filter,
+        current_user=current_user,
+    )
 
 
 @router.post(
@@ -96,7 +99,7 @@ async def count_users(
     response_model=UserRead,
     status_code=201,
     summary="Create a new user",
-    description="Register a new user with email, username, password, and role. Requires **Super Admin** or **Admin** role.",
+    description="Register a new user with email, username, password, and role. Requires **Admin** role.",
     responses={
         201: {"description": "User created successfully"},
         401: {"description": "Not authenticated"},
@@ -107,16 +110,16 @@ async def count_users(
 async def create_user(
     body: UserCreate,
     db: AsyncSession = Depends(get_db),
-    _=Depends(_admin_roles),
+    current_user: User = Depends(_admin_roles),
 ):
-    return await user_service.create_user(db, body)
+    return await user_service.create_user(db, body, current_user=current_user)
 
 
 @router.get(
     "/{user_id}",
     response_model=UserRead,
     summary="Get user by ID",
-    description="Fetch a single user by their UUID. Requires **Super Admin** or **Admin** role.",
+    description="Fetch a single user by their UUID. Requires **Admin** role.",
     responses={
         200: {"description": "User details returned"},
         401: {"description": "Not authenticated"},
@@ -127,16 +130,16 @@ async def create_user(
 async def get_user(
     user_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    _=Depends(_admin_roles),
+    current_user: User = Depends(_admin_roles),
 ):
-    return await user_service.get_user_by_id(db, user_id)
+    return await user_service.get_user_by_id(db, user_id, current_user=current_user)
 
 
 @router.patch(
     "/{user_id}",
     response_model=UserRead,
     summary="Update user details",
-    description="Partially update a user's profile (name, email, role, active status). Requires **Super Admin** or **Admin** role.",
+    description="Partially update a user's profile (name, email, role, active status). Requires **Admin** role.",
     responses={
         200: {"description": "User updated successfully"},
         401: {"description": "Not authenticated"},
@@ -149,26 +152,26 @@ async def update_user(
     user_id: uuid.UUID,
     body: UserUpdate,
     db: AsyncSession = Depends(get_db),
-    _=Depends(_admin_roles),
+    current_user: User = Depends(_admin_roles),
 ):
-    return await user_service.update_user(db, user_id, body)
+    return await user_service.update_user(db, user_id, body, current_user=current_user)
 
 
 @router.delete(
     "/{user_id}",
     response_model=UserRead,
     summary="Deactivate a user",
-    description="Soft-delete a user by setting `is_active=false`. Requires **Super Admin** role only.",
+    description="Soft-delete a user by setting `is_active=false`. Restricted to authorized administrators.",
     responses={
         200: {"description": "User deactivated successfully"},
         401: {"description": "Not authenticated"},
-        403: {"description": "Insufficient role — Super Admin required"},
+        403: {"description": "Insufficient permissions"},
         404: {"description": "User not found"},
     },
 )
 async def deactivate_user(
     user_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_roles(UserRole.SUPER_ADMIN)),
+    current_user: User = Depends(require_roles(UserRole.SUPER_ADMIN)),
 ):
-    return await user_service.deactivate_user(db, user_id)
+    return await user_service.deactivate_user(db, user_id, current_user=current_user)

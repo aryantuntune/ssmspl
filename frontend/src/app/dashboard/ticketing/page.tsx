@@ -1081,7 +1081,7 @@ export default function TicketingPage() {
           <Button variant="ghost" size="sm" onClick={() => handleView(ticket)}>
             View
           </Button>
-          {(user?.role === "SUPER_ADMIN" || user?.role === "ADMIN") && (
+          {user?.role === "ADMIN" && (
             <Button variant="ghost" size="sm" onClick={() => handleEdit(ticket)}>
               Edit
             </Button>

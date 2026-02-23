@@ -1,17 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const ADMIN_PROTECTED_PATHS = ["/dashboard"];
-const CUSTOMER_PROTECTED_PATHS = [
-  "/customer/dashboard",
-  "/customer/history",
-  "/customer/bookings",
+const CUSTOMER_PUBLIC = [
+  "/customer/login",
+  "/customer/register",
+  "/customer/forgot-password",
+  "/customer/reset-password",
 ];
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Check admin protected routes
-  if (ADMIN_PROTECTED_PATHS.some((path) => pathname.startsWith(path))) {
+  // Protect ALL /dashboard/* routes
+  if (pathname.startsWith("/dashboard")) {
     const accessToken = request.cookies.get("ssmspl_access_token");
     if (!accessToken?.value) {
       const loginUrl = new URL("/login", request.url);
@@ -20,8 +20,11 @@ export function middleware(request: NextRequest) {
     }
   }
 
-  // Check customer protected routes
-  if (CUSTOMER_PROTECTED_PATHS.some((path) => pathname.startsWith(path))) {
+  // Protect ALL /customer/* routes (except login, register, forgot/reset password)
+  if (
+    pathname.startsWith("/customer") &&
+    !CUSTOMER_PUBLIC.some((p) => pathname.startsWith(p))
+  ) {
     const portalToken = request.cookies.get("ssmspl_portal_access_token");
     if (!portalToken?.value) {
       const loginUrl = new URL("/customer/login", request.url);

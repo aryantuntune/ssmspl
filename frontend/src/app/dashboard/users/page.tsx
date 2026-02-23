@@ -46,13 +46,14 @@ const emptyForm: UserFormData = {
   is_active: true,
 };
 
-const ROLE_OPTIONS: { value: string; label: string }[] = [
-  { value: "SUPER_ADMIN", label: "Super Admin" },
+const BASE_ROLE_OPTIONS: { value: string; label: string }[] = [
   { value: "ADMIN", label: "Admin" },
   { value: "MANAGER", label: "Manager" },
   { value: "BILLING_OPERATOR", label: "Billing Operator" },
   { value: "TICKET_CHECKER", label: "Ticket Checker" },
 ];
+
+const SA_ROLE_OPTION = { value: "SUPER_ADMIN", label: "Super Admin" };
 
 function formatRole(role: string): string {
   return role
@@ -67,6 +68,7 @@ function formatDate(dateStr: string | null): string {
 }
 
 export default function UsersPage() {
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [users, setUsers] = useState<User[]>([]);
   const [tableLoading, setTableLoading] = useState(false);
   const [error, setError] = useState("");
@@ -90,6 +92,15 @@ export default function UsersPage() {
 
   const [viewUser, setViewUser] = useState<User | null>(null);
   const [routes, setRoutes] = useState<Route[]>([]);
+
+  const fetchCurrentUser = useCallback(async () => {
+    try {
+      const resp = await api.get<User>("/api/auth/me");
+      setCurrentUser(resp.data);
+    } catch {
+      // non-critical
+    }
+  }, []);
 
   const fetchRoutes = useCallback(async () => {
     try {
@@ -138,10 +149,16 @@ export default function UsersPage() {
     }
   }, [page, pageSize, sortBy, sortOrder, search, roleFilter, statusFilter]);
 
+  // Compute role options based on current user
+  const ROLE_OPTIONS = currentUser?.role === "SUPER_ADMIN"
+    ? [SA_ROLE_OPTION, ...BASE_ROLE_OPTIONS]
+    : BASE_ROLE_OPTIONS;
+
   useEffect(() => {
+    fetchCurrentUser();
     fetchUsers();
     fetchRoutes();
-  }, [fetchUsers, fetchRoutes]);
+  }, [fetchCurrentUser, fetchUsers, fetchRoutes]);
 
   const openCreateModal = () => {
     setEditingUser(null);

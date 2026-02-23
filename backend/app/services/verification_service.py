@@ -71,7 +71,7 @@ def _check_route_access(user: User, ticket_or_booking_route_id: int) -> None:
         )
 
 
-async def lookup_booking_by_code(db: AsyncSession, verification_code: uuid.UUID) -> dict:
+async def lookup_booking_by_code(db: AsyncSession, verification_code: uuid.UUID, user: User) -> dict:
     """Look up a booking by its QR verification code."""
     result = await db.execute(
         select(Booking).where(Booking.verification_code == verification_code)
@@ -82,6 +82,8 @@ async def lookup_booking_by_code(db: AsyncSession, verification_code: uuid.UUID)
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Booking not found for this verification code",
         )
+
+    _check_route_access(user, booking.route_id)
 
     # Fetch items
     items_result = await db.execute(
@@ -175,7 +177,7 @@ async def _build_ticket_result(db: AsyncSession, ticket: Ticket) -> dict:
     }
 
 
-async def lookup_ticket_by_code(db: AsyncSession, verification_code: uuid.UUID) -> dict | None:
+async def lookup_ticket_by_code(db: AsyncSession, verification_code: uuid.UUID, user: User) -> dict | None:
     """Look up a ticket by its QR verification code. Returns None if not found (no exception)."""
     result = await db.execute(
         select(Ticket).where(Ticket.verification_code == verification_code)
@@ -183,10 +185,11 @@ async def lookup_ticket_by_code(db: AsyncSession, verification_code: uuid.UUID) 
     ticket = result.scalar_one_or_none()
     if not ticket:
         return None
+    _check_route_access(user, ticket.route_id)
     return await _build_ticket_result(db, ticket)
 
 
-async def lookup_by_code(db: AsyncSession, verification_code: uuid.UUID) -> dict:
+async def lookup_by_code(db: AsyncSession, verification_code: uuid.UUID, user: User) -> dict:
     """Look up a booking or ticket by verification code. Tries booking first, then ticket."""
     # Try booking first
     result = await db.execute(
@@ -194,10 +197,10 @@ async def lookup_by_code(db: AsyncSession, verification_code: uuid.UUID) -> dict
     )
     booking = result.scalar_one_or_none()
     if booking:
-        return await lookup_booking_by_code(db, verification_code)
+        return await lookup_booking_by_code(db, verification_code, user)
 
     # Try ticket
-    ticket_result = await lookup_ticket_by_code(db, verification_code)
+    ticket_result = await lookup_ticket_by_code(db, verification_code, user)
     if ticket_result:
         return ticket_result
 
@@ -293,7 +296,7 @@ async def verify(db: AsyncSession, verification_code: uuid.UUID, current_user: U
 
 
 async def lookup_booking_by_number(
-    db: AsyncSession, booking_no: int, branch_id: int | None = None
+    db: AsyncSession, booking_no: int, user: User, branch_id: int | None = None
 ) -> dict:
     """Look up a portal booking by booking number (and optionally branch)."""
     query = select(Booking).where(Booking.booking_no == booking_no)
@@ -308,6 +311,8 @@ async def lookup_booking_by_number(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Booking #{booking_no} not found",
         )
+
+    _check_route_access(user, booking.route_id)
 
     # Fetch items
     items_result = await db.execute(
@@ -352,7 +357,7 @@ async def lookup_booking_by_number(
 
 
 async def lookup_ticket_by_number(
-    db: AsyncSession, ticket_no: int, branch_id: int
+    db: AsyncSession, ticket_no: int, branch_id: int, user: User
 ) -> dict:
     """Look up an operator ticket by ticket number and branch."""
     result = await db.execute(
@@ -367,5 +372,7 @@ async def lookup_ticket_by_number(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Ticket #{ticket_no} not found for branch {branch_id}",
         )
+
+    _check_route_access(user, ticket.route_id)
 
     return await _build_ticket_result(db, ticket)

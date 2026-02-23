@@ -21,7 +21,7 @@ app = FastAPI(
         "REST API for **Suvarnadurga Shipping & Marine Services Pvt. Ltd.**\n\n"
         "### Features\n"
         "- JWT-based authentication with access & refresh tokens\n"
-        "- Role-Based Access Control (RBAC) with 5 roles: Super Admin, Admin, Manager, Billing Operator, Ticket Checker\n"
+        "- Role-Based Access Control (RBAC) with 4 roles: Admin, Manager, Billing Operator, Ticket Checker\n"
         "- User management (CRUD) restricted to admin roles\n"
         "- Razorpay payment integration (upcoming)\n\n"
         "### Authentication\n"
@@ -43,39 +43,39 @@ app = FastAPI(
         },
         {
             "name": "Users",
-            "description": "User management — requires **Super Admin** or **Admin** role.",
+            "description": "User management — requires **Admin** role.",
         },
         {
             "name": "Boats",
-            "description": "Ferry/boat management — requires **Super Admin**, **Admin**, or **Manager** role.",
+            "description": "Ferry/boat management — requires **Admin** or **Manager** role.",
         },
         {
             "name": "Branches",
-            "description": "Branch management — requires **Super Admin**, **Admin**, or **Manager** role.",
+            "description": "Branch management — requires **Admin** or **Manager** role.",
         },
         {
             "name": "Routes",
-            "description": "Route management — requires **Super Admin**, **Admin**, or **Manager** role.",
+            "description": "Route management — requires **Admin** or **Manager** role.",
         },
         {
             "name": "Items",
-            "description": "Item management — requires **Super Admin**, **Admin**, or **Manager** role.",
+            "description": "Item management — requires **Admin** or **Manager** role.",
         },
         {
             "name": "Item Rates",
-            "description": "Item rate management — requires **Super Admin**, **Admin**, or **Manager** role.",
+            "description": "Item rate management — requires **Admin** or **Manager** role.",
         },
         {
             "name": "Ferry Schedules",
-            "description": "Ferry schedule management — requires **Super Admin**, **Admin**, or **Manager** role.",
+            "description": "Ferry schedule management — requires **Admin** or **Manager** role.",
         },
         {
             "name": "Payment Modes",
-            "description": "Payment mode management — requires **Super Admin**, **Admin**, or **Manager** role.",
+            "description": "Payment mode management — requires **Admin** or **Manager** role.",
         },
         {
             "name": "Tickets",
-            "description": "Ticket creation, lookup, and management — requires **Super Admin**, **Admin**, **Manager**, or **Billing Operator** role.",
+            "description": "Ticket creation, lookup, and management — requires **Admin**, **Manager**, or **Billing Operator** role.",
         },
         {
             "name": "Portal Authentication",
@@ -83,7 +83,7 @@ app = FastAPI(
         },
         {
             "name": "Company",
-            "description": "Company settings — requires **Super Admin** role.",
+            "description": "Company settings — requires **Admin** role.",
         },
         {
             "name": "Booking Data",
@@ -95,11 +95,11 @@ app = FastAPI(
         },
         {
             "name": "Reports",
-            "description": "Revenue, ticket count, item breakdown, branch summary, and payment mode reports — requires **Super Admin**, **Admin**, or **Manager** role.",
+            "description": "Revenue, ticket count, item breakdown, branch summary, and payment mode reports — requires **Admin** or **Manager** role.",
         },
         {
             "name": "Ticket Verification",
-            "description": "Booking/ticket lookup and check-in for ferry boarding — requires **Ticket Checker**, **Manager**, **Admin**, or **Super Admin** role.",
+            "description": "Booking/ticket lookup and check-in for ferry boarding — requires **Ticket Checker**, **Manager**, or **Admin** role.",
         },
     ],
     contact={

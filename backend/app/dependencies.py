@@ -87,7 +87,7 @@ async def get_current_portal_user(
 
     result = await db.execute(select(PortalUser).where(PortalUser.id == int(user_id)))
     user = result.scalar_one_or_none()
-    if user is None:
+    if user is None or not user.is_active:
         raise credentials_exception
     return user
 
@@ -98,7 +98,7 @@ def require_roles(*roles: UserRole):
         if current_user.role not in roles:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Access denied. Required roles: {[r.value for r in roles]}",
+                detail="Access denied. Insufficient permissions.",
             )
         return current_user
     return role_checker

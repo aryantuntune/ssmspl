@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_
 
 from app.core.security import get_password_hash, verify_password
+from app.core.rbac import UserRole
 from app.models.user import User
 from app.models.route import Route
 from app.models.branch import Branch
@@ -70,10 +71,13 @@ def _user_with_route_name(user: User, route_name: str | None) -> dict:
     }
 
 
-async def get_user_by_id(db: AsyncSession, user_id: uuid.UUID) -> dict:
+async def get_user_by_id(db: AsyncSession, user_id: uuid.UUID, current_user: User | None = None) -> dict:
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    # Non-SUPER_ADMIN cannot view SUPER_ADMIN users
+    if current_user and user.role == UserRole.SUPER_ADMIN and current_user.role != UserRole.SUPER_ADMIN:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     route_name = await _resolve_route_name(db, user.route_id)
     return _user_with_route_name(user, route_name)
@@ -126,9 +130,13 @@ async def count_users(
     search_column: str = "all",
     match_type: str = "contains",
     role_filter: str | None = None,
+    current_user: User | None = None,
 ) -> int:
     query = select(func.count()).select_from(User)
     query = _apply_filters(query, search, status, search_column, match_type, role_filter)
+    # Non-SUPER_ADMIN users never see SUPER_ADMIN accounts
+    if current_user and current_user.role != UserRole.SUPER_ADMIN:
+        query = query.where(User.role != UserRole.SUPER_ADMIN)
     result = await db.execute(query)
     return result.scalar()
 
@@ -155,6 +163,7 @@ async def get_all_users(
     search_column: str = "all",
     match_type: str = "contains",
     role_filter: str | None = None,
+    current_user: User | None = None,
 ) -> list[dict]:
     column = SORTABLE_COLUMNS.get(sort_by, User.created_at)
     order = column.desc() if sort_order == "desc" else column.asc()
@@ -173,6 +182,9 @@ async def get_all_users(
         .outerjoin(BranchTwo, BranchTwo.c.id == Route.branch_id_two)
     )
     query = _apply_filters(query, search, status, search_column, match_type, role_filter)
+    # Non-SUPER_ADMIN users never see SUPER_ADMIN accounts
+    if current_user and current_user.role != UserRole.SUPER_ADMIN:
+        query = query.where(User.role != UserRole.SUPER_ADMIN)
     result = await db.execute(query.order_by(order).offset(skip).limit(limit))
     rows = result.all()
     return [
@@ -184,7 +196,14 @@ async def get_all_users(
     ]
 
 
-async def create_user(db: AsyncSession, user_in: UserCreate) -> dict:
+async def create_user(db: AsyncSession, user_in: UserCreate, current_user: User | None = None) -> dict:
+    # Only SUPER_ADMIN can create SUPER_ADMIN users
+    if user_in.role == UserRole.SUPER_ADMIN and (not current_user or current_user.role != UserRole.SUPER_ADMIN):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied. Insufficient permissions.",
+        )
+
     # Check uniqueness
     existing = await db.execute(
         select(User).where((User.email == user_in.email) | (User.username == user_in.username))
@@ -207,13 +226,22 @@ async def create_user(db: AsyncSession, user_in: UserCreate) -> dict:
     return _user_with_route_name(user, route_name)
 
 
-async def update_user(db: AsyncSession, user_id: uuid.UUID, user_in: UserUpdate) -> dict:
+async def update_user(db: AsyncSession, user_id: uuid.UUID, user_in: UserUpdate, current_user: User | None = None) -> dict:
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
+    # Non-SUPER_ADMIN cannot edit a SUPER_ADMIN user
+    if current_user and user.role == UserRole.SUPER_ADMIN and current_user.role != UserRole.SUPER_ADMIN:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied. Insufficient permissions.")
+
     update_data = user_in.model_dump(exclude_unset=True)
+
+    # Non-SUPER_ADMIN cannot change a user's role TO SUPER_ADMIN
+    if "role" in update_data and update_data["role"] == UserRole.SUPER_ADMIN:
+        if not current_user or current_user.role != UserRole.SUPER_ADMIN:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied. Insufficient permissions.")
 
     # Check uniqueness if email is being updated
     if "email" in update_data:
@@ -246,7 +274,10 @@ async def change_password(db: AsyncSession, user: User, current_password: str, n
     return user
 
 
-async def deactivate_user(db: AsyncSession, user_id: uuid.UUID) -> dict:
+async def deactivate_user(db: AsyncSession, user_id: uuid.UUID, current_user: User | None = None) -> dict:
+    # Prevent deactivating yourself
+    if current_user and current_user.id == user_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot deactivate your own account.")
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if not user:

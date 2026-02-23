@@ -10,11 +10,11 @@ interface NavbarProps {
 }
 
 const ROLE_LABELS: Record<string, string> = {
-  super_admin: "Super Admin",
-  admin: "Admin",
-  manager: "Manager",
-  billing_operator: "Billing Operator",
-  ticket_checker: "Ticket Checker",
+  SUPER_ADMIN: "Super Admin",
+  ADMIN: "Admin",
+  MANAGER: "Manager",
+  BILLING_OPERATOR: "Billing Operator",
+  TICKET_CHECKER: "Ticket Checker",
 };
 
 export default function Navbar({ user }: NavbarProps) {

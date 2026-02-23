@@ -28,9 +28,9 @@ _verification_roles = require_roles(
 async def lookup_booking(
     code: uuid.UUID = Query(..., description="Booking verification code (UUID from QR)"),
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(_verification_roles),
+    current_user: User = Depends(_verification_roles),
 ):
-    return await verification_service.lookup_booking_by_code(db, code)
+    return await verification_service.lookup_booking_by_code(db, code, current_user)
 
 
 @router.get(
@@ -47,7 +47,7 @@ async def lookup_booking(
 async def scan_qr(
     payload: str = Query(..., description="Full QR payload string (code.signature)"),
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(_verification_roles),
+    current_user: User = Depends(_verification_roles),
 ):
     code = verify_qr_payload(payload)
     if code is None:
@@ -62,7 +62,7 @@ async def scan_qr(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid verification code format",
         )
-    return await verification_service.lookup_by_code(db, code_uuid)
+    return await verification_service.lookup_by_code(db, code_uuid, current_user)
 
 
 @router.post(
@@ -98,9 +98,9 @@ async def lookup_booking_by_number(
     booking_no: int = Query(..., description="Booking number (e.g. 1, 2, 3...)"),
     branch_id: int | None = Query(None, description="Branch ID (optional)"),
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(_verification_roles),
+    current_user: User = Depends(_verification_roles),
 ):
-    return await verification_service.lookup_booking_by_number(db, booking_no, branch_id)
+    return await verification_service.lookup_booking_by_number(db, booking_no, current_user, branch_id)
 
 
 @router.get(
@@ -114,6 +114,6 @@ async def lookup_ticket(
     ticket_no: int = Query(..., description="Ticket number"),
     branch_id: int = Query(..., description="Branch ID"),
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(_verification_roles),
+    current_user: User = Depends(_verification_roles),
 ):
-    return await verification_service.lookup_ticket_by_number(db, ticket_no, branch_id)
+    return await verification_service.lookup_ticket_by_number(db, ticket_no, branch_id, current_user)
