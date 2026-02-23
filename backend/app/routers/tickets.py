@@ -24,7 +24,7 @@ _ticket_roles = require_roles(
 
 
 @router.get(
-    "/",
+    "",
     response_model=list[TicketRead],
     summary="List all tickets",
     description="Paginated list of tickets. Requires **Super Admin**, **Admin**, **Manager**, or **Billing Operator** role.",
@@ -165,7 +165,7 @@ async def create_multi_tickets(
 
 
 @router.post(
-    "/",
+    "",
     response_model=TicketRead,
     status_code=201,
     summary="Create a new ticket",

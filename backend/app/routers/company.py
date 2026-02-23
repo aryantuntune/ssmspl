@@ -13,7 +13,7 @@ _admin_or_above = require_roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
 
 
 @router.get(
-    "/",
+    "",
     response_model=CompanyRead,
     summary="Get company settings",
     description="Fetch the single company record. Requires **Super Admin** or **Admin** role.",
@@ -32,7 +32,7 @@ async def get_company(
 
 
 @router.patch(
-    "/",
+    "",
     response_model=CompanyRead,
     summary="Update company settings",
     description="Partially update the company record. Requires **Super Admin** or **Admin** role.",

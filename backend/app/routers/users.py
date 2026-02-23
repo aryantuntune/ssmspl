@@ -40,7 +40,7 @@ async def change_password(
 
 
 @router.get(
-    "/",
+    "",
     response_model=list[UserRead],
     summary="List all users",
     description="Paginated list of all users with filtering, sorting, and search. Requires **Admin** role.",
@@ -95,7 +95,7 @@ async def count_users(
 
 
 @router.post(
-    "/",
+    "",
     response_model=UserRead,
     status_code=201,
     summary="Create a new user",

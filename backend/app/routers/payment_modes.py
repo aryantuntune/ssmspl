@@ -15,7 +15,7 @@ _payment_mode_roles = require_roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRo
 
 
 @router.get(
-    "/",
+    "",
     response_model=list[PaymentModeRead],
     summary="List all payment modes",
     description="Paginated list of all payment modes. Requires **Super Admin**, **Admin**, or **Manager** role.",
@@ -69,7 +69,7 @@ async def count_payment_modes(
 
 
 @router.post(
-    "/",
+    "",
     response_model=PaymentModeRead,
     status_code=201,
     summary="Create a new payment mode",

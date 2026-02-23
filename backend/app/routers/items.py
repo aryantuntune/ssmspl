@@ -15,7 +15,7 @@ _item_roles = require_roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAG
 
 
 @router.get(
-    "/",
+    "",
     response_model=list[ItemRead],
     summary="List all items",
     description="Paginated list of all items. Requires **Super Admin**, **Admin**, or **Manager** role.",
@@ -73,7 +73,7 @@ async def count_items(
 
 
 @router.post(
-    "/",
+    "",
     response_model=ItemRead,
     status_code=201,
     summary="Create a new item",

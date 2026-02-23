@@ -15,7 +15,7 @@ _branch_roles = require_roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MAN
 
 
 @router.get(
-    "/",
+    "",
     response_model=list[BranchRead],
     summary="List all branches",
     description="Paginated list of all branches. Requires **Super Admin**, **Admin**, or **Manager** role.",
@@ -100,7 +100,7 @@ async def export_branches(
 
 
 @router.post(
-    "/",
+    "",
     response_model=BranchRead,
     status_code=201,
     summary="Create a new branch",

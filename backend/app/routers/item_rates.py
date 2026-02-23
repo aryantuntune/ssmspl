@@ -15,7 +15,7 @@ _item_rate_roles = require_roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.
 
 
 @router.get(
-    "/",
+    "",
     response_model=list[ItemRateRead],
     summary="List all item rates",
     description="Paginated list of all item rates with item and route names. Requires **Super Admin**, **Admin**, or **Manager** role.",
@@ -69,7 +69,7 @@ async def count_item_rates(
 
 
 @router.post(
-    "/",
+    "",
     response_model=ItemRateRead,
     status_code=201,
     summary="Create a new item rate",

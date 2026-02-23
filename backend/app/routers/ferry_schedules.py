@@ -14,7 +14,7 @@ _read_roles = require_roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAG
 
 
 @router.get(
-    "/",
+    "",
     response_model=list[FerryScheduleRead],
     summary="List all ferry schedules",
     description="Paginated list of all ferry schedules with branch names. Requires **Super Admin**, **Admin**, or **Manager** role.",
@@ -62,7 +62,7 @@ async def count_schedules(
 
 
 @router.post(
-    "/",
+    "",
     response_model=FerryScheduleRead,
     status_code=201,
     summary="Create a new ferry schedule",

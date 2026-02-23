@@ -15,7 +15,7 @@ _route_roles = require_roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANA
 
 
 @router.get(
-    "/",
+    "",
     response_model=list[RouteRead],
     summary="List all routes",
     description="Paginated list of all routes with branch names. Requires **Super Admin**, **Admin**, or **Manager** role.",
@@ -65,7 +65,7 @@ async def count_routes(
 
 
 @router.post(
-    "/",
+    "",
     response_model=RouteRead,
     status_code=201,
     summary="Create a new route",
