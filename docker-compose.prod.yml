@@ -60,6 +60,7 @@ services:
         NEXT_PUBLIC_API_URL: https://api.carferry.online
         NEXT_PUBLIC_APP_URL: https://carferry.online
         NEXT_PUBLIC_APP_NAME: SSMSPL
+        INTERNAL_API_URL: http://backend:8000
     restart: unless-stopped
     environment:
       NODE_ENV: production

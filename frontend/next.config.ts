@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+// INTERNAL_API_URL is the Docker-internal backend address (http://backend:8000)
+// used for server-side rewrites. Falls back to NEXT_PUBLIC_API_URL or localhost.
+const API_URL = process.env.INTERNAL_API_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 const securityHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },
