@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 const CUSTOMER_PUBLIC = [
   "/customer/login",
   "/customer/register",
+  "/customer/verify-email",
   "/customer/forgot-password",
   "/customer/reset-password",
 ];
