@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import api from "@/lib/api";
+import { User } from "@/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -99,6 +101,8 @@ const formatCurrency = (amount: number) =>
   );
 
 export default function VerifyPage() {
+  const router = useRouter();
+  const [authorized, setAuthorized] = useState(false);
   const [searchMode, setSearchMode] = useState<SearchMode>("qr_scan");
   const [searchValue, setSearchValue] = useState("");
   const [branchId, setBranchId] = useState("");
@@ -108,6 +112,17 @@ export default function VerifyPage() {
   const [checkingIn, setCheckingIn] = useState(false);
   const [error, setError] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
+
+  // Check if user has permission to access this page
+  useEffect(() => {
+    api.get<User>("/api/auth/me").then(({ data }) => {
+      if (data.menu_items?.includes("Ticket Verification")) {
+        setAuthorized(true);
+      } else {
+        router.replace("/dashboard");
+      }
+    }).catch(() => {});
+  }, [router]);
 
   // QR scanner state
   const [scannerActive, setScannerActive] = useState(false);
@@ -433,6 +448,14 @@ export default function VerifyPage() {
     PENDING: { variant: "secondary", icon: Clock },
     CANCELLED: { variant: "destructive", icon: XCircle },
   };
+
+  if (!authorized) {
+    return (
+      <div className="min-h-[50vh] flex items-center justify-center">
+        <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
+      </div>
+    );
+  }
 
   return (
     <>

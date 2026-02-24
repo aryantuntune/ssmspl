@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import api from "@/lib/api";
 import { User } from "@/types";
+import { useDashboardWS } from "@/hooks/useDashboardWS";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -49,71 +50,59 @@ export default function DashboardPage() {
   });
   const [recentTickets, setRecentTickets] = useState<TicketRow[]>([]);
 
+  // Real-time stats via WebSocket
+  const { stats: wsStats, connected: wsConnected } = useDashboardWS();
+
+  // Merge WebSocket stats into display stats when available
+  useEffect(() => {
+    if (wsStats) {
+      setStats({
+        ticketCount: wsStats.ticket_count,
+        revenue: wsStats.today_revenue,
+        activeFerries: wsStats.active_ferries,
+        activeBranches: wsStats.active_branches,
+      });
+    }
+  }, [wsStats]);
+
   useEffect(() => {
     api.get<User>("/api/auth/me").then(({ data }) => {
       setUser(data);
 
       const menu = data.menu_items || [];
       const canSeeTickets = menu.includes("Ticketing");
-      const canSeeFerries = menu.includes("Ferries");
-      const canSeeBranches = menu.includes("Branches");
 
-      // Only fetch APIs the user's role can access
-      const fetches: Promise<unknown>[] = [];
-      const fetchKeys: string[] = [];
-
-      if (canSeeTickets) {
-        fetches.push(
-          api.get("/api/tickets/", {
-            params: { limit: 5, sort_by: "id", sort_order: "desc" },
-          })
-        );
-        fetchKeys.push("tickets");
-      }
-      if (canSeeFerries) {
-        fetches.push(
-          api.get("/api/boats/", { params: { status: "active", limit: 1 } })
-        );
-        fetchKeys.push("boats");
-      }
-      if (canSeeBranches) {
-        fetches.push(
-          api.get("/api/branches/", { params: { status: "active", limit: 1 } })
-        );
-        fetchKeys.push("branches");
-      }
-
-      if (fetches.length === 0) return;
-
-      Promise.allSettled(fetches).then((results) => {
-        let ticketCount = 0;
-        let revenue = 0;
-        let activeFerries = 0;
-        let activeBranches = 0;
-
-        results.forEach((res, i) => {
-          if (res.status !== "fulfilled") return;
-          const d = (res as PromiseFulfilledResult<{ data: Record<string, unknown> }>).value.data;
-          switch (fetchKeys[i]) {
-            case "tickets":
-              ticketCount = (d.total as number) || 0;
-              setRecentTickets((d.data as TicketRow[]) || []);
-              revenue = ((d.data as TicketRow[]) || []).reduce(
-                (sum: number, t: TicketRow) => sum + (t.net_amount || 0),
-                0
-              );
-              break;
-            case "boats":
-              activeFerries = (d.total as number) || 0;
-              break;
-            case "branches":
-              activeBranches = (d.total as number) || 0;
-              break;
-          }
+      // Fetch initial stats via HTTP (fallback / first paint)
+      api
+        .get<{ ticket_count: number; today_revenue: number; active_ferries: number; active_branches: number }>(
+          "/api/dashboard/stats"
+        )
+        .then(({ data: s }) => {
+          setStats({
+            ticketCount: s.ticket_count,
+            revenue: s.today_revenue,
+            activeFerries: s.active_ferries,
+            activeBranches: s.active_branches,
+          });
+        })
+        .catch(() => {
+          /* non-fatal — WS will provide updates */
         });
 
-        setStats({ ticketCount, revenue, activeFerries, activeBranches });
-      });
+      // Fetch recent tickets separately
+      if (canSeeTickets) {
+        api
+          .get("/api/tickets/", {
+            params: { limit: 5, sort_by: "id", sort_order: "desc" },
+          })
+          .then(({ data: d }) => {
+            const ticketData = d as { data?: TicketRow[] };
+            setRecentTickets(ticketData.data || []);
+          })
+          .catch(() => {
+            /* non-fatal */
+          });
+      }
     });
   }, []);
 
@@ -233,22 +222,36 @@ export default function DashboardPage() {
 
       {/* Stats Cards */}
       {statCards.length > 0 && (
-        <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-${Math.min(statCards.length, 4)} gap-4`}>
-          {statCards.map((s) => (
-            <Card key={s.label}>
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground">{s.label}</p>
-                    <p className="text-2xl font-bold mt-1">{s.value}</p>
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <h2 className="text-lg font-semibold">Overview</h2>
+            {wsConnected && (
+              <span className="inline-flex items-center gap-1 text-xs text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+                </span>
+                Live
+              </span>
+            )}
+          </div>
+          <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-${Math.min(statCards.length, 4)} gap-4`}>
+            {statCards.map((s) => (
+              <Card key={s.label}>
+                <CardContent className="pt-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-muted-foreground">{s.label}</p>
+                      <p className="text-2xl font-bold mt-1">{s.value}</p>
+                    </div>
+                    <div className={`h-12 w-12 rounded-xl ${s.bg} flex items-center justify-center`}>
+                      <s.icon className={`h-6 w-6 ${s.color}`} />
+                    </div>
                   </div>
-                  <div className={`h-12 w-12 rounded-xl ${s.bg} flex items-center justify-center`}>
-                    <s.icon className={`h-6 w-6 ${s.color}`} />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                </CardContent>
+              </Card>
+            ))}
+          </div>
         </div>
       )}
 

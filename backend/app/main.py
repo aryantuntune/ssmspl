@@ -11,7 +11,7 @@ from app.config import settings
 from app.database import get_db
 from app.middleware.rate_limit import limiter, rate_limit_exceeded_handler, RateLimitExceeded, SLOWAPI_AVAILABLE
 from app.middleware.security import SecurityHeadersMiddleware
-from app.routers import auth, users, boats, branches, routes, items, item_rates, ferry_schedules, payment_modes, tickets, portal_auth, company, booking, portal_bookings, reports, verification, contact
+from app.routers import auth, users, boats, branches, routes, items, item_rates, ferry_schedules, payment_modes, tickets, portal_auth, company, booking, portal_bookings, reports, verification, contact, dashboard
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -102,6 +102,10 @@ app = FastAPI(
             "name": "Ticket Verification",
             "description": "Booking/ticket lookup and check-in for ferry boarding — requires **Ticket Checker**, **Manager**, or **Admin** role.",
         },
+        {
+            "name": "Dashboard",
+            "description": "Real-time dashboard statistics via HTTP and WebSocket.",
+        },
     ],
     contact={
         "name": "SSMSPL Engineering",
@@ -176,6 +180,7 @@ app.include_router(portal_bookings.router)
 app.include_router(reports.router)
 app.include_router(verification.router)
 app.include_router(contact.router)
+app.include_router(dashboard.router)
 
 
 @app.get("/health", tags=["Health"])

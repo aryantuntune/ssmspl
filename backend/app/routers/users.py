@@ -50,7 +50,9 @@ async def change_password(
         403: {"description": "Insufficient role permissions"},
     },
 )
+@limiter.limit("30/minute")
 async def list_users(
+    request: Request,
     skip: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(5, ge=1, le=200, description="Maximum number of records to return"),
     sort_by: str = Query("created_at", description="Column to sort by (id, username, email, full_name, role, is_active, created_at)"),
@@ -80,7 +82,9 @@ async def list_users(
         403: {"description": "Insufficient role permissions"},
     },
 )
+@limiter.limit("30/minute")
 async def count_users(
+    request: Request,
     search: str | None = Query(None, description="Search by username, email, or full name (case-insensitive)"),
     search_column: str = Query("all", description="Column to search: all, username, email, or full_name"),
     match_type: str = Query("contains", description="Match type: contains, starts_with, or ends_with"),
