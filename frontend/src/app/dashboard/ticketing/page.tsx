@@ -46,7 +46,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Plus } from "lucide-react";
+import { Plus, Printer } from "lucide-react";
 import {
   printReceipt,
   ReceiptData,
@@ -685,6 +685,61 @@ export default function TicketingPage() {
     }
   };
 
+  // Reprint ticket
+  const handleReprint = async (ticket: Ticket) => {
+    try {
+      const res = await api.get<Ticket>(`/api/tickets/${ticket.id}`);
+      const t = res.data;
+
+      // Determine From -> To direction
+      const route = allRoutes.find((r) => r.id === t.route_id);
+      let fromTo = "";
+      if (route) {
+        const isFromBranchOne = t.branch_id === route.branch_id_one;
+        fromTo = isFromBranchOne
+          ? `${route.branch_one_name} To ${route.branch_two_name}`
+          : `${route.branch_two_name} To ${route.branch_one_name}`;
+      }
+
+      // Get branch info
+      const branch = branches.find((b) => b.id === t.branch_id);
+      const branchName = branch?.name || "";
+      const branchPhone = branch?.contact_nos || "";
+
+      // Build receipt data
+      const receiptData: ReceiptData = {
+        ticketId: t.id,
+        ticketNo: t.ticket_no,
+        branchName,
+        branchPhone,
+        fromTo,
+        ticketDate: t.ticket_date,
+        createdAt: t.created_at || null,
+        departure: t.departure || null,
+        items: (t.items || [])
+          .filter((ti) => !ti.is_cancelled)
+          .map((ti) => ({
+            name: ti.item_name || items.find((i) => i.id === ti.item_id)?.name || `Item #${ti.item_id}`,
+            quantity: ti.quantity,
+            rate: ti.rate,
+            levy: ti.levy,
+            amount: ti.amount,
+            vehicleNo: ti.vehicle_no || null,
+          })),
+        netAmount: t.net_amount,
+        createdBy: user?.full_name || user?.username || "",
+        paperWidth,
+      };
+
+      // Print receipt (non-blocking)
+      printReceipt(receiptData).catch(() => {
+        /* print failure is non-fatal */
+      });
+    } catch {
+      setError("Failed to load ticket for reprinting.");
+    }
+  };
+
   // Edit ticket
   const handleEdit = async (ticket: Ticket) => {
     try {
@@ -1039,6 +1094,16 @@ export default function TicketingPage() {
           <Button variant="ghost" size="sm" onClick={() => handleView(ticket)}>
             View
           </Button>
+          {!ticket.is_cancelled && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => handleReprint(ticket)}
+              title="Reprint ticket"
+            >
+              <Printer className="h-4 w-4" />
+            </Button>
+          )}
           {user?.role === "ADMIN" && (
             <Button variant="ghost" size="sm" onClick={() => handleEdit(ticket)}>
               Edit
@@ -1172,7 +1237,7 @@ export default function TicketingPage() {
                   setPage(1);
                 }}
               >
-                <SelectTrigger className="h-10 w-[160px]">
+                <SelectTrigger className="h-10 w-full sm:w-[160px]">
                   <SelectValue placeholder="All Branches" />
                 </SelectTrigger>
                 <SelectContent>
@@ -1196,7 +1261,7 @@ export default function TicketingPage() {
                   setPage(1);
                 }}
               >
-                <SelectTrigger className="h-10 w-[200px]">
+                <SelectTrigger className="h-10 w-full sm:w-[200px]">
                   <SelectValue placeholder="All Routes" />
                 </SelectTrigger>
                 <SelectContent>
@@ -1220,7 +1285,7 @@ export default function TicketingPage() {
                   setDateFrom(e.target.value);
                   setPage(1);
                 }}
-                className="w-[150px]"
+                className="w-full sm:w-[150px]"
               />
             </div>
 
@@ -1234,7 +1299,7 @@ export default function TicketingPage() {
                   setDateTo(e.target.value);
                   setPage(1);
                 }}
-                className="w-[150px]"
+                className="w-full sm:w-[150px]"
               />
             </div>
 
@@ -1248,7 +1313,7 @@ export default function TicketingPage() {
                   setPage(1);
                 }}
               >
-                <SelectTrigger className="h-10 w-[120px]">
+                <SelectTrigger className="h-10 w-full sm:w-[120px]">
                   <SelectValue placeholder="All" />
                 </SelectTrigger>
                 <SelectContent>
@@ -1294,7 +1359,7 @@ export default function TicketingPage() {
 
           {viewTicket && (
             <>
-              <div className="grid grid-cols-2 gap-4 mb-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
                 <div className="flex justify-between">
                   <span className="text-sm font-medium text-muted-foreground">ID</span>
                   <span className="text-sm">{viewTicket.id}</span>
@@ -1693,7 +1758,7 @@ export default function TicketingPage() {
             </h3>
             <form onSubmit={handleSubmit}>
               {/* Master section */}
-              <div className="grid grid-cols-2 gap-4 mb-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
                 {/* Route */}
                 <div>
                   <Label className="mb-1 block">Route *</Label>

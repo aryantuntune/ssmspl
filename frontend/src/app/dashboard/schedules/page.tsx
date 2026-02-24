@@ -244,7 +244,7 @@ export default function SchedulesPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">Schedule Management</h1>
           <p className="text-muted-foreground text-sm mt-1">
@@ -275,7 +275,7 @@ export default function SchedulesPage() {
                   setPage(1);
                 }}
               >
-                <SelectTrigger className="w-[180px]">
+                <SelectTrigger className="w-full sm:w-[180px]">
                   <SelectValue placeholder="All Branches" />
                 </SelectTrigger>
                 <SelectContent>

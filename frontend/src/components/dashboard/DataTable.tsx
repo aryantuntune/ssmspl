@@ -66,8 +66,8 @@ export default function DataTable<T extends Record<string, any>>({
 
   return (
     <div>
-      <div className="rounded-lg border border-border overflow-hidden">
-        <Table>
+      <div className="rounded-lg border border-border overflow-hidden overflow-x-auto">
+        <Table className="min-w-[600px]">
           <TableHeader>
             <TableRow className="bg-muted/50">
               {columns.map((col) => (
@@ -126,8 +126,8 @@ export default function DataTable<T extends Record<string, any>>({
       </div>
 
       {/* Pagination */}
-      <div className="flex items-center justify-between mt-4">
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+      <div className="flex flex-col sm:flex-row items-center justify-between mt-4 gap-3">
+        <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
           <span>Rows per page:</span>
           <Select value={String(pageSize)} onValueChange={(v) => onPageSizeChange(Number(v))}>
             <SelectTrigger className="h-8 w-[70px]">

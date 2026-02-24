@@ -150,7 +150,7 @@ function VerifyEmailForm() {
   }
 
   return (
-    <div className="glass-card rounded-3xl p-8 md:p-10 shadow-2xl">
+    <div className="glass-card rounded-3xl p-5 sm:p-8 md:p-10 shadow-2xl">
       <div className="text-center mb-8">
         <h1 className="text-2xl md:text-3xl font-bold text-white mb-2">
           Verify Your Email
@@ -162,7 +162,7 @@ function VerifyEmailForm() {
       </div>
 
       {/* OTP Inputs */}
-      <div className="flex justify-center gap-3 mb-6" onPaste={handlePaste}>
+      <div className="flex justify-center gap-1.5 sm:gap-3 mb-6" onPaste={handlePaste}>
         {otp.map((digit, index) => (
           <input
             key={index}
@@ -173,7 +173,7 @@ function VerifyEmailForm() {
             value={digit}
             onChange={(e) => handleChange(index, e.target.value)}
             onKeyDown={(e) => handleKeyDown(index, e)}
-            className="input-glass w-12 h-14 md:w-14 md:h-16 rounded-xl text-center text-2xl font-bold text-white focus:outline-none focus:ring-2 focus:ring-sky-400/50"
+            className="input-glass w-9 h-11 sm:w-12 sm:h-14 md:w-14 md:h-16 rounded-lg sm:rounded-xl text-center text-xl sm:text-2xl font-bold text-white focus:outline-none focus:ring-2 focus:ring-sky-400/50"
           />
         ))}
       </div>

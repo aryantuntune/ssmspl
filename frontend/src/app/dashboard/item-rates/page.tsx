@@ -331,7 +331,7 @@ export default function ItemRatesPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">Item Rate Management</h1>
           <p className="text-muted-foreground text-sm mt-1">
@@ -375,7 +375,7 @@ export default function ItemRatesPage() {
                   setPage(1);
                 }}
               >
-                <SelectTrigger className="w-[180px]">
+                <SelectTrigger className="w-full sm:w-[180px]">
                   <SelectValue placeholder="All Items" />
                 </SelectTrigger>
                 <SelectContent>
@@ -397,7 +397,7 @@ export default function ItemRatesPage() {
                   setPage(1);
                 }}
               >
-                <SelectTrigger className="w-[220px]">
+                <SelectTrigger className="w-full sm:w-[220px]">
                   <SelectValue placeholder="All Routes" />
                 </SelectTrigger>
                 <SelectContent>
@@ -419,7 +419,7 @@ export default function ItemRatesPage() {
                   setPage(1);
                 }}
               >
-                <SelectTrigger className="w-[120px]">
+                <SelectTrigger className="w-full sm:w-[120px]">
                   <SelectValue placeholder="All" />
                 </SelectTrigger>
                 <SelectContent>
@@ -438,7 +438,7 @@ export default function ItemRatesPage() {
                   setFromDate(e.target.value);
                   setPage(1);
                 }}
-                className="w-[160px]"
+                className="w-full sm:w-[160px]"
               />
             </div>
             {hasActiveFilters && (
@@ -617,7 +617,7 @@ export default function ItemRatesPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <Label>Rate</Label>
                 <Input

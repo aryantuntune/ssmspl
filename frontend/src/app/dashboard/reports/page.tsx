@@ -285,7 +285,7 @@ export default function ReportsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">Reports</h1>
           <p className="text-muted-foreground text-sm mt-1">
@@ -317,7 +317,7 @@ export default function ReportsPage() {
                   setPage(1);
                 }}
               >
-                <SelectTrigger className="w-[180px]">
+                <SelectTrigger className="w-full sm:w-[180px]">
                   <SelectValue placeholder="All Branches" />
                 </SelectTrigger>
                 <SelectContent>
@@ -339,7 +339,7 @@ export default function ReportsPage() {
                   setPage(1);
                 }}
               >
-                <SelectTrigger className="w-[220px]">
+                <SelectTrigger className="w-full sm:w-[220px]">
                   <SelectValue placeholder="All Routes" />
                 </SelectTrigger>
                 <SelectContent>
@@ -361,7 +361,7 @@ export default function ReportsPage() {
                   setPage(1);
                 }}
               >
-                <SelectTrigger className="w-[160px]">
+                <SelectTrigger className="w-full sm:w-[160px]">
                   <SelectValue placeholder="All" />
                 </SelectTrigger>
                 <SelectContent>
@@ -383,7 +383,7 @@ export default function ReportsPage() {
                   setDateFrom(e.target.value);
                   setPage(1);
                 }}
-                className="w-[160px]"
+                className="w-full sm:w-[160px]"
               />
             </div>
             <div>
@@ -395,7 +395,7 @@ export default function ReportsPage() {
                   setDateTo(e.target.value);
                   setPage(1);
                 }}
-                className="w-[160px]"
+                className="w-full sm:w-[160px]"
               />
             </div>
             <div>
@@ -407,7 +407,7 @@ export default function ReportsPage() {
                   setPage(1);
                 }}
               >
-                <SelectTrigger className="w-[130px]">
+                <SelectTrigger className="w-full sm:w-[130px]">
                   <SelectValue placeholder="All" />
                 </SelectTrigger>
                 <SelectContent>

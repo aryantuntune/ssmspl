@@ -256,7 +256,7 @@ export default function HomePage() {
                 key={service.title}
                 className="group relative rounded-2xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300"
               >
-                <div className="relative h-80">
+                <div className="relative h-64 sm:h-80">
                   <Image
                     src={service.image}
                     alt={service.title}
@@ -307,7 +307,7 @@ export default function HomePage() {
           </div>
 
           {/* Stats bar */}
-          <div className="mt-16 bg-gradient-to-r from-[#0c3547] to-[#1a6b8a] rounded-2xl p-8 text-center">
+          <div className="mt-16 bg-gradient-to-r from-[#0c3547] to-[#1a6b8a] rounded-2xl p-4 sm:p-8 text-center">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
               {[
                 { value: "20+", label: "Years of Service" },

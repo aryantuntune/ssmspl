@@ -674,7 +674,7 @@ export default function MultiTicketingPage() {
                                           Number(e.target.value)
                                         )
                                       }
-                                      className="border border-input rounded px-2 py-1 text-sm w-full min-w-[160px] bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                                      className="border border-input rounded px-2 py-1 text-sm w-full min-w-0 sm:min-w-[160px] bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                                     >
                                       <option value={0}>-- Select Item --</option>
                                       {initData.items.map((it) => (
@@ -729,7 +729,7 @@ export default function MultiTicketingPage() {
                                         )
                                       }
                                       placeholder="Vehicle No"
-                                      className="border border-input rounded px-2 py-1 text-sm w-full min-w-[120px] bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                                      className="border border-input rounded px-2 py-1 text-sm w-full min-w-0 sm:min-w-[120px] bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                                     />
                                   ) : (
                                     <span className="text-muted-foreground text-xs">N/A</span>

@@ -465,7 +465,7 @@ export default function BookingPage() {
 
           {/* Items Section */}
           <div className="p-6 md:p-8 bg-slate-50/50">
-            <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center justify-between flex-wrap gap-3 mb-6">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center">
                   <Package className="w-5 h-5 text-amber-600" />
@@ -491,7 +491,7 @@ export default function BookingPage() {
                   key={item.id}
                   className="bg-white rounded-2xl border border-slate-200 p-4 animate-slide-up"
                 >
-                  <div className="grid grid-cols-12 gap-4">
+                  <div className="grid grid-cols-12 gap-2 sm:gap-4">
                     {/* Description */}
                     <div className="col-span-12 md:col-span-3">
                       <label className="block text-xs font-medium text-slate-500 mb-1">
@@ -515,7 +515,7 @@ export default function BookingPage() {
                     </div>
 
                     {/* Quantity */}
-                    <div className="col-span-4 md:col-span-1">
+                    <div className="col-span-3 md:col-span-1">
                       <label className="block text-xs font-medium text-slate-500 mb-1">
                         Qty
                       </label>
@@ -536,7 +536,7 @@ export default function BookingPage() {
                     </div>
 
                     {/* Vehicle No */}
-                    <div className="col-span-8 md:col-span-2">
+                    <div className="col-span-9 md:col-span-2">
                       <label className="block text-xs font-medium text-slate-500 mb-1">
                         Vehicle No
                       </label>

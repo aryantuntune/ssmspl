@@ -255,7 +255,7 @@ export default function SettingsPage() {
           <div>
             <Label className="mb-1.5 block">Color Theme</Label>
             <Select value={theme.name} onValueChange={setThemeName}>
-              <SelectTrigger className="w-[200px]">
+              <SelectTrigger className="w-full sm:w-[200px]">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

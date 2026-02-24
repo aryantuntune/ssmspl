@@ -197,7 +197,7 @@ export default function FerriesPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">Ferry Management</h1>
           <p className="text-muted-foreground text-sm mt-1">
@@ -219,7 +219,7 @@ export default function FerriesPage() {
       <Card>
         <CardContent className="pt-6">
           <div className="flex flex-wrap items-end gap-3">
-            <div className="relative flex-1 min-w-[200px]">
+            <div className="relative flex-1 min-w-0 sm:min-w-[200px]">
               <Label className="mb-1.5 block">Search</Label>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -242,7 +242,7 @@ export default function FerriesPage() {
             <div>
               <Label className="mb-1.5 block">Status</Label>
               <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v === "all" ? "" : v); setPage(1); }}>
-                <SelectTrigger className="w-[120px]">
+                <SelectTrigger className="w-full sm:w-[120px]">
                   <SelectValue placeholder="All" />
                 </SelectTrigger>
                 <SelectContent>

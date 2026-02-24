@@ -310,7 +310,7 @@ export default function TransferPage() {
                   setPage(1);
                 }}
               >
-                <SelectTrigger className="w-[180px]">
+                <SelectTrigger className="w-full sm:w-[180px]">
                   <SelectValue placeholder="All Roles" />
                 </SelectTrigger>
                 <SelectContent>
@@ -331,7 +331,7 @@ export default function TransferPage() {
                   setPage(1);
                 }}
               >
-                <SelectTrigger className="w-[220px]">
+                <SelectTrigger className="w-full sm:w-[220px]">
                   <SelectValue placeholder="All Routes" />
                 </SelectTrigger>
                 <SelectContent>
@@ -354,7 +354,7 @@ export default function TransferPage() {
                   setPage(1);
                 }}
               >
-                <SelectTrigger className="w-[120px]">
+                <SelectTrigger className="w-full sm:w-[120px]">
                   <SelectValue placeholder="All" />
                 </SelectTrigger>
                 <SelectContent>

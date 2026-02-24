@@ -65,14 +65,14 @@ export default function Header() {
               </svg>
               +91 9767248900
             </a>
-            <a href="mailto:ssmsdapoli@rediffmail.com" className="flex items-center gap-1 hover:text-orange-300 transition-colors">
+            <a href="mailto:ssmsdapoli@rediffmail.com" className="hidden sm:flex items-center gap-1 hover:text-orange-300 transition-colors">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
               </svg>
               ssmsdapoli@rediffmail.com
             </a>
           </div>
-          <div className="flex items-center gap-1 text-amber-400">
+          <div className="hidden sm:flex items-center gap-1 text-amber-400">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
@@ -93,7 +93,7 @@ export default function Header() {
               height={44}
               className="object-contain"
             />
-            <div className="leading-tight">
+            <div className="hidden sm:block leading-tight">
               <span className="font-bold text-[#0c3547] text-base group-hover:text-[#0891b2] transition-colors">Suvarnadurga</span>
               <br />
               <span className="text-xs text-amber-500">Shipping &amp; Marine Services</span>

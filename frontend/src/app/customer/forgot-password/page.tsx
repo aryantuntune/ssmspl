@@ -175,7 +175,7 @@ export default function CustomerForgotPasswordPage() {
           </div>
 
           {/* Card */}
-          <div className="glass-card rounded-3xl p-8 md:p-10 shadow-2xl">
+          <div className="glass-card rounded-3xl p-5 sm:p-8 md:p-10 shadow-2xl">
             {success ? (
               <div className="text-center">
                 <div className="w-16 h-16 mx-auto mb-4 bg-green-500/20 rounded-full flex items-center justify-center">
@@ -272,7 +272,7 @@ export default function CustomerForgotPasswordPage() {
 
                 <form onSubmit={handleResetPassword} className="space-y-5">
                   {/* OTP Inputs */}
-                  <div className="flex justify-center gap-3" onPaste={handleOtpPaste}>
+                  <div className="flex justify-center gap-1.5 sm:gap-3" onPaste={handleOtpPaste}>
                     {otp.map((digit, index) => (
                       <input
                         key={index}
@@ -283,7 +283,7 @@ export default function CustomerForgotPasswordPage() {
                         value={digit}
                         onChange={(e) => handleOtpChange(index, e.target.value)}
                         onKeyDown={(e) => handleOtpKeyDown(index, e)}
-                        className="input-glass w-12 h-14 md:w-14 md:h-16 rounded-xl text-center text-2xl font-bold text-white focus:outline-none focus:ring-2 focus:ring-sky-400/50"
+                        className="input-glass w-9 h-11 sm:w-12 sm:h-14 md:w-14 md:h-16 rounded-lg sm:rounded-xl text-center text-xl sm:text-2xl font-bold text-white focus:outline-none focus:ring-2 focus:ring-sky-400/50"
                       />
                     ))}
                   </div>
