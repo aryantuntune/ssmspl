@@ -21,15 +21,15 @@ router = APIRouter(prefix="/api/auth", tags=["Authentication"])
 @router.post(
     "/login",
     summary="Authenticate user",
-    description="Validate username & password and return a JWT access token and refresh token via HttpOnly cookies.",
+    description="Validate email & password and return a JWT access token and refresh token via HttpOnly cookies.",
     responses={
         200: {"description": "Successfully authenticated"},
-        401: {"description": "Invalid username or password"},
+        401: {"description": "Invalid email or password"},
     },
 )
 @limiter.limit("10/minute")
 async def login(request: Request, body: LoginRequest, db: AsyncSession = Depends(get_db)):
-    tokens = await auth_service.login(db, body.username, body.password)
+    tokens = await auth_service.login(db, body.email, body.password)
     response = JSONResponse(content={"message": "Login successful", "token_type": "bearer"})
     set_auth_cookies(response, tokens["access_token"], tokens["refresh_token"])
     return response

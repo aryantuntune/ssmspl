@@ -10,21 +10,21 @@ from app.models.user import User
 from app.services import token_service
 
 
-async def authenticate_user(db: AsyncSession, username: str, password: str) -> User | None:
-    result = await db.execute(select(User).where(User.username == username, User.is_active == True))
+async def authenticate_user(db: AsyncSession, email: str, password: str) -> User | None:
+    result = await db.execute(select(User).where(User.email == email, User.is_active == True))
     user = result.scalar_one_or_none()
     if not user or not verify_password(password, user.hashed_password):
         return None
     return user
 
 
-async def login(db: AsyncSession, username: str, password: str) -> dict:
+async def login(db: AsyncSession, email: str, password: str) -> dict:
     from fastapi import HTTPException, status
-    user = await authenticate_user(db, username, password)
+    user = await authenticate_user(db, email, password)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
+            detail="Incorrect email or password",
         )
     # Update last_login
     user.last_login = datetime.now(timezone.utc)

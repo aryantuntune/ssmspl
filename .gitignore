@@ -54,6 +54,9 @@ backup.sql
 ssmspl_db_dev_back.sql
 data/ssmspl_db.sql
 
+# Tests (local only, not deployed)
+backend/tests/
+
 # Throwaway / generated files
 tsc_output.txt
 ssmspl_project_structure.txt

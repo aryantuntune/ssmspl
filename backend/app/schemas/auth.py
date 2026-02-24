@@ -2,13 +2,13 @@ from pydantic import BaseModel, EmailStr, Field
 
 
 class LoginRequest(BaseModel):
-    username: str = Field(..., description="The user's login username", examples=["superadmin"])
+    email: EmailStr = Field(..., description="The user's login email", examples=["superadmin@ssmspl.com"])
     password: str = Field(..., description="The user's password", examples=["Password@123"])
 
     model_config = {
         "json_schema_extra": {
             "examples": [
-                {"username": "superadmin", "password": "Password@123"}
+                {"email": "superadmin@ssmspl.com", "password": "Password@123"}
             ]
         }
     }
