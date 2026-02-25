@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import api from "@/lib/api";
 import { User } from "@/types";
@@ -9,6 +9,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import RevenueChart from "@/components/charts/RevenueChart";
+import BranchComparisonChart from "@/components/charts/BranchComparisonChart";
+import ItemSplitChart from "@/components/charts/ItemSplitChart";
 import {
   Ticket,
   Ship,
@@ -30,6 +33,10 @@ const formatDate = (dateStr: string) => {
   });
 };
 
+function toISODate(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
 interface TicketRow {
   id: number;
   ticket_no: number;
@@ -38,6 +45,31 @@ interface TicketRow {
   travel_date?: string;
   net_amount: number;
   status?: string;
+}
+
+interface TodaySummary {
+  total_tickets: number;
+  total_revenue: number;
+  branch_breakdown: { branch_name: string; ticket_count: number; total_revenue: number }[];
+  payment_mode_breakdown: { payment_mode: string; ticket_count: number; total_revenue: number }[];
+}
+
+interface RevenueRow {
+  period: string;
+  total_revenue: number;
+}
+
+interface BranchRow {
+  branch_name: string;
+  total_revenue: number;
+  ticket_count: number;
+}
+
+interface ItemRow {
+  item_name: string;
+  is_vehicle: boolean;
+  total_revenue: number;
+  total_quantity: number;
 }
 
 export default function DashboardPage() {
@@ -49,6 +81,14 @@ export default function DashboardPage() {
     activeBranches: 0,
   });
   const [recentTickets, setRecentTickets] = useState<TicketRow[]>([]);
+
+  // New dashboard data states
+  const [todaySummary, setTodaySummary] = useState<TodaySummary | null>(null);
+  const [revenueData, setRevenueData] = useState<RevenueRow[]>([]);
+  const [branchData, setBranchData] = useState<BranchRow[]>([]);
+  const [itemData, setItemData] = useState<ItemRow[]>([]);
+  const [revenuePeriod, setRevenuePeriod] = useState<7 | 30>(7);
+  const [sectionsLoading, setSectionsLoading] = useState(true);
 
   // Real-time stats via WebSocket
   const { stats: wsStats, connected: wsConnected } = useDashboardWS();
@@ -86,7 +126,7 @@ export default function DashboardPage() {
           });
         })
         .catch(() => {
-          /* non-fatal — WS will provide updates */
+          /* non-fatal -- WS will provide updates */
         });
 
       // Fetch recent tickets separately
@@ -103,8 +143,84 @@ export default function DashboardPage() {
             /* non-fatal */
           });
       }
+
+      // Fetch enhanced dashboard sections for users with Reports permission
+      if (menu.includes("Reports")) {
+        fetchEnhancedSections(7);
+      } else {
+        setSectionsLoading(false);
+      }
     });
   }, []);
+
+  const fetchEnhancedSections = useCallback(
+    async (days: number) => {
+      setSectionsLoading(true);
+      try {
+        const today = new Date();
+        const todayStr = toISODate(today);
+        const monthStart = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-01`;
+        const periodStart = new Date(today);
+        periodStart.setDate(periodStart.getDate() - (days - 1));
+        const periodStartStr = toISODate(periodStart);
+
+        const [summaryRes, revenueRes, branchRes, itemRes] = await Promise.all([
+          api.get("/api/dashboard/today-summary"),
+          api.get("/api/reports/revenue", {
+            params: {
+              date_from: periodStartStr,
+              date_to: todayStr,
+              grouping: "day",
+            },
+          }),
+          api.get("/api/reports/branch-summary", {
+            params: { date_from: monthStart, date_to: todayStr },
+          }),
+          api.get("/api/reports/item-breakdown", {
+            params: { date_from: monthStart, date_to: todayStr },
+          }),
+        ]);
+
+        setTodaySummary(summaryRes.data);
+        setRevenueData(revenueRes.data.rows || []);
+        setBranchData(branchRes.data.rows || []);
+        setItemData(itemRes.data.rows || []);
+      } catch (err) {
+        console.error("Dashboard data fetch error:", err);
+      } finally {
+        setSectionsLoading(false);
+      }
+    },
+    []
+  );
+
+  const handleRevenuePeriodChange = useCallback(
+    (days: 7 | 30) => {
+      setRevenuePeriod(days);
+      // Only re-fetch revenue data with the new period
+      const today = new Date();
+      const todayStr = toISODate(today);
+      const periodStart = new Date(today);
+      periodStart.setDate(periodStart.getDate() - (days - 1));
+      const periodStartStr = toISODate(periodStart);
+
+      api
+        .get("/api/reports/revenue", {
+          params: {
+            date_from: periodStartStr,
+            date_to: todayStr,
+            grouping: "day",
+          },
+        })
+        .then(({ data }) => {
+          setRevenueData(data.rows || []);
+        })
+        .catch((err) => {
+          console.error("Revenue fetch error:", err);
+        });
+    },
+    []
+  );
 
   if (!user) {
     return (
@@ -139,6 +255,7 @@ export default function DashboardPage() {
   const roleLabel = user.role
     .replace(/_/g, " ")
     .replace(/\b\w/g, (c) => c.toUpperCase());
+  const canSeeReports = menu.includes("Reports");
 
   // Only show stat cards the user can access
   const allStatCards = [
@@ -152,7 +269,7 @@ export default function DashboardPage() {
     },
     {
       label: "Revenue",
-      value: `₹${formatCurrency(stats.revenue)}`,
+      value: `\u20B9${formatCurrency(stats.revenue)}`,
       icon: IndianRupee,
       color: "text-emerald-600",
       bg: "bg-emerald-100",
@@ -207,6 +324,11 @@ export default function DashboardPage() {
   const quickActions = allQuickActions.filter((a) => menu.includes(a.requires));
 
   const canSeeTickets = menu.includes("Ticketing");
+
+  // Derive top 5 items from item data, sorted by revenue
+  const topItems = [...itemData]
+    .sort((a, b) => b.total_revenue - a.total_revenue)
+    .slice(0, 5);
 
   return (
     <div className="space-y-6">
@@ -319,7 +441,7 @@ export default function DashboardPage() {
                       {ticket.status || "active"}
                     </Badge>
                     <span className="text-sm font-semibold w-20 text-right">
-                      ₹{formatCurrency(ticket.net_amount)}
+                      {"\u20B9"}{formatCurrency(ticket.net_amount)}
                     </span>
                   </div>
                 </div>
@@ -327,6 +449,216 @@ export default function DashboardPage() {
             </div>
           </CardContent>
         </Card>
+      )}
+
+      {/* ── Enhanced Dashboard Sections (Reports permission required) ── */}
+      {canSeeReports && (
+        <>
+          {/* Section 1: Today's Collection Summary */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg">Today&apos;s Collection</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {sectionsLoading ? (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <Skeleton className="h-20 rounded-xl" />
+                    <Skeleton className="h-20 rounded-xl" />
+                  </div>
+                  <Skeleton className="h-40 rounded-xl" />
+                </div>
+              ) : todaySummary ? (
+                <div className="space-y-4">
+                  {/* Summary Cards */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="bg-blue-50 rounded-xl p-4">
+                      <p className="text-sm text-blue-600 font-medium">Total Tickets</p>
+                      <p className="text-2xl font-bold text-blue-900 mt-1">
+                        {todaySummary.total_tickets.toLocaleString("en-IN")}
+                      </p>
+                    </div>
+                    <div className="bg-emerald-50 rounded-xl p-4">
+                      <p className="text-sm text-emerald-600 font-medium">Total Revenue</p>
+                      <p className="text-2xl font-bold text-emerald-900 mt-1">
+                        {"\u20B9"}{formatCurrency(todaySummary.total_revenue)}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Branch Breakdown Table */}
+                  {todaySummary.branch_breakdown && todaySummary.branch_breakdown.length > 0 && (
+                    <div>
+                      <h3 className="text-sm font-semibold text-gray-700 mb-2">By Branch</h3>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b border-border">
+                              <th className="text-left py-2 px-3 text-muted-foreground font-medium">Branch Name</th>
+                              <th className="text-right py-2 px-3 text-muted-foreground font-medium">Tickets</th>
+                              <th className="text-right py-2 px-3 text-muted-foreground font-medium">Revenue</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {todaySummary.branch_breakdown.map((row) => (
+                              <tr key={row.branch_name} className="border-b border-border last:border-0">
+                                <td className="py-2 px-3">{row.branch_name}</td>
+                                <td className="py-2 px-3 text-right">{row.ticket_count.toLocaleString("en-IN")}</td>
+                                <td className="py-2 px-3 text-right font-medium">{"\u20B9"}{formatCurrency(row.total_revenue)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Payment Mode Breakdown Table */}
+                  {todaySummary.payment_mode_breakdown && todaySummary.payment_mode_breakdown.length > 0 && (
+                    <div>
+                      <h3 className="text-sm font-semibold text-gray-700 mb-2">By Payment Mode</h3>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b border-border">
+                              <th className="text-left py-2 px-3 text-muted-foreground font-medium">Payment Mode</th>
+                              <th className="text-right py-2 px-3 text-muted-foreground font-medium">Tickets</th>
+                              <th className="text-right py-2 px-3 text-muted-foreground font-medium">Revenue</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {todaySummary.payment_mode_breakdown.map((row) => (
+                              <tr key={row.payment_mode} className="border-b border-border last:border-0">
+                                <td className="py-2 px-3">{row.payment_mode}</td>
+                                <td className="py-2 px-3 text-right">{row.ticket_count.toLocaleString("en-IN")}</td>
+                                <td className="py-2 px-3 text-right font-medium">{"\u20B9"}{formatCurrency(row.total_revenue)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Handle empty summary data */}
+                  {todaySummary.total_tickets === 0 && (
+                    <p className="text-sm text-muted-foreground text-center py-4">No collections recorded today</p>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground text-center py-4">No data available</p>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Section 2: Revenue Trend */}
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-lg">Revenue Trend</CardTitle>
+              <div className="flex gap-1">
+                <Button
+                  variant={revenuePeriod === 7 ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => handleRevenuePeriodChange(7)}
+                >
+                  7 Days
+                </Button>
+                <Button
+                  variant={revenuePeriod === 30 ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => handleRevenuePeriodChange(30)}
+                >
+                  30 Days
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {sectionsLoading ? (
+                <Skeleton className="h-[300px] rounded-xl" />
+              ) : revenueData.length > 0 ? (
+                <RevenueChart data={revenueData} />
+              ) : (
+                <p className="text-sm text-muted-foreground text-center py-4">No data available</p>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Section 3: Branch Comparison */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg">Branch Performance (This Month)</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {sectionsLoading ? (
+                <Skeleton className="h-[250px] rounded-xl" />
+              ) : branchData.length > 0 ? (
+                <BranchComparisonChart data={branchData} />
+              ) : (
+                <p className="text-sm text-muted-foreground text-center py-4">No data available</p>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Section 4: Top Items */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg">Item Performance (This Month)</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {sectionsLoading ? (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <Skeleton className="h-[300px] rounded-xl" />
+                  <Skeleton className="h-[300px] rounded-xl" />
+                </div>
+              ) : itemData.length > 0 ? (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* Donut Chart */}
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-700 mb-2">Vehicle vs Passenger Revenue</h3>
+                    <ItemSplitChart data={itemData} />
+                  </div>
+
+                  {/* Top 5 Items Table */}
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-700 mb-2">Top 5 Items</h3>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-border">
+                            <th className="text-left py-2 px-3 text-muted-foreground font-medium">Item Name</th>
+                            <th className="text-right py-2 px-3 text-muted-foreground font-medium">Quantity</th>
+                            <th className="text-right py-2 px-3 text-muted-foreground font-medium">Revenue</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {topItems.map((item) => (
+                            <tr key={item.item_name} className="border-b border-border last:border-0">
+                              <td className="py-2 px-3">
+                                <div className="flex items-center gap-2">
+                                  {item.item_name}
+                                  <Badge variant="outline" className="text-xs">
+                                    {item.is_vehicle ? "Vehicle" : "Passenger"}
+                                  </Badge>
+                                </div>
+                              </td>
+                              <td className="py-2 px-3 text-right">{item.total_quantity.toLocaleString("en-IN")}</td>
+                              <td className="py-2 px-3 text-right font-medium">{"\u20B9"}{formatCurrency(item.total_revenue)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    {topItems.length === 0 && (
+                      <p className="text-sm text-muted-foreground text-center py-4">No items data available</p>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground text-center py-4">No data available</p>
+              )}
+            </CardContent>
+          </Card>
+        </>
       )}
     </div>
   );
