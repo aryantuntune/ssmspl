@@ -13,6 +13,11 @@ from app.schemas.report import (
     ItemBreakdownReport,
     BranchSummaryReport,
     PaymentModeReport,
+    DateWiseAmountReport,
+    FerryWiseItemReport,
+    ItemwiseLevyReport,
+    UserWiseSummaryReport,
+    VehicleWiseTicketReport,
 )
 from app.services import report_service
 
@@ -104,3 +109,83 @@ async def payment_mode_report(
     _user: User = Depends(_report_roles),
 ):
     return await report_service.get_payment_mode_report(db, date_from, date_to, branch_id, route_id)
+
+
+@router.get(
+    "/date-wise-amount",
+    response_model=DateWiseAmountReport,
+    summary="Date wise amount summary",
+    description="Daily ticket revenue totals over a date range.",
+)
+async def date_wise_amount_report(
+    date_from: datetime.date = Query(...),
+    date_to: datetime.date = Query(...),
+    branch_id: int | None = Query(None),
+    payment_mode_id: int | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(_report_roles),
+):
+    return await report_service.get_date_wise_amount(db, date_from, date_to, branch_id, payment_mode_id)
+
+
+@router.get(
+    "/ferry-wise-item",
+    response_model=FerryWiseItemReport,
+    summary="Ferry wise item summary",
+    description="Item quantities grouped by departure time for a single date.",
+)
+async def ferry_wise_item_report(
+    date: datetime.date = Query(...),
+    branch_id: int | None = Query(None),
+    payment_mode_id: int | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(_report_roles),
+):
+    return await report_service.get_ferry_wise_item_summary(db, date, branch_id, payment_mode_id)
+
+
+@router.get(
+    "/itemwise-levy",
+    response_model=ItemwiseLevyReport,
+    summary="Itemwise levy summary",
+    description="Levy breakdown per item over a date range.",
+)
+async def itemwise_levy_report(
+    date_from: datetime.date = Query(...),
+    date_to: datetime.date = Query(...),
+    branch_id: int | None = Query(None),
+    route_id: int | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(_report_roles),
+):
+    return await report_service.get_itemwise_levy_summary(db, date_from, date_to, branch_id, route_id)
+
+
+@router.get(
+    "/user-wise-summary",
+    response_model=UserWiseSummaryReport,
+    summary="User wise daily summary",
+    description="Revenue per user (ticket creator) for a single date.",
+)
+async def user_wise_summary_report(
+    date: datetime.date = Query(...),
+    branch_id: int | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(_report_roles),
+):
+    return await report_service.get_user_wise_summary(db, date, branch_id)
+
+
+@router.get(
+    "/vehicle-wise-tickets",
+    response_model=VehicleWiseTicketReport,
+    summary="Vehicle wise ticket details",
+    description="Vehicle ticket details for a single date.",
+)
+async def vehicle_wise_ticket_report(
+    date: datetime.date = Query(...),
+    branch_id: int | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(_report_roles),
+):
+    return await report_service.get_vehicle_wise_tickets(db, date, branch_id)
