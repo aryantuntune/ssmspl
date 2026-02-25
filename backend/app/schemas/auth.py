@@ -57,3 +57,19 @@ class ResetPasswordRequest(BaseModel):
     @classmethod
     def validate_password(cls, v: str) -> str:
         return _validate_password_complexity(v)
+
+
+class MobileUserInfo(BaseModel):
+    id: str = Field(..., description="User UUID")
+    full_name: str
+    email: str
+    role: str
+    route_id: int | None = None
+    route_name: str | None = None
+
+
+class MobileLoginResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+    user: MobileUserInfo

@@ -1,21 +1,44 @@
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+import random
+from datetime import datetime, timedelta, timezone
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import get_db
-from app.middleware.rate_limit import limiter
-from app.schemas.auth import LoginRequest, RefreshRequest, ForgotPasswordRequest, ResetPasswordRequest
-from app.schemas.user import UserMeResponse
-from app.services import auth_service
-from app.services.user_service import _resolve_route_name, _resolve_route_branches
-from app.dependencies import get_current_user
-from app.core.rbac import ROLE_MENU_ITEMS
-from app.core.cookies import set_auth_cookies, clear_auth_cookies
-from app.services.email_service import send_password_reset_email
 from app.config import settings
+from app.core.cookies import set_auth_cookies, clear_auth_cookies
+from app.core.rbac import ROLE_MENU_ITEMS, UserRole
+from app.core.security import create_access_token, create_refresh_token
+from app.database import get_db
+from app.dependencies import get_current_user
+from app.middleware.rate_limit import limiter
 from app.models.user import User
+from app.schemas.auth import (
+    ForgotPasswordRequest,
+    LoginRequest,
+    MobileLoginResponse,
+    MobileUserInfo,
+    RefreshRequest,
+    ResetPasswordRequest,
+)
+from app.schemas.user import UserMeResponse
+from app.services import auth_service, token_service
+from app.services.email_service import send_password_reset_email
+from app.services.user_service import _resolve_route_name, _resolve_route_branches
 
 router = APIRouter(prefix="/api/auth", tags=["Authentication"])
+
+
+async def _cleanup_expired_tokens():
+    """Background task: cleanup expired tokens using its own DB session."""
+    from app.database import AsyncSessionLocal
+    from app.services import token_service
+    try:
+        async with AsyncSessionLocal() as session:
+            await token_service.cleanup_expired(session)
+            await session.commit()
+    except Exception:
+        pass  # Best-effort cleanup
 
 
 @router.post(
@@ -28,11 +51,92 @@ router = APIRouter(prefix="/api/auth", tags=["Authentication"])
     },
 )
 @limiter.limit("10/minute")
-async def login(request: Request, body: LoginRequest, db: AsyncSession = Depends(get_db)):
+async def login(request: Request, body: LoginRequest, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)):
     tokens = await auth_service.login(db, body.email, body.password)
+    # Probabilistic cleanup (~5% of logins) to avoid expired token buildup
+    if random.random() < 0.05:
+        background_tasks.add_task(_cleanup_expired_tokens)
     response = JSONResponse(content={"message": "Login successful", "token_type": "bearer"})
     set_auth_cookies(response, tokens["access_token"], tokens["refresh_token"])
     return response
+
+
+@router.post(
+    "/mobile-login",
+    response_model=MobileLoginResponse,
+    summary="Mobile app login (TICKET_CHECKER only)",
+    description="Authenticate a ticket checker for the mobile app. Returns tokens in JSON body (no cookies). Rejects non-TICKET_CHECKER roles.",
+    responses={
+        200: {"description": "Successfully authenticated"},
+        401: {"description": "Invalid email or password"},
+        403: {"description": "Not a ticket checker account"},
+    },
+)
+@limiter.limit("10/minute")
+async def mobile_login(
+    request: Request,
+    body: LoginRequest,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+):
+    # Authenticate first
+    user = await auth_service.authenticate_user(db, body.email, body.password)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password",
+        )
+    # Check role BEFORE generating tokens
+    if user.role != UserRole.TICKET_CHECKER:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This app is for ticket checkers only. Please use the web dashboard.",
+        )
+    # Generate tokens
+    user.last_login = datetime.now(timezone.utc)
+    extra = {"role": user.role.value}
+    access_token = create_access_token(subject=str(user.id), extra_claims=extra)
+    refresh_token = create_refresh_token(subject=str(user.id))
+    expires_at = datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+    await token_service.store_refresh_token(db, refresh_token, expires_at, user_id=user.id)
+    await db.commit()
+
+    # Probabilistic cleanup (~5% of logins) to avoid expired token buildup
+    if random.random() < 0.05:
+        background_tasks.add_task(_cleanup_expired_tokens)
+
+    route_name = await _resolve_route_name(db, user.route_id)
+    return MobileLoginResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        user=MobileUserInfo(
+            id=str(user.id),
+            full_name=user.full_name,
+            email=user.email,
+            role=user.role.value,
+            route_id=user.route_id,
+            route_name=route_name,
+        ),
+    )
+
+
+@router.post(
+    "/mobile-refresh",
+    summary="Refresh tokens for mobile app",
+    description="Exchange a valid refresh token for a new token pair. Returns tokens in JSON body.",
+    responses={
+        200: {"description": "New token pair issued"},
+        401: {"description": "Invalid or expired refresh token"},
+    },
+)
+@limiter.limit("20/minute")
+async def mobile_refresh(request: Request, body: RefreshRequest, db: AsyncSession = Depends(get_db)):
+    tokens = await auth_service.refresh_access_token(db, body.refresh_token)
+    return {
+        "access_token": tokens["access_token"],
+        "refresh_token": tokens["refresh_token"],
+        "token_type": "bearer",
+    }
 
 
 @router.post(
@@ -106,11 +210,11 @@ async def logout(request: Request, body: RefreshRequest | None = None, db: Async
     },
 )
 @limiter.limit("5/minute")
-async def forgot_password(request: Request, body: ForgotPasswordRequest, db: AsyncSession = Depends(get_db)):
+async def forgot_password(request: Request, body: ForgotPasswordRequest, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)):
     token = await auth_service.forgot_password(db, body.email)
     if token:
         reset_link = f"{settings.FRONTEND_URL}/reset-password?token={token}"
-        await send_password_reset_email(body.email, reset_link, "Admin User")
+        background_tasks.add_task(send_password_reset_email, body.email, reset_link, "Admin User")
     # Always return success to prevent email enumeration
     return {"message": "If an account with that email exists, a password reset link has been sent."}
 
