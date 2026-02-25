@@ -1,5 +1,5 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
-import { VerificationResult, CheckInResult, VerificationRecord } from '../../types';
+import { VerificationResult, CheckInResult, VerificationRecord, VerificationOutcome } from '../../types';
 import * as verificationService from '../../services/verificationService';
 import { getTodayCount, incrementTodayCount } from '../../services/storageService';
 
@@ -109,7 +109,7 @@ const verificationSlice = createSlice({
         state.error = action.payload as string;
         state.recentVerifications = [
           {
-            outcome: 'error',
+            outcome: 'error' as VerificationOutcome,
             result: null,
             checkIn: null,
             error: action.payload as string,
@@ -128,7 +128,7 @@ const verificationSlice = createSlice({
         state.verifiedToday += 1;
         state.recentVerifications = [
           {
-            outcome: 'success',
+            outcome: 'success' as VerificationOutcome,
             result: state.lastResult,
             checkIn: action.payload,
             error: null,
@@ -144,7 +144,7 @@ const verificationSlice = createSlice({
         if (msg === 'ALREADY_VERIFIED') {
           state.recentVerifications = [
             {
-              outcome: 'already_verified',
+              outcome: 'already_verified' as VerificationOutcome,
               result: state.lastResult,
               checkIn: null,
               error: null,
