@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, TextStyle } from 'react-native';
 import { colors, spacing, borderRadius, typography } from '../../theme';
 
 interface StatCardProps {
@@ -43,6 +43,6 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     borderRadius: borderRadius.full,
   },
-  badgeText: { ...typography.caption, color: colors.success, fontWeight: '600' },
+  badgeText: { ...typography.caption, color: colors.success, fontWeight: '600' as TextStyle['fontWeight'] },
   value: { ...typography.h1, color: colors.text, marginTop: spacing.sm },
 });

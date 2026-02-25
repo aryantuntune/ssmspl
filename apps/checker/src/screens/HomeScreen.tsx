@@ -9,6 +9,7 @@ import {
   TextInput,
   TouchableOpacity,
   Alert,
+  TextStyle,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useDispatch, useSelector } from 'react-redux';
@@ -275,7 +276,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarText: { ...typography.body, fontWeight: '700', color: colors.textOnPrimary },
+  avatarText: { ...typography.body, fontWeight: '700' as TextStyle['fontWeight'], color: colors.textOnPrimary },
   content: { padding: spacing.lg, gap: spacing.md },
   date: { ...typography.bodySmall, color: colors.textSecondary },
   actions: { gap: spacing.sm },
@@ -285,7 +286,7 @@ const styles = StyleSheet.create({
   recentRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   dot: { width: 10, height: 10, borderRadius: 5 },
   recentInfo: { flex: 1 },
-  recentRef: { ...typography.bodySmall, fontWeight: '600', color: colors.text },
+  recentRef: { ...typography.bodySmall, fontWeight: '600' as TextStyle['fontWeight'], color: colors.text },
   recentMeta: { ...typography.caption, color: colors.textSecondary },
   modalOverlay: {
     flex: 1,
@@ -304,7 +305,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   tabActive: { backgroundColor: colors.primary },
-  tabText: { ...typography.bodySmall, fontWeight: '600', color: colors.textSecondary },
+  tabText: { ...typography.bodySmall, fontWeight: '600' as TextStyle['fontWeight'], color: colors.textSecondary },
   tabTextActive: { color: colors.textOnPrimary },
   manualInput: {
     borderWidth: 1,

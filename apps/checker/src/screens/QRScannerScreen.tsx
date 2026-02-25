@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Dimensions, TextStyle } from 'react-native';
 import { CameraView, useCameraPermissions, BarcodeScanningResult } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
 import { useDispatch, useSelector } from 'react-redux';
@@ -229,7 +229,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   errorText: { ...typography.bodySmall, color: colors.error, flex: 1 },
-  errorDismiss: { ...typography.bodySmall, fontWeight: '700', color: colors.error, marginLeft: spacing.sm },
+  errorDismiss: { ...typography.bodySmall, fontWeight: '700' as TextStyle['fontWeight'], color: colors.error, marginLeft: spacing.sm },
   permissionContainer: {
     flex: 1,
     backgroundColor: colors.background,

@@ -6,6 +6,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   TextInputProps,
+  TextStyle,
 } from 'react-native';
 import { colors, spacing, borderRadius, typography } from '../../theme';
 
@@ -42,7 +43,7 @@ export default function Input({ label, error, isPassword, style, ...rest }: Inpu
 
 const styles = StyleSheet.create({
   container: { marginBottom: spacing.md },
-  label: { ...typography.bodySmall, fontWeight: '600', color: colors.text, marginBottom: spacing.xs },
+  label: { ...typography.bodySmall, fontWeight: '600' as TextStyle['fontWeight'], color: colors.text, marginBottom: spacing.xs },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -60,6 +61,6 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   eyeBtn: { paddingHorizontal: spacing.md },
-  eyeText: { ...typography.bodySmall, color: colors.primary, fontWeight: '600' },
+  eyeText: { ...typography.bodySmall, color: colors.primary, fontWeight: '600' as TextStyle['fontWeight'] },
   error: { ...typography.caption, color: colors.error, marginTop: spacing.xs },
 });

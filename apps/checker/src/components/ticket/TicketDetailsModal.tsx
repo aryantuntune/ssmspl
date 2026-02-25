@@ -6,6 +6,7 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  TextStyle,
 } from 'react-native';
 import { colors, spacing, borderRadius, typography } from '../../theme';
 import { VerificationResult, CheckInResult } from '../../types';
@@ -173,7 +174,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  closeText: { ...typography.body, fontWeight: '700', color: colors.textSecondary },
+  closeText: { ...typography.body, fontWeight: '700' as TextStyle['fontWeight'], color: colors.textSecondary },
   errorBox: {
     backgroundColor: colors.errorLight,
     padding: spacing.sm,
@@ -190,9 +191,9 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
   },
   detailLabel: { ...typography.bodySmall, color: colors.textSecondary },
-  detailValue: { ...typography.bodySmall, fontWeight: '600', color: colors.text, maxWidth: '60%', textAlign: 'right' },
+  detailValue: { ...typography.bodySmall, fontWeight: '600' as TextStyle['fontWeight'], color: colors.text, maxWidth: '60%', textAlign: 'right' },
   itemsSection: { marginTop: spacing.md },
-  itemsTitle: { ...typography.body, fontWeight: '700', color: colors.text, marginBottom: spacing.sm },
+  itemsTitle: { ...typography.body, fontWeight: '700' as TextStyle['fontWeight'], color: colors.text, marginBottom: spacing.sm },
   itemRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',

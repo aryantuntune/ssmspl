@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, TextStyle } from 'react-native';
 import { colors, spacing, borderRadius, typography } from '../../theme';
 
 interface VerificationBadgeProps {
@@ -35,5 +35,5 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   icon: { fontSize: 18 },
-  text: { ...typography.bodySmall, fontWeight: '700' },
+  text: { ...typography.bodySmall, fontWeight: '700' as TextStyle['fontWeight'] },
 });
