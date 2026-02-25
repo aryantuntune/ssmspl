@@ -1,0 +1,41 @@
+{
+  "expo": {
+    "name": "SSMSPL Checker",
+    "slug": "ssmspl-checker",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "backgroundColor": "#4338CA"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.ssmspl.checker",
+      "infoPlist": {
+        "NSCameraUsageDescription": "This app needs camera access to scan QR codes on ferry tickets."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#4338CA"
+      },
+      "package": "com.ssmspl.checker",
+      "permissions": ["CAMERA"],
+      "edgeToEdgeEnabled": true
+    },
+    "plugins": [
+      "expo-secure-store",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "This app needs camera access to scan QR codes on ferry tickets."
+        }
+      ]
+    ],
+    "extra": {
+      "apiUrl": "http://10.0.2.2:8000"
+    }
+  }
+}
