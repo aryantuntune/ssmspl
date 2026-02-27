@@ -181,9 +181,9 @@ async def create_multi_tickets(
 async def create_ticket(
     body: TicketCreate,
     db: AsyncSession = Depends(get_db),
-    _=Depends(_ticket_roles),
+    current_user: User = Depends(_ticket_roles),
 ):
-    return await ticket_service.create_ticket(db, body)
+    return await ticket_service.create_ticket(db, body, user_id=current_user.id)
 
 
 @router.get(

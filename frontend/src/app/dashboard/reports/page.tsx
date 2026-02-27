@@ -401,12 +401,11 @@ export default function ReportsPage() {
       const params = buildFilterParams();
       const config = REPORT_TYPES[activeIndex];
 
-      // For ticket-details, map params to the expected format
+      // For ticket-details, backend expects `date` (singular), not date_from/date_to
       const pdfParams =
         config.key === "ticket-details"
           ? {
-              date_from: params.date || getToday(),
-              date_to: params.date || getToday(),
+              date: params.date || getToday(),
               ...(params.branch_id ? { branch_id: params.branch_id } : {}),
             }
           : params;

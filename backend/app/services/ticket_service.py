@@ -429,7 +429,7 @@ async def create_multi_tickets(db: AsyncSession, data, user) -> list[dict]:
 
     created_tickets = []
     for ticket_data in data.tickets:
-        result = await create_ticket(db, ticket_data)
+        result = await create_ticket(db, ticket_data, user_id=user.id)
         created_tickets.append(result)
 
     return created_tickets
@@ -547,7 +547,7 @@ async def get_ticket_by_id(db: AsyncSession, ticket_id: int) -> dict:
     return await _enrich_ticket(db, ticket, include_items=True)
 
 
-async def create_ticket(db: AsyncSession, data: TicketCreate) -> dict:
+async def create_ticket(db: AsyncSession, data: TicketCreate, user_id=None) -> dict:
     await _validate_references(db, data.branch_id, data.route_id, data.payment_mode_id)
     await _validate_items(db, data.items)
 
@@ -578,6 +578,8 @@ async def create_ticket(db: AsyncSession, data: TicketCreate) -> dict:
         is_cancelled=False,
         net_amount=computed_net,
         verification_code=uuid_mod.uuid4(),
+        boat_id=data.boat_id,
+        created_by=user_id,
     )
     db.add(ticket)
 

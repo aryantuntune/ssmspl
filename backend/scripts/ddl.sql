@@ -351,5 +351,11 @@ CREATE TRIGGER set_users_updated_at
     EXECUTE FUNCTION update_updated_at_column();
 
 -- ============================================================
+-- PATCH: Add boat_id to tickets
+-- ============================================================
+
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS boat_id INTEGER REFERENCES boats(id);
+
+-- ============================================================
 -- END OF DDL
 -- ============================================================

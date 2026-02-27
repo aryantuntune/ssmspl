@@ -80,6 +80,7 @@ class TicketCreate(BaseModel):
     discount: float | None = Field(0, ge=0, description="Discount amount")
     amount: float = Field(..., ge=1, description="Total amount (sum of item amounts, must be >= 1)")
     net_amount: float = Field(..., ge=1, description="Net amount (amount - discount, must be >= 1)")
+    boat_id: int | None = Field(None, description="Boat ID (optional)")
     items: list[TicketItemCreate] = Field(..., min_length=1, description="Ticket items (at least 1)")
     payments: list[TicketPayementCreate] | None = Field(None, description="Payment rows (optional, at least 1 if provided)")
 

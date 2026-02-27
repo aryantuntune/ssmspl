@@ -6,6 +6,7 @@ from sqlalchemy import select, func, case
 from app.models.ticket import Ticket, TicketItem
 from app.models.booking import Booking
 from app.models.booking_item import BookingItem
+from app.models.boat import Boat
 from app.models.branch import Branch
 from app.models.item import Item
 from app.models.payment_mode import PaymentMode
@@ -480,7 +481,9 @@ def _format_departure_time(t) -> str:
     """Format a time object as '7:30 am' style string."""
     if t is None:
         return ""
-    return t.strftime("%I:%M %p").lstrip("0").lower()
+    hour = t.hour % 12 or 12
+    period = "am" if t.hour < 12 else "pm"
+    return f"{hour}:{t.minute:02d} {period}"
 
 
 async def get_ferry_wise_item_summary(
@@ -610,12 +613,12 @@ async def get_user_wise_summary(
 ) -> dict:
     q = (
         select(
-            User.full_name.label("user_name"),
+            func.coalesce(User.full_name, "Unknown").label("user_name"),
             func.coalesce(func.sum(
                 case((Ticket.is_cancelled == False, Ticket.net_amount), else_=0)
             ), 0).label("amount"),
         )
-        .join(User, User.id == Ticket.created_by)
+        .outerjoin(User, User.id == Ticket.created_by)
         .group_by(User.full_name)
         .order_by(User.full_name)
     )
@@ -646,7 +649,6 @@ async def get_vehicle_wise_tickets(
     report_date: datetime.date,
     branch_id: int | None = None,
 ) -> dict:
-    # Note: Ticket model does not have a boat_id column, so we cannot join boats.
     q = (
         select(
             Ticket.ticket_date,
@@ -657,10 +659,12 @@ async def get_vehicle_wise_tickets(
             TicketItem.rate,
             TicketItem.levy,
             TicketItem.vehicle_no,
+            Boat.name.label("boat_name"),
         )
         .join(TicketItem, TicketItem.ticket_id == Ticket.id)
         .join(PaymentMode, PaymentMode.id == Ticket.payment_mode_id)
         .join(Item, Item.id == TicketItem.item_id)
+        .outerjoin(Boat, Boat.id == Ticket.boat_id)
         .where(Ticket.is_cancelled == False)
         .where(TicketItem.is_cancelled == False)
         .where(Item.is_vehicle == True)
@@ -678,7 +682,7 @@ async def get_vehicle_wise_tickets(
         rows.append({
             "ticket_date": r.ticket_date,
             "ticket_no": r.ticket_no,
-            "boat_name": None,  # No boat_id on Ticket model
+            "boat_name": r.boat_name,
             "departure": _format_departure_time(r.departure),
             "payment_mode": r.payment_mode,
             "amount": amount,
