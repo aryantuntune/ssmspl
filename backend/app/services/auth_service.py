@@ -37,9 +37,6 @@ async def login(db: AsyncSession, email: str, password: str) -> dict:
     expires_at = datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
     await token_service.store_refresh_token(db, refresh_token, expires_at, user_id=user.id)
 
-    # Cleanup old expired tokens (fire-and-forget, ignore count)
-    await token_service.cleanup_expired(db)
-
     await db.commit()
     return {"access_token": access_token, "refresh_token": refresh_token}
 

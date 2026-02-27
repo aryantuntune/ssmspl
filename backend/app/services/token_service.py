@@ -98,3 +98,14 @@ async def cleanup_expired(db: AsyncSession, older_than_days: int = 30) -> int:
     )
     await db.flush()
     return result.rowcount
+
+
+async def cleanup_expired_background() -> None:
+    """Background task: cleanup expired tokens using its own DB session."""
+    from app.database import AsyncSessionLocal
+    try:
+        async with AsyncSessionLocal() as session:
+            await cleanup_expired(session)
+            await session.commit()
+    except Exception:
+        pass  # Best-effort cleanup

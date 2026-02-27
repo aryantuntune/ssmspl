@@ -10,7 +10,6 @@ from app.models.portal_user import PortalUser
 from app.schemas.portal_user import PortalUserRegister
 from app.services import token_service
 from app.services import otp_service
-from app.services.email_service import send_otp_email
 
 
 async def authenticate_portal_user(db: AsyncSession, email: str, password: str) -> PortalUser | None:
@@ -43,14 +42,12 @@ async def login(db: AsyncSession, email: str, password: str) -> dict:
     expires_at = datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
     await token_service.store_refresh_token(db, refresh_token, expires_at, portal_user_id=user.id)
 
-    # Cleanup old expired tokens
-    await token_service.cleanup_expired(db)
-
     await db.commit()
     return {"access_token": access_token, "refresh_token": refresh_token}
 
 
-async def register(db: AsyncSession, data: PortalUserRegister) -> PortalUser:
+async def register(db: AsyncSession, data: PortalUserRegister) -> tuple[PortalUser, str]:
+    """Register a new portal user. Returns (user, raw_otp) — caller sends the email."""
     # Check if email already exists
     result = await db.execute(select(PortalUser).where(PortalUser.email == data.email))
     existing = result.scalar_one_or_none()
@@ -71,14 +68,12 @@ async def register(db: AsyncSession, data: PortalUserRegister) -> PortalUser:
     db.add(portal_user)
     await db.flush()
 
-    # Generate and send OTP
+    # Generate OTP
     raw_otp = await otp_service.create_otp(db, data.email, "registration")
     await db.commit()
     await db.refresh(portal_user)
 
-    await send_otp_email(data.email, raw_otp, data.first_name, "registration")
-
-    return portal_user
+    return portal_user, raw_otp
 
 
 async def verify_registration_otp(db: AsyncSession, email: str, otp: str) -> None:
@@ -97,20 +92,20 @@ async def verify_registration_otp(db: AsyncSession, email: str, otp: str) -> Non
     await db.commit()
 
 
-async def resend_otp(db: AsyncSession, email: str, purpose: str) -> None:
-    """Generate a new OTP and send it. Silent if user not found (prevent enumeration)."""
+async def resend_otp(db: AsyncSession, email: str, purpose: str) -> tuple[str, str, str] | None:
+    """Generate a new OTP. Returns (email, otp, first_name) or None if user not found."""
     result = await db.execute(select(PortalUser).where(PortalUser.email == email))
     user = result.scalar_one_or_none()
     if not user:
-        return  # Silent — prevent email enumeration
+        return None  # Silent — prevent email enumeration
 
     if purpose == "registration" and user.is_verified:
-        return  # Already verified, no need to send OTP
+        return None  # Already verified, no need to send OTP
 
     raw_otp = await otp_service.create_otp(db, email, purpose)
     await db.commit()
 
-    await send_otp_email(email, raw_otp, user.first_name, purpose)
+    return email, raw_otp, user.first_name
 
 
 async def refresh_access_token(db: AsyncSession, refresh_token: str) -> dict:
@@ -156,17 +151,17 @@ async def logout(db: AsyncSession, refresh_token: str | None) -> None:
         await db.commit()
 
 
-async def forgot_password(db: AsyncSession, email: str) -> None:
-    """Generate an OTP for password reset and send via email. Silent if user not found."""
+async def forgot_password(db: AsyncSession, email: str) -> tuple[str, str, str] | None:
+    """Generate an OTP for password reset. Returns (email, otp, first_name) or None if user not found."""
     result = await db.execute(select(PortalUser).where(PortalUser.email == email))
     user = result.scalar_one_or_none()
     if not user:
-        return  # Silent — prevent email enumeration
+        return None  # Silent — prevent email enumeration
 
     raw_otp = await otp_service.create_otp(db, email, "password_reset")
     await db.commit()
 
-    await send_otp_email(email, raw_otp, user.first_name, "password_reset")
+    return email, raw_otp, user.first_name
 
 
 async def reset_password(db: AsyncSession, email: str, otp: str, new_password: str) -> None:

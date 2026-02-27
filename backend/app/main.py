@@ -1,3 +1,5 @@
+import html
+import json
 import logging
 
 from fastapi import Depends, FastAPI, Request
@@ -134,11 +136,30 @@ app.add_middleware(SecurityHeadersMiddleware)
 logger = logging.getLogger("ssmspl")
 
 
+def _sanitize_errors(errors: list[dict]) -> list[dict]:
+    """Strip raw user input and HTML-escape error messages to prevent XSS."""
+    sanitized = []
+    for err in errors:
+        clean = {k: v for k, v in err.items() if k not in ("input", "ctx")}
+        if "msg" in clean:
+            clean["msg"] = html.escape(str(clean["msg"]))
+        sanitized.append(clean)
+    return sanitized
+
+
+@app.exception_handler(json.JSONDecodeError)
+async def json_decode_exception_handler(request: Request, exc: json.JSONDecodeError):
+    return JSONResponse(
+        status_code=422,
+        content={"detail": "Invalid JSON in request body"},
+    )
+
+
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     return JSONResponse(
         status_code=422,
-        content={"detail": exc.errors()},
+        content={"detail": _sanitize_errors(exc.errors())},
     )
 
 
@@ -148,6 +169,14 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
     from fastapi import HTTPException as FastAPIHTTPException
     if isinstance(exc, FastAPIHTTPException):
         raise exc
+
+    # Catch malformed request bodies that slip through
+    if isinstance(exc, (json.JSONDecodeError, UnicodeDecodeError)):
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "Malformed request body"},
+        )
+
     request_id = getattr(request.state, "request_id", "unknown")
     logger.error(
         "Unhandled exception [request_id=%s]: %s",

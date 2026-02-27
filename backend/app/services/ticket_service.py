@@ -284,37 +284,54 @@ async def get_multi_ticket_init(db: AsyncSession, user) -> dict:
         # No ferry schedules — always off-hours
         is_off_hours = True
 
-    # Get active items with their current rates for this route
+    # Get active items with their current rates for this route (batch query)
     today = datetime.date.today()
-    items_result = await db.execute(
-        select(Item).where(Item.is_active == True).order_by(Item.id)
-    )
-    items = items_result.scalars().all()
 
-    items_with_rates = []
-    for item in items:
-        rate_result = await db.execute(
-            select(ItemRate)
-            .where(
-                ItemRate.item_id == item.id,
-                ItemRate.route_id == user.route_id,
-                ItemRate.is_active == True,
-                ItemRate.applicable_from_date.is_not(None),
-                ItemRate.applicable_from_date <= today,
-            )
-            .order_by(ItemRate.applicable_from_date.desc())
-            .limit(1)
+    # Use ROW_NUMBER window function to get the latest rate per item in one query
+    rate_rn = (
+        select(
+            ItemRate.item_id,
+            ItemRate.rate,
+            ItemRate.levy,
+            func.row_number().over(
+                partition_by=ItemRate.item_id,
+                order_by=ItemRate.applicable_from_date.desc(),
+            ).label("rn"),
         )
-        ir = rate_result.scalar_one_or_none()
-        if ir:
-            items_with_rates.append({
-                "id": item.id,
-                "name": item.name,
-                "short_name": item.short_name,
-                "is_vehicle": bool(item.is_vehicle),
-                "rate": float(ir.rate) if ir.rate is not None else 0,
-                "levy": float(ir.levy) if ir.levy is not None else 0,
-            })
+        .where(
+            ItemRate.route_id == user.route_id,
+            ItemRate.is_active == True,
+            ItemRate.applicable_from_date.is_not(None),
+            ItemRate.applicable_from_date <= today,
+        )
+        .subquery()
+    )
+
+    items_with_rates_result = await db.execute(
+        select(
+            Item.id,
+            Item.name,
+            Item.short_name,
+            Item.is_vehicle,
+            rate_rn.c.rate,
+            rate_rn.c.levy,
+        )
+        .join(rate_rn, (rate_rn.c.item_id == Item.id) & (rate_rn.c.rn == 1))
+        .where(Item.is_active == True)
+        .order_by(Item.id)
+    )
+
+    items_with_rates = [
+        {
+            "id": row.id,
+            "name": row.name,
+            "short_name": row.short_name,
+            "is_vehicle": bool(row.is_vehicle),
+            "rate": float(row.rate) if row.rate is not None else 0,
+            "levy": float(row.levy) if row.levy is not None else 0,
+        }
+        for row in items_with_rates_result.all()
+    ]
 
     # Get active payment modes
     pm_result = await db.execute(
@@ -330,23 +347,29 @@ async def get_multi_ticket_init(db: AsyncSession, user) -> dict:
     company = company_result.scalar_one_or_none()
     if company and company.sf_item_id:
         sf_item_id = company.sf_item_id
-        # Look up the SF item's rate for this route
-        sf_rate_result = await db.execute(
-            select(ItemRate)
-            .where(
-                ItemRate.item_id == sf_item_id,
-                ItemRate.route_id == user.route_id,
-                ItemRate.is_active == True,
-                ItemRate.applicable_from_date.is_not(None),
-                ItemRate.applicable_from_date <= today,
+        # Check already-fetched items first to avoid an extra query
+        sf_match = next((i for i in items_with_rates if i["id"] == sf_item_id), None)
+        if sf_match:
+            sf_rate = sf_match["rate"]
+            sf_levy = sf_match["levy"]
+        else:
+            # SF item not in active items list — fallback to single query
+            sf_rate_result = await db.execute(
+                select(ItemRate)
+                .where(
+                    ItemRate.item_id == sf_item_id,
+                    ItemRate.route_id == user.route_id,
+                    ItemRate.is_active == True,
+                    ItemRate.applicable_from_date.is_not(None),
+                    ItemRate.applicable_from_date <= today,
+                )
+                .order_by(ItemRate.applicable_from_date.desc())
+                .limit(1)
             )
-            .order_by(ItemRate.applicable_from_date.desc())
-            .limit(1)
-        )
-        sf_ir = sf_rate_result.scalar_one_or_none()
-        if sf_ir:
-            sf_rate = float(sf_ir.rate) if sf_ir.rate is not None else None
-            sf_levy = float(sf_ir.levy) if sf_ir.levy is not None else None
+            sf_ir = sf_rate_result.scalar_one_or_none()
+            if sf_ir:
+                sf_rate = float(sf_ir.rate) if sf_ir.rate is not None else None
+                sf_levy = float(sf_ir.levy) if sf_ir.levy is not None else None
 
     return {
         "route_id": route.id,

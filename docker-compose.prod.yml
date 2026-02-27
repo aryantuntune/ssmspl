@@ -25,6 +25,22 @@ services:
         limits:
           memory: 1G
 
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --maxmemory 64mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - internal
+    deploy:
+      resources:
+        limits:
+          memory: 96M
+
   backend:
     build:
       context: ./backend
@@ -35,9 +51,12 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-ssmspl_user}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ssmspl_prod_pass}
       POSTGRES_DB: ${POSTGRES_DB:-ssmspl_db_prod}
+      RATE_LIMIT_STORAGE_URI: redis://redis:6379/1
     env_file: ./backend/.env.production
     depends_on:
       db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]

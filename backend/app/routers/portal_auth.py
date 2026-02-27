@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+import random
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,6 +20,9 @@ from app.dependencies import get_current_portal_user
 from app.core.cookies import set_auth_cookies, clear_auth_cookies
 from app.models.portal_user import PortalUser
 
+from app.services.email_service import send_otp_email
+from app.services.token_service import cleanup_expired_background
+
 router = APIRouter(prefix="/api/portal/auth", tags=["Portal Authentication"])
 
 
@@ -32,8 +37,11 @@ router = APIRouter(prefix="/api/portal/auth", tags=["Portal Authentication"])
     },
 )
 @limiter.limit("10/minute")
-async def login(request: Request, body: PortalUserLogin, db: AsyncSession = Depends(get_db)):
+async def login(request: Request, body: PortalUserLogin, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)):
     tokens = await portal_auth_service.login(db, body.email, body.password)
+    # Probabilistic cleanup (~5% of logins) to avoid expired token buildup
+    if random.random() < 0.05:
+        background_tasks.add_task(cleanup_expired_background)
     response = JSONResponse(content={"message": "Login successful", "token_type": "bearer"})
     set_auth_cookies(
         response, tokens["access_token"], tokens["refresh_token"],
@@ -54,8 +62,9 @@ async def login(request: Request, body: PortalUserLogin, db: AsyncSession = Depe
     },
 )
 @limiter.limit("10/minute")
-async def register(request: Request, body: PortalUserRegister, db: AsyncSession = Depends(get_db)):
-    user = await portal_auth_service.register(db, body)
+async def register(request: Request, body: PortalUserRegister, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)):
+    user, raw_otp = await portal_auth_service.register(db, body)
+    background_tasks.add_task(send_otp_email, user.email, raw_otp, user.first_name, "registration")
     return {"message": "A verification code has been sent to your email.", "email": user.email}
 
 
@@ -83,10 +92,13 @@ async def verify_email(request: Request, body: VerifyOtpRequest, db: AsyncSessio
     },
 )
 @limiter.limit("3/minute")
-async def resend_otp(request: Request, body: ResendOtpRequest, purpose: str = "registration", db: AsyncSession = Depends(get_db)):
+async def resend_otp(request: Request, body: ResendOtpRequest, background_tasks: BackgroundTasks, purpose: str = "registration", db: AsyncSession = Depends(get_db)):
     if purpose not in ("registration", "password_reset"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid purpose")
-    await portal_auth_service.resend_otp(db, body.email, purpose)
+    result = await portal_auth_service.resend_otp(db, body.email, purpose)
+    if result:
+        email, raw_otp, first_name = result
+        background_tasks.add_task(send_otp_email, email, raw_otp, first_name, purpose)
     return {"message": "If an account with that email exists, a new verification code has been sent."}
 
 
@@ -167,8 +179,11 @@ async def logout(request: Request, body: RefreshRequest | None = None, db: Async
     },
 )
 @limiter.limit("2/minute")
-async def forgot_password(request: Request, body: ResendOtpRequest, db: AsyncSession = Depends(get_db)):
-    await portal_auth_service.forgot_password(db, body.email)
+async def forgot_password(request: Request, body: ResendOtpRequest, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)):
+    result = await portal_auth_service.forgot_password(db, body.email)
+    if result:
+        email, raw_otp, first_name = result
+        background_tasks.add_task(send_otp_email, email, raw_otp, first_name, "password_reset")
     return {"message": "If an account with that email exists, a verification code has been sent."}
 
 

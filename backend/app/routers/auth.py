@@ -24,21 +24,10 @@ from app.schemas.auth import (
 from app.schemas.user import UserMeResponse
 from app.services import auth_service, token_service
 from app.services.email_service import send_password_reset_email
+from app.services.token_service import cleanup_expired_background
 from app.services.user_service import _resolve_route_name, _resolve_route_branches
 
 router = APIRouter(prefix="/api/auth", tags=["Authentication"])
-
-
-async def _cleanup_expired_tokens():
-    """Background task: cleanup expired tokens using its own DB session."""
-    from app.database import AsyncSessionLocal
-    from app.services import token_service
-    try:
-        async with AsyncSessionLocal() as session:
-            await token_service.cleanup_expired(session)
-            await session.commit()
-    except Exception:
-        pass  # Best-effort cleanup
 
 
 @router.post(
@@ -55,7 +44,7 @@ async def login(request: Request, body: LoginRequest, background_tasks: Backgrou
     tokens = await auth_service.login(db, body.email, body.password)
     # Probabilistic cleanup (~5% of logins) to avoid expired token buildup
     if random.random() < 0.05:
-        background_tasks.add_task(_cleanup_expired_tokens)
+        background_tasks.add_task(cleanup_expired_background)
     response = JSONResponse(content={"message": "Login successful", "token_type": "bearer"})
     set_auth_cookies(response, tokens["access_token"], tokens["refresh_token"])
     return response
@@ -103,7 +92,7 @@ async def mobile_login(
 
     # Probabilistic cleanup (~5% of logins) to avoid expired token buildup
     if random.random() < 0.05:
-        background_tasks.add_task(_cleanup_expired_tokens)
+        background_tasks.add_task(cleanup_expired_background)
 
     route_name = await _resolve_route_name(db, user.route_id)
     return MobileLoginResponse(

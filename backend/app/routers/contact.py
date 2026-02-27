@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, BackgroundTasks, Request
 from pydantic import BaseModel, EmailStr, Field
 
 from app.middleware.rate_limit import limiter
@@ -24,8 +24,9 @@ class ContactFormRequest(BaseModel):
     },
 )
 @limiter.limit("3/minute")
-async def submit_contact_form(request: Request, body: ContactFormRequest):
-    await send_contact_form_email(
+async def submit_contact_form(request: Request, body: ContactFormRequest, background_tasks: BackgroundTasks):
+    background_tasks.add_task(
+        send_contact_form_email,
         sender_name=body.name,
         sender_email=body.email,
         sender_phone=body.phone,

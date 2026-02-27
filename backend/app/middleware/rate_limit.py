@@ -21,7 +21,7 @@ try:
                 return value.split(",")[0].strip()
         return request.client.host if request.client else "127.0.0.1"
 
-    limiter = Limiter(key_func=get_real_ip)
+    limiter = Limiter(key_func=get_real_ip, storage_uri=settings.RATE_LIMIT_STORAGE_URI)
     RateLimitExceeded = _RateLimitExceeded
 
     async def rate_limit_exceeded_handler(request: Request, exc) -> JSONResponse:

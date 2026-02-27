@@ -34,6 +34,7 @@ class Settings(BaseSettings):
 
     # Rate limiting
     TRUSTED_PROXY_HEADERS: str = "CF-Connecting-IP,X-Forwarded-For"
+    RATE_LIMIT_STORAGE_URI: str = "memory://"
 
     # Frontend
     FRONTEND_URL: str = "http://localhost:3000"
