@@ -12,7 +12,8 @@ from app.database import get_db, AsyncSessionLocal
 from app.dependencies import require_roles
 from app.core.rbac import UserRole
 from app.models.user import User
-from app.services.dashboard_service import get_dashboard_stats
+from app.schemas.dashboard import TodaySummaryResponse
+from app.services.dashboard_service import get_dashboard_stats, get_today_summary
 
 logger = logging.getLogger("ssmspl")
 
@@ -37,6 +38,25 @@ async def stats(
     db: AsyncSession = Depends(get_db),
 ):
     return await get_dashboard_stats(db)
+
+
+@router.get(
+    "/today-summary",
+    response_model=TodaySummaryResponse,
+    summary="Get today's ticket summary",
+    description="Returns today's ticket count and revenue broken down by branch and payment mode.",
+)
+async def today_summary(
+    current_user: User = Depends(
+        require_roles(
+            UserRole.SUPER_ADMIN,
+            UserRole.ADMIN,
+            UserRole.MANAGER,
+        )
+    ),
+    db: AsyncSession = Depends(get_db),
+):
+    return await get_today_summary(db)
 
 
 async def _authenticate_ws(websocket: WebSocket) -> User | None:

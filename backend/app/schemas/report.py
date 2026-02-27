@@ -1,4 +1,5 @@
 import datetime
+from decimal import Decimal
 
 from pydantic import BaseModel, Field
 
@@ -98,3 +99,83 @@ class PaymentModeReport(BaseModel):
     date_from: datetime.date
     date_to: datetime.date
     rows: list[PaymentModeRow]
+
+
+# --- Date Wise Amount Summary ---
+
+class DateWiseAmountRow(BaseModel):
+    ticket_date: datetime.date
+    amount: Decimal
+
+
+class DateWiseAmountReport(BaseModel):
+    date_from: datetime.date
+    date_to: datetime.date
+    branch_name: str | None = None
+    payment_mode_name: str | None = None
+    rows: list[DateWiseAmountRow]
+    grand_total: Decimal
+
+
+# --- Ferry Wise Item Summary ---
+
+class FerryWiseItemRow(BaseModel):
+    departure: str  # time formatted as "7:30 am"
+    item_name: str
+    quantity: int
+
+
+class FerryWiseItemReport(BaseModel):
+    report_date: datetime.date
+    branch_name: str | None = None
+    rows: list[FerryWiseItemRow]
+
+
+# --- Itemwise Levy Summary ---
+
+class ItemwiseLevyRow(BaseModel):
+    item_name: str
+    levy: Decimal
+    quantity: int
+    amount: Decimal
+
+
+class ItemwiseLevyReport(BaseModel):
+    date_from: datetime.date
+    date_to: datetime.date
+    branch_name: str | None = None
+    route_name: str | None = None
+    rows: list[ItemwiseLevyRow]
+    grand_total: Decimal
+
+
+# --- User Wise Daily Summary ---
+
+class UserWiseSummaryRow(BaseModel):
+    user_name: str
+    amount: Decimal
+
+
+class UserWiseSummaryReport(BaseModel):
+    report_date: datetime.date
+    rows: list[UserWiseSummaryRow]
+    grand_total: Decimal
+
+
+# --- Vehicle Wise Ticket Details ---
+
+class VehicleWiseTicketRow(BaseModel):
+    ticket_date: datetime.date
+    ticket_no: int
+    boat_name: str | None = None
+    departure: str | None = None
+    payment_mode: str
+    amount: Decimal
+    vehicle_no: str | None = None
+
+
+class VehicleWiseTicketReport(BaseModel):
+    report_date: datetime.date
+    branch_name: str | None = None
+    rows: list[VehicleWiseTicketRow]
+    grand_total: Decimal

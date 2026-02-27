@@ -2,13 +2,21 @@
 
 import { useEffect, useState, useCallback } from "react";
 import api from "@/lib/api";
-import { Ticket, Branch, Route, PaymentMode } from "@/types";
-import DataTable, { Column } from "@/components/dashboard/DataTable";
+import { Branch, Route, PaymentMode } from "@/types";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+  TableFooter,
+} from "@/components/ui/table";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
   SelectContent,
@@ -16,14 +24,27 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  BarChart3,
-  Download,
-  Ticket as TicketIcon,
-  IndianRupee,
-  TrendingUp,
-  CreditCard,
-} from "lucide-react";
+import { Download, BarChart3, Loader2 } from "lucide-react";
+
+// ── Helpers ──
+
+function formatDate(d: string): string {
+  const dt = new Date(d);
+  return dt.toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function formatCurrency(val: number | string): string {
+  const num = typeof val === "string" ? parseFloat(val) : val;
+  if (isNaN(num)) return "\u20B90.00";
+  return `\u20B9${num.toLocaleString("en-IN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
 
 function formatRouteLabel(r: Route): string {
   return r.branch_one_name && r.branch_two_name
@@ -36,50 +57,247 @@ function getDefaultDateFrom(): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
 }
 
-function getDefaultDateTo(): string {
+function getToday(): string {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 }
 
-function formatCurrency(value: number): string {
-  return new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: "INR",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(value);
+// ── Report Type Configuration ──
+
+type FilterType = "date_range" | "single_date" | "branch" | "payment_mode" | "route";
+
+interface ReportColumnConfig {
+  key: string;
+  label: string;
+  align?: "left" | "right";
+  render?: (row: Record<string, unknown>) => string;
 }
 
+interface ReportConfig {
+  key: string;
+  label: string;
+  endpoint: string;
+  pdfEndpoint: string;
+  filters: FilterType[];
+  columns: ReportColumnConfig[];
+}
+
+const REPORT_TYPES: ReportConfig[] = [
+  {
+    key: "date-wise-amount",
+    label: "Date Wise Amount",
+    endpoint: "/api/reports/date-wise-amount",
+    pdfEndpoint: "/api/reports/date-wise-amount/pdf",
+    filters: ["date_range", "branch", "payment_mode"],
+    columns: [
+      {
+        key: "ticket_date",
+        label: "Ticket Date",
+        render: (r) => formatDate(r.ticket_date as string),
+      },
+      {
+        key: "amount",
+        label: "Amount",
+        align: "right",
+        render: (r) => formatCurrency(r.amount as number),
+      },
+    ],
+  },
+  {
+    key: "ferry-wise-item",
+    label: "Ferry Wise Item",
+    endpoint: "/api/reports/ferry-wise-item",
+    pdfEndpoint: "/api/reports/ferry-wise-item/pdf",
+    filters: ["single_date", "branch", "payment_mode"],
+    columns: [
+      { key: "departure", label: "Time" },
+      { key: "item_name", label: "Item" },
+      { key: "quantity", label: "Quantity", align: "right" },
+    ],
+  },
+  {
+    key: "itemwise-levy",
+    label: "Itemwise Levy",
+    endpoint: "/api/reports/itemwise-levy",
+    pdfEndpoint: "/api/reports/itemwise-levy/pdf",
+    filters: ["date_range", "branch", "route"],
+    columns: [
+      { key: "item_name", label: "Item" },
+      {
+        key: "levy",
+        label: "Levy",
+        align: "right",
+        render: (r) => formatCurrency(r.levy as number),
+      },
+      { key: "quantity", label: "Quantity", align: "right" },
+      {
+        key: "amount",
+        label: "Amount",
+        align: "right",
+        render: (r) => formatCurrency(r.amount as number),
+      },
+    ],
+  },
+  {
+    key: "payment-mode",
+    label: "Payment Mode Wise",
+    endpoint: "/api/reports/payment-mode",
+    pdfEndpoint: "/api/reports/payment-mode/pdf",
+    filters: ["date_range", "branch"],
+    columns: [
+      { key: "payment_mode_name", label: "Payment Mode" },
+      { key: "ticket_count", label: "Ticket Count", align: "right" },
+      {
+        key: "ticket_revenue",
+        label: "Amount",
+        align: "right",
+        render: (r) =>
+          formatCurrency(
+            Number(r.ticket_revenue) + Number(r.booking_revenue)
+          ),
+      },
+    ],
+  },
+  {
+    key: "ticket-details",
+    label: "Ticket Details",
+    endpoint: "/api/tickets/",
+    pdfEndpoint: "/api/reports/ticket-details/pdf",
+    filters: ["single_date", "branch"],
+    columns: [
+      {
+        key: "ticket_date",
+        label: "Date",
+        render: (r) => formatDate(r.ticket_date as string),
+      },
+      { key: "ticket_no", label: "Ticket No" },
+      { key: "departure", label: "Time" },
+      { key: "payment_mode_name", label: "Payment Mode" },
+      {
+        key: "net_amount",
+        label: "Amount",
+        align: "right",
+        render: (r) => formatCurrency(r.net_amount as number),
+      },
+      {
+        key: "is_cancelled",
+        label: "Status",
+        render: (r) => (r.is_cancelled ? "Cancelled" : "Active"),
+      },
+    ],
+  },
+  {
+    key: "user-wise-summary",
+    label: "User Wise Daily",
+    endpoint: "/api/reports/user-wise-summary",
+    pdfEndpoint: "/api/reports/user-wise-summary/pdf",
+    filters: ["single_date", "branch"],
+    columns: [
+      { key: "user_name", label: "User Name" },
+      {
+        key: "amount",
+        label: "Amount",
+        align: "right",
+        render: (r) => formatCurrency(r.amount as number),
+      },
+    ],
+  },
+  {
+    key: "vehicle-wise-tickets",
+    label: "Vehicle Wise Tickets",
+    endpoint: "/api/reports/vehicle-wise-tickets",
+    pdfEndpoint: "/api/reports/vehicle-wise-tickets/pdf",
+    filters: ["single_date", "branch"],
+    columns: [
+      {
+        key: "ticket_date",
+        label: "Date",
+        render: (r) => formatDate(r.ticket_date as string),
+      },
+      { key: "ticket_no", label: "Ticket No" },
+      { key: "departure", label: "Time" },
+      { key: "payment_mode", label: "Payment Mode" },
+      {
+        key: "amount",
+        label: "Amount",
+        align: "right",
+        render: (r) => formatCurrency(r.amount as number),
+      },
+      { key: "vehicle_no", label: "Vehicle No" },
+    ],
+  },
+  {
+    key: "branch-summary",
+    label: "Branch Summary",
+    endpoint: "/api/reports/branch-summary",
+    pdfEndpoint: "/api/reports/branch-summary/pdf",
+    filters: ["date_range"],
+    columns: [
+      { key: "branch_name", label: "Branch" },
+      { key: "ticket_count", label: "Tickets", align: "right" },
+      { key: "booking_count", label: "Bookings", align: "right" },
+      {
+        key: "ticket_revenue",
+        label: "Ticket Revenue",
+        align: "right",
+        render: (r) => formatCurrency(r.ticket_revenue as number),
+      },
+      {
+        key: "booking_revenue",
+        label: "Booking Revenue",
+        align: "right",
+        render: (r) => formatCurrency(r.booking_revenue as number),
+      },
+      {
+        key: "total_revenue",
+        label: "Total Revenue",
+        align: "right",
+        render: (r) => formatCurrency(r.total_revenue as number),
+      },
+    ],
+  },
+];
+
+// ── Main Component ──
+
 export default function ReportsPage() {
-  const [tickets, setTickets] = useState<Ticket[]>([]);
-  const [tableLoading, setTableLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [exporting, setExporting] = useState(false);
+  // Active tab index
+  const [activeIndex, setActiveIndex] = useState(0);
 
-  // Pagination & sorting
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(25);
-  const [totalCount, setTotalCount] = useState(0);
-  const [sortBy, setSortBy] = useState("ticket_date");
-  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
-
-  // Filters
-  const [branchFilter, setBranchFilter] = useState("");
-  const [routeFilter, setRouteFilter] = useState("");
-  const [paymentModeFilter, setPaymentModeFilter] = useState("");
+  // Filter state
   const [dateFrom, setDateFrom] = useState(getDefaultDateFrom);
-  const [dateTo, setDateTo] = useState(getDefaultDateTo);
-  const [statusFilter, setStatusFilter] = useState("");
+  const [dateTo, setDateTo] = useState(getToday);
+  const [singleDate, setSingleDate] = useState(getToday);
+  const [branchId, setBranchId] = useState("");
+  const [paymentModeId, setPaymentModeId] = useState("");
+  const [routeId, setRouteId] = useState("");
 
   // Dropdown data
   const [branches, setBranches] = useState<Branch[]>([]);
   const [routes, setRoutes] = useState<Route[]>([]);
   const [paymentModes, setPaymentModes] = useState<PaymentMode[]>([]);
 
+  // Report results
+  const [rows, setRows] = useState<Record<string, unknown>[]>([]);
+  const [grandTotal, setGrandTotal] = useState<Record<string, unknown> | null>(
+    null
+  );
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [hasGenerated, setHasGenerated] = useState(false);
+
+  // PDF download
+  const [downloading, setDownloading] = useState(false);
+
+  const activeReport = REPORT_TYPES[activeIndex];
+
+  // Fetch dropdown data once on mount
   const fetchDropdowns = useCallback(async () => {
     try {
       const [branchResp, routeResp, pmResp] = await Promise.all([
-        api.get<Branch[]>("/api/branches/?limit=200&status=active&sort_by=name&sort_order=asc"),
+        api.get<Branch[]>(
+          "/api/branches/?limit=200&status=active&sort_by=name&sort_order=asc"
+        ),
         api.get<Route[]>("/api/routes/?limit=200&status=active"),
         api.get<PaymentMode[]>("/api/payment-modes/?limit=200&status=active"),
       ]);
@@ -87,200 +305,146 @@ export default function ReportsPage() {
       setRoutes(routeResp.data);
       setPaymentModes(pmResp.data);
     } catch {
-      // non-critical — dropdowns will be empty
+      // non-critical
     }
   }, []);
 
-  const buildFilterParams = useCallback(() => {
-    const params = new URLSearchParams();
-    if (branchFilter) params.set("branch_filter", branchFilter);
-    if (routeFilter) params.set("route_filter", routeFilter);
-    if (dateFrom) params.set("date_from", dateFrom);
-    if (dateTo) params.set("date_to", dateTo);
-    if (statusFilter) params.set("status", statusFilter);
-    if (paymentModeFilter) params.set("payment_mode_filter", paymentModeFilter);
-    return params;
-  }, [branchFilter, routeFilter, dateFrom, dateTo, statusFilter, paymentModeFilter]);
-
-  const fetchTickets = useCallback(async () => {
-    setTableLoading(true);
-    try {
-      const skip = (page - 1) * pageSize;
-      const params = buildFilterParams();
-      params.set("skip", String(skip));
-      params.set("limit", String(pageSize));
-      params.set("sort_by", sortBy);
-      params.set("sort_order", sortOrder);
-
-      const countParams = buildFilterParams();
-
-      const [pageResp, countResp] = await Promise.all([
-        api.get<Ticket[]>(`/api/tickets/?${params}`),
-        api.get<number>(`/api/tickets/count?${countParams}`),
-      ]);
-
-      setTickets(pageResp.data);
-      setTotalCount(countResp.data as unknown as number);
-      setError("");
-    } catch {
-      setError("Failed to load ticket data.");
-    } finally {
-      setTableLoading(false);
-    }
-  }, [page, pageSize, sortBy, sortOrder, buildFilterParams]);
-
   useEffect(() => {
-    fetchTickets();
     fetchDropdowns();
-  }, [fetchTickets, fetchDropdowns]);
+  }, [fetchDropdowns]);
 
-  // Computed stats from current page data
-  const pageRevenue = tickets.reduce((sum, t) => sum + t.net_amount, 0);
-  const activeTicketsOnPage = tickets.filter((t) => !t.is_cancelled).length;
-  const avgTicketValue = tickets.length > 0 ? pageRevenue / tickets.length : 0;
+  // Clear results when switching tabs
+  const handleTabChange = (index: number) => {
+    setActiveIndex(index);
+    setRows([]);
+    setGrandTotal(null);
+    setError("");
+    setHasGenerated(false);
+  };
 
-  const handleSort = (column: string) => {
-    if (sortBy === column) {
-      setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"));
-    } else {
-      setSortBy(column);
-      setSortOrder("asc");
+  // Build filter params for the active report
+  const buildFilterParams = useCallback(() => {
+    const config = REPORT_TYPES[activeIndex];
+    const params: Record<string, string> = {};
+
+    if (config.filters.includes("date_range")) {
+      params.date_from = dateFrom;
+      params.date_to = dateTo;
     }
-    setPage(1);
-  };
+    if (config.filters.includes("single_date")) {
+      params.date = singleDate;
+    }
+    if (config.filters.includes("branch") && branchId) {
+      params.branch_id = branchId;
+    }
+    if (config.filters.includes("payment_mode") && paymentModeId) {
+      params.payment_mode_id = paymentModeId;
+    }
+    if (config.filters.includes("route") && routeId) {
+      params.route_id = routeId;
+    }
+    return params;
+  }, [activeIndex, dateFrom, dateTo, singleDate, branchId, paymentModeId, routeId]);
 
-  const handlePageSizeChange = (newSize: number) => {
-    setPageSize(newSize);
-    setPage(1);
-  };
+  // Generate report
+  const generateReport = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    setHasGenerated(true);
+    try {
+      const config = REPORT_TYPES[activeIndex];
+      const params = buildFilterParams();
 
-  const handleExportCSV = async () => {
-    setExporting(true);
+      // Ticket details endpoint has a different response shape
+      if (config.key === "ticket-details") {
+        const ticketParams: Record<string, string> = {
+          date_from: params.date || getToday(),
+          date_to: params.date || getToday(),
+          limit: "1000",
+        };
+        if (params.branch_id) {
+          ticketParams.branch_filter = params.branch_id;
+        }
+        const response = await api.get(config.endpoint, {
+          params: ticketParams,
+        });
+        const data = response.data;
+        setRows(Array.isArray(data) ? data : []);
+        setGrandTotal(null);
+      } else {
+        const response = await api.get(config.endpoint, { params });
+        const data = response.data;
+        if (data && typeof data === "object" && !Array.isArray(data)) {
+          setRows(Array.isArray(data.rows) ? data.rows : []);
+          setGrandTotal(data.grand_total ?? null);
+        } else if (Array.isArray(data)) {
+          setRows(data);
+          setGrandTotal(null);
+        } else {
+          setRows([]);
+          setGrandTotal(null);
+        }
+      }
+    } catch {
+      setError("Failed to load report data. Please try again.");
+      setRows([]);
+      setGrandTotal(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [activeIndex, buildFilterParams]);
+
+  // Download PDF
+  const downloadPdf = async () => {
+    setDownloading(true);
     try {
       const params = buildFilterParams();
-      params.set("skip", "0");
-      params.set("limit", "10000");
-      params.set("sort_by", sortBy);
-      params.set("sort_order", sortOrder);
+      const config = REPORT_TYPES[activeIndex];
 
-      const resp = await api.get<Ticket[]>(`/api/tickets/?${params}`);
-      const allTickets = resp.data;
+      // For ticket-details, map params to the expected format
+      const pdfParams =
+        config.key === "ticket-details"
+          ? {
+              date_from: params.date || getToday(),
+              date_to: params.date || getToday(),
+              ...(params.branch_id ? { branch_id: params.branch_id } : {}),
+            }
+          : params;
 
-      const csvHeaders =
-        "ID,Ticket No,Branch,Route,Date,Departure,Amount,Discount,Net Amount,Payment Mode,Status\n";
-      const csvRows = allTickets
-        .map(
-          (t) =>
-            `${t.id},${t.ticket_no},"${t.branch_name || ""}","${t.route_name || ""}",${t.ticket_date},${t.departure || ""},${t.amount},${t.discount || 0},${t.net_amount},"${t.payment_mode_name || ""}",${t.is_cancelled ? "Cancelled" : "Active"}`
-        )
-        .join("\n");
-
-      const blob = new Blob([csvHeaders + csvRows], { type: "text/csv" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `tickets-report-${new Date().toISOString().split("T")[0]}.csv`;
-      a.click();
-      URL.revokeObjectURL(url);
+      const response = await api.get(config.pdfEndpoint, {
+        params: pdfParams,
+        responseType: "blob",
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${config.key}_report.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
     } catch {
-      setError("Failed to export CSV. Please try again.");
+      setError("Failed to download PDF. Please try again.");
     } finally {
-      setExporting(false);
+      setDownloading(false);
     }
   };
 
-  const clearFilters = () => {
-    setBranchFilter("");
-    setRouteFilter("");
-    setPaymentModeFilter("");
-    setDateFrom(getDefaultDateFrom());
-    setDateTo(getDefaultDateTo());
-    setStatusFilter("");
-    setPage(1);
+  // Render cell value
+  const renderCell = (
+    row: Record<string, unknown>,
+    col: ReportColumnConfig
+  ): string => {
+    if (col.render) {
+      return col.render(row);
+    }
+    const value = row[col.key];
+    if (value === null || value === undefined) return "\u2014";
+    return String(value);
   };
 
-  const hasActiveFilters =
-    branchFilter ||
-    routeFilter ||
-    paymentModeFilter ||
-    statusFilter ||
-    dateFrom !== getDefaultDateFrom() ||
-    dateTo !== getDefaultDateTo();
-
-  const columns: Column<Ticket>[] = [
-    {
-      key: "id",
-      label: "ID",
-      sortable: true,
-      render: (t) => <span className="text-muted-foreground">{t.id}</span>,
-    },
-    {
-      key: "ticket_no",
-      label: "Ticket No",
-      sortable: true,
-      render: (t) => <span className="font-medium">{t.ticket_no}</span>,
-    },
-    {
-      key: "branch_name",
-      label: "Branch",
-      sortable: true,
-      render: (t) => <span>{t.branch_name || "\u2014"}</span>,
-    },
-    {
-      key: "route_name",
-      label: "Route",
-      sortable: true,
-      render: (t) => <span>{t.route_name || "\u2014"}</span>,
-    },
-    {
-      key: "ticket_date",
-      label: "Date",
-      sortable: true,
-    },
-    {
-      key: "departure",
-      label: "Departure",
-      sortable: true,
-      render: (t) => <span>{t.departure || "\u2014"}</span>,
-    },
-    {
-      key: "amount",
-      label: "Amount",
-      sortable: true,
-      className: "text-right",
-      render: (t) => <span>{t.amount.toFixed(2)}</span>,
-    },
-    {
-      key: "discount",
-      label: "Discount",
-      sortable: true,
-      className: "text-right",
-      render: (t) => <span>{t.discount != null ? t.discount.toFixed(2) : "0.00"}</span>,
-    },
-    {
-      key: "net_amount",
-      label: "Net Amount",
-      sortable: true,
-      className: "text-right",
-      render: (t) => <span className="font-medium">{t.net_amount.toFixed(2)}</span>,
-    },
-    {
-      key: "payment_mode_name",
-      label: "Payment Mode",
-      render: (t) => <span>{t.payment_mode_name || "\u2014"}</span>,
-    },
-    {
-      key: "is_cancelled",
-      label: "Status",
-      sortable: true,
-      render: (t) =>
-        t.is_cancelled ? (
-          <Badge variant="destructive">Cancelled</Badge>
-        ) : (
-          <Badge variant="default">Active</Badge>
-        ),
-    },
-  ];
+  // Which filters to show for the active report
+  const activeFilters = activeReport.filters;
 
   return (
     <div className="space-y-6">
@@ -289,219 +453,272 @@ export default function ReportsPage() {
         <div>
           <h1 className="text-2xl font-bold">Reports</h1>
           <p className="text-muted-foreground text-sm mt-1">
-            View ticket reports and analytics
+            Generate and download reports across various categories
           </p>
         </div>
-        <Button onClick={handleExportCSV} disabled={exporting}>
-          <Download className="h-4 w-4 mr-2" />
-          {exporting ? "Exporting..." : "Export CSV"}
+        <Button
+          onClick={downloadPdf}
+          disabled={downloading || rows.length === 0}
+          className="bg-blue-600 text-white hover:bg-blue-700"
+        >
+          {downloading ? (
+            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+          ) : (
+            <Download className="h-4 w-4 mr-2" />
+          )}
+          {downloading ? "Downloading..." : "Download PDF"}
         </Button>
       </div>
 
+      {/* Report Type Tabs */}
+      <div className="flex gap-1 overflow-x-auto border-b border-border pb-0 scrollbar-thin">
+        {REPORT_TYPES.map((report, index) => (
+          <button
+            key={report.key}
+            onClick={() => handleTabChange(index)}
+            className={`whitespace-nowrap px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px ${
+              index === activeIndex
+                ? "border-blue-600 text-blue-600"
+                : "border-transparent text-muted-foreground hover:text-foreground hover:border-gray-300"
+            }`}
+          >
+            {report.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Filter Panel */}
+      <Card>
+        <CardContent className="pt-6">
+          <div className="flex flex-wrap items-end gap-3">
+            {/* Date Range Filters */}
+            {activeFilters.includes("date_range") && (
+              <>
+                <div>
+                  <Label className="mb-1.5 block">From</Label>
+                  <Input
+                    type="date"
+                    value={dateFrom}
+                    onChange={(e) => setDateFrom(e.target.value)}
+                    className="w-full sm:w-[160px]"
+                  />
+                </div>
+                <div>
+                  <Label className="mb-1.5 block">To</Label>
+                  <Input
+                    type="date"
+                    value={dateTo}
+                    onChange={(e) => setDateTo(e.target.value)}
+                    className="w-full sm:w-[160px]"
+                  />
+                </div>
+              </>
+            )}
+
+            {/* Single Date Filter */}
+            {activeFilters.includes("single_date") && (
+              <div>
+                <Label className="mb-1.5 block">Date</Label>
+                <Input
+                  type="date"
+                  value={singleDate}
+                  onChange={(e) => setSingleDate(e.target.value)}
+                  className="w-full sm:w-[160px]"
+                />
+              </div>
+            )}
+
+            {/* Branch Filter */}
+            {activeFilters.includes("branch") && (
+              <div>
+                <Label className="mb-1.5 block">Branch</Label>
+                <Select
+                  value={branchId || "all"}
+                  onValueChange={(v) => setBranchId(v === "all" ? "" : v)}
+                >
+                  <SelectTrigger className="w-full sm:w-[180px]">
+                    <SelectValue placeholder="All Branches" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Branches</SelectItem>
+                    {branches.map((b) => (
+                      <SelectItem key={b.id} value={String(b.id)}>
+                        {b.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {/* Payment Mode Filter */}
+            {activeFilters.includes("payment_mode") && (
+              <div>
+                <Label className="mb-1.5 block">Payment Mode</Label>
+                <Select
+                  value={paymentModeId || "all"}
+                  onValueChange={(v) => setPaymentModeId(v === "all" ? "" : v)}
+                >
+                  <SelectTrigger className="w-full sm:w-[180px]">
+                    <SelectValue placeholder="All Modes" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Modes</SelectItem>
+                    {paymentModes.map((pm) => (
+                      <SelectItem key={pm.id} value={String(pm.id)}>
+                        {pm.description}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {/* Route Filter */}
+            {activeFilters.includes("route") && (
+              <div>
+                <Label className="mb-1.5 block">Route</Label>
+                <Select
+                  value={routeId || "all"}
+                  onValueChange={(v) => setRouteId(v === "all" ? "" : v)}
+                >
+                  <SelectTrigger className="w-full sm:w-[220px]">
+                    <SelectValue placeholder="All Routes" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Routes</SelectItem>
+                    {routes.map((r) => (
+                      <SelectItem key={r.id} value={String(r.id)}>
+                        {formatRouteLabel(r)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {/* Generate Button */}
+            <Button
+              onClick={generateReport}
+              disabled={loading}
+              className="bg-blue-600 text-white hover:bg-blue-700"
+            >
+              {loading ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <BarChart3 className="h-4 w-4 mr-2" />
+              )}
+              {loading ? "Loading..." : "Generate Report"}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Error */}
       {error && (
         <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg text-destructive text-sm">
           {error}
         </div>
       )}
 
-      {/* Filters */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex flex-wrap items-end gap-3">
-            <div>
-              <Label className="mb-1.5 block">Branch</Label>
-              <Select
-                value={branchFilter || "all"}
-                onValueChange={(v) => {
-                  setBranchFilter(v === "all" ? "" : v);
-                  setPage(1);
-                }}
-              >
-                <SelectTrigger className="w-full sm:w-[180px]">
-                  <SelectValue placeholder="All Branches" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Branches</SelectItem>
-                  {branches.map((b) => (
-                    <SelectItem key={b.id} value={String(b.id)}>
-                      {b.name}
-                    </SelectItem>
+      {/* Results Table */}
+      <div className="rounded-lg border border-border bg-card overflow-hidden">
+        <div className="overflow-x-auto">
+          <Table className="min-w-[600px]">
+            <TableHeader>
+              <TableRow className="bg-muted/50">
+                {activeReport.columns.map((col) => (
+                  <TableHead
+                    key={col.key}
+                    className={`font-semibold ${col.align === "right" ? "text-right" : "text-left"}`}
+                  >
+                    {col.label}
+                  </TableHead>
+                ))}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loading ? (
+                // Skeleton loading rows
+                Array.from({ length: 5 }).map((_, i) => (
+                  <TableRow key={`skeleton-${i}`}>
+                    {activeReport.columns.map((col) => (
+                      <TableCell
+                        key={col.key}
+                        className={
+                          col.align === "right" ? "text-right" : "text-left"
+                        }
+                      >
+                        <Skeleton className="h-4 w-[70%] inline-block" />
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))
+              ) : rows.length === 0 ? (
+                <TableRow>
+                  <TableCell
+                    colSpan={activeReport.columns.length}
+                    className="h-32 text-center"
+                  >
+                    <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                      <BarChart3 className="h-10 w-10" />
+                      <p>
+                        {hasGenerated
+                          ? "No data found. Try adjusting your filters."
+                          : "Select filters and click Generate Report to view data."}
+                      </p>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ) : (
+                rows.map((row, idx) => (
+                  <TableRow key={idx} className="hover:bg-muted/30">
+                    {activeReport.columns.map((col) => (
+                      <TableCell
+                        key={col.key}
+                        className={
+                          col.align === "right" ? "text-right" : "text-left"
+                        }
+                      >
+                        {renderCell(row, col)}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+            {/* Grand Total Footer */}
+            {grandTotal && rows.length > 0 && (
+              <TableFooter>
+                <TableRow className="font-semibold bg-muted/50">
+                  {activeReport.columns.map((col, colIdx) => (
+                    <TableCell
+                      key={col.key}
+                      className={`${col.align === "right" ? "text-right" : "text-left"} font-semibold`}
+                    >
+                      {colIdx === 0
+                        ? "Grand Total"
+                        : grandTotal[col.key] !== undefined
+                          ? col.render
+                            ? col.render(grandTotal)
+                            : String(grandTotal[col.key])
+                          : ""}
+                    </TableCell>
                   ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label className="mb-1.5 block">Route</Label>
-              <Select
-                value={routeFilter || "all"}
-                onValueChange={(v) => {
-                  setRouteFilter(v === "all" ? "" : v);
-                  setPage(1);
-                }}
-              >
-                <SelectTrigger className="w-full sm:w-[220px]">
-                  <SelectValue placeholder="All Routes" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Routes</SelectItem>
-                  {routes.map((r) => (
-                    <SelectItem key={r.id} value={String(r.id)}>
-                      {formatRouteLabel(r)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label className="mb-1.5 block">Payment Mode</Label>
-              <Select
-                value={paymentModeFilter || "all"}
-                onValueChange={(v) => {
-                  setPaymentModeFilter(v === "all" ? "" : v);
-                  setPage(1);
-                }}
-              >
-                <SelectTrigger className="w-full sm:w-[160px]">
-                  <SelectValue placeholder="All" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All</SelectItem>
-                  {paymentModes.map((pm) => (
-                    <SelectItem key={pm.id} value={String(pm.id)}>
-                      {pm.description}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label className="mb-1.5 block">Date From</Label>
-              <Input
-                type="date"
-                value={dateFrom}
-                onChange={(e) => {
-                  setDateFrom(e.target.value);
-                  setPage(1);
-                }}
-                className="w-full sm:w-[160px]"
-              />
-            </div>
-            <div>
-              <Label className="mb-1.5 block">Date To</Label>
-              <Input
-                type="date"
-                value={dateTo}
-                onChange={(e) => {
-                  setDateTo(e.target.value);
-                  setPage(1);
-                }}
-                className="w-full sm:w-[160px]"
-              />
-            </div>
-            <div>
-              <Label className="mb-1.5 block">Status</Label>
-              <Select
-                value={statusFilter || "all"}
-                onValueChange={(v) => {
-                  setStatusFilter(v === "all" ? "" : v);
-                  setPage(1);
-                }}
-              >
-                <SelectTrigger className="w-full sm:w-[130px]">
-                  <SelectValue placeholder="All" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All</SelectItem>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="cancelled">Cancelled</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            {hasActiveFilters && (
-              <Button variant="ghost" size="sm" onClick={clearFilters}>
-                Clear filters
-              </Button>
+                </TableRow>
+              </TableFooter>
             )}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Total Tickets</p>
-                <p className="text-2xl font-bold">{totalCount.toLocaleString("en-IN")}</p>
-              </div>
-              <TicketIcon className="h-8 w-8 text-muted-foreground/50" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Total Revenue</p>
-                <p className="text-2xl font-bold">{formatCurrency(pageRevenue)}</p>
-                <p className="text-xs text-muted-foreground">Page total</p>
-              </div>
-              <IndianRupee className="h-8 w-8 text-muted-foreground/50" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Avg Ticket Value</p>
-                <p className="text-2xl font-bold">{formatCurrency(avgTicketValue)}</p>
-              </div>
-              <TrendingUp className="h-8 w-8 text-muted-foreground/50" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Active Tickets</p>
-                <p className="text-2xl font-bold">{activeTicketsOnPage}</p>
-              </div>
-              <CreditCard className="h-8 w-8 text-muted-foreground/50" />
-            </div>
-          </CardContent>
-        </Card>
+          </Table>
+        </div>
       </div>
 
-      {/* Table */}
-      <DataTable<Ticket>
-        columns={columns}
-        data={tickets}
-        totalCount={totalCount}
-        page={page}
-        pageSize={pageSize}
-        sortBy={sortBy}
-        sortOrder={sortOrder}
-        onPageChange={setPage}
-        onPageSizeChange={handlePageSizeChange}
-        onSort={handleSort}
-        loading={tableLoading}
-        emptyMessage="No tickets found for the selected filters."
-        emptyIcon={<BarChart3 className="h-10 w-10" />}
-      />
-
-      {/* Page Total Footer */}
-      {tickets.length > 0 && (
-        <Card>
-          <CardContent className="py-3">
-            <div className="flex items-center justify-end gap-2 text-sm">
-              <span className="text-muted-foreground">Page Total:</span>
-              <span className="font-medium">{formatCurrency(pageRevenue)}</span>
-            </div>
-          </CardContent>
-        </Card>
+      {/* Row count footer */}
+      {rows.length > 0 && (
+        <div className="flex items-center justify-between text-sm text-muted-foreground">
+          <span>
+            Showing {rows.length} {rows.length === 1 ? "row" : "rows"}
+          </span>
+        </div>
       )}
     </div>
   );

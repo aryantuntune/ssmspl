@@ -10,6 +10,7 @@ from app.models.branch import Branch
 from app.models.item import Item
 from app.models.payment_mode import PaymentMode
 from app.models.route import Route
+from app.models.user import User
 
 
 # ---------------------------------------------------------------------------
@@ -417,3 +418,281 @@ async def get_payment_mode_report(
         })
 
     return {"date_from": date_from, "date_to": date_to, "rows": rows}
+
+
+# ---------------------------------------------------------------------------
+# 6. Date Wise Amount Summary
+# ---------------------------------------------------------------------------
+
+async def get_date_wise_amount(
+    db: AsyncSession,
+    date_from: datetime.date,
+    date_to: datetime.date,
+    branch_id: int | None = None,
+    payment_mode_id: int | None = None,
+) -> dict:
+    q = select(
+        Ticket.ticket_date,
+        func.coalesce(func.sum(
+            case((Ticket.is_cancelled == False, Ticket.net_amount), else_=0)
+        ), 0).label("amount"),
+    ).group_by(Ticket.ticket_date).order_by(Ticket.ticket_date)
+    q = _apply_ticket_filters(q, date_from, date_to, branch_id)
+    if payment_mode_id:
+        q = q.where(Ticket.payment_mode_id == payment_mode_id)
+
+    result = (await db.execute(q)).all()
+
+    rows = []
+    grand_total = 0
+    for r in result:
+        amt = r.amount
+        grand_total += amt
+        rows.append({"ticket_date": r.ticket_date, "amount": amt})
+
+    # Resolve names
+    branch_name = None
+    if branch_id:
+        branch_names = await _get_branch_name_map(db)
+        branch_name = branch_names.get(branch_id)
+
+    payment_mode_name = None
+    if payment_mode_id:
+        pm_result = await db.execute(select(PaymentMode.description).where(PaymentMode.id == payment_mode_id))
+        pm_row = pm_result.scalar_one_or_none()
+        payment_mode_name = pm_row
+
+    return {
+        "date_from": date_from,
+        "date_to": date_to,
+        "branch_name": branch_name,
+        "payment_mode_name": payment_mode_name,
+        "rows": rows,
+        "grand_total": grand_total,
+    }
+
+
+# ---------------------------------------------------------------------------
+# 7. Ferry Wise Item Summary
+# ---------------------------------------------------------------------------
+
+def _format_departure_time(t) -> str:
+    """Format a time object as '7:30 am' style string."""
+    if t is None:
+        return ""
+    return t.strftime("%I:%M %p").lstrip("0").lower()
+
+
+async def get_ferry_wise_item_summary(
+    db: AsyncSession,
+    report_date: datetime.date,
+    branch_id: int | None = None,
+    payment_mode_id: int | None = None,
+) -> dict:
+    q = (
+        select(
+            Ticket.departure,
+            Item.name.label("item_name"),
+            func.coalesce(func.sum(
+                case((TicketItem.is_cancelled == False, TicketItem.quantity), else_=0)
+            ), 0).label("quantity"),
+        )
+        .join(TicketItem, TicketItem.ticket_id == Ticket.id)
+        .join(Item, Item.id == TicketItem.item_id)
+        .where(Ticket.is_cancelled == False)
+        .where(TicketItem.is_cancelled == False)
+        .group_by(Ticket.departure, Item.name)
+        .order_by(Ticket.departure, Item.name)
+    )
+    q = _apply_ticket_filters(q, report_date, report_date, branch_id)
+    if payment_mode_id:
+        q = q.where(Ticket.payment_mode_id == payment_mode_id)
+
+    result = (await db.execute(q)).all()
+
+    rows = []
+    for r in result:
+        rows.append({
+            "departure": _format_departure_time(r.departure),
+            "item_name": r.item_name,
+            "quantity": int(r.quantity),
+        })
+
+    branch_name = None
+    if branch_id:
+        branch_names = await _get_branch_name_map(db)
+        branch_name = branch_names.get(branch_id)
+
+    return {
+        "report_date": report_date,
+        "branch_name": branch_name,
+        "rows": rows,
+    }
+
+
+# ---------------------------------------------------------------------------
+# 8. Itemwise Levy Summary
+# ---------------------------------------------------------------------------
+
+async def get_itemwise_levy_summary(
+    db: AsyncSession,
+    date_from: datetime.date,
+    date_to: datetime.date,
+    branch_id: int | None = None,
+    route_id: int | None = None,
+) -> dict:
+    q = (
+        select(
+            Item.name.label("item_name"),
+            TicketItem.levy,
+            func.coalesce(func.sum(
+                case((TicketItem.is_cancelled == False, TicketItem.quantity), else_=0)
+            ), 0).label("quantity"),
+            func.coalesce(func.sum(
+                case(
+                    (TicketItem.is_cancelled == False,
+                     TicketItem.quantity * TicketItem.levy),
+                    else_=0,
+                )
+            ), 0).label("amount"),
+        )
+        .join(TicketItem, TicketItem.ticket_id == Ticket.id)
+        .join(Item, Item.id == TicketItem.item_id)
+        .where(Ticket.is_cancelled == False)
+        .where(TicketItem.is_cancelled == False)
+        .group_by(Item.name, TicketItem.levy)
+        .order_by(Item.name)
+    )
+    q = _apply_ticket_filters(q, date_from, date_to, branch_id, route_id)
+
+    result = (await db.execute(q)).all()
+
+    rows = []
+    grand_total = 0
+    for r in result:
+        amt = r.amount
+        grand_total += amt
+        rows.append({
+            "item_name": r.item_name,
+            "levy": r.levy,
+            "quantity": int(r.quantity),
+            "amount": amt,
+        })
+
+    branch_name = None
+    if branch_id:
+        branch_names = await _get_branch_name_map(db)
+        branch_name = branch_names.get(branch_id)
+
+    route_name = None
+    if route_id:
+        route_names = await _get_route_name_map(db)
+        route_name = route_names.get(route_id)
+
+    return {
+        "date_from": date_from,
+        "date_to": date_to,
+        "branch_name": branch_name,
+        "route_name": route_name,
+        "rows": rows,
+        "grand_total": grand_total,
+    }
+
+
+# ---------------------------------------------------------------------------
+# 9. User Wise Daily Summary
+# ---------------------------------------------------------------------------
+
+async def get_user_wise_summary(
+    db: AsyncSession,
+    report_date: datetime.date,
+    branch_id: int | None = None,
+) -> dict:
+    q = (
+        select(
+            User.full_name.label("user_name"),
+            func.coalesce(func.sum(
+                case((Ticket.is_cancelled == False, Ticket.net_amount), else_=0)
+            ), 0).label("amount"),
+        )
+        .join(User, User.id == Ticket.created_by)
+        .group_by(User.full_name)
+        .order_by(User.full_name)
+    )
+    q = _apply_ticket_filters(q, report_date, report_date, branch_id)
+
+    result = (await db.execute(q)).all()
+
+    rows = []
+    grand_total = 0
+    for r in result:
+        amt = r.amount
+        grand_total += amt
+        rows.append({"user_name": r.user_name, "amount": amt})
+
+    return {
+        "report_date": report_date,
+        "rows": rows,
+        "grand_total": grand_total,
+    }
+
+
+# ---------------------------------------------------------------------------
+# 10. Vehicle Wise Ticket Details
+# ---------------------------------------------------------------------------
+
+async def get_vehicle_wise_tickets(
+    db: AsyncSession,
+    report_date: datetime.date,
+    branch_id: int | None = None,
+) -> dict:
+    # Note: Ticket model does not have a boat_id column, so we cannot join boats.
+    q = (
+        select(
+            Ticket.ticket_date,
+            Ticket.ticket_no,
+            Ticket.departure,
+            PaymentMode.description.label("payment_mode"),
+            TicketItem.quantity,
+            TicketItem.rate,
+            TicketItem.levy,
+            TicketItem.vehicle_no,
+        )
+        .join(TicketItem, TicketItem.ticket_id == Ticket.id)
+        .join(PaymentMode, PaymentMode.id == Ticket.payment_mode_id)
+        .join(Item, Item.id == TicketItem.item_id)
+        .where(Ticket.is_cancelled == False)
+        .where(TicketItem.is_cancelled == False)
+        .where(Item.is_vehicle == True)
+        .order_by(Ticket.ticket_no)
+    )
+    q = _apply_ticket_filters(q, report_date, report_date, branch_id)
+
+    result = (await db.execute(q)).all()
+
+    rows = []
+    grand_total = 0
+    for r in result:
+        amount = r.quantity * (r.rate + r.levy)
+        grand_total += amount
+        rows.append({
+            "ticket_date": r.ticket_date,
+            "ticket_no": r.ticket_no,
+            "boat_name": None,  # No boat_id on Ticket model
+            "departure": _format_departure_time(r.departure),
+            "payment_mode": r.payment_mode,
+            "amount": amount,
+            "vehicle_no": r.vehicle_no,
+        })
+
+    branch_name = None
+    if branch_id:
+        branch_names = await _get_branch_name_map(db)
+        branch_name = branch_names.get(branch_id)
+
+    return {
+        "report_date": report_date,
+        "branch_name": branch_name,
+        "rows": rows,
+        "grand_total": grand_total,
+    }
