@@ -83,6 +83,7 @@ services:
     restart: unless-stopped
     environment:
       NODE_ENV: production
+      HOSTNAME: "0.0.0.0"
     depends_on:
       backend:
         condition: service_healthy
