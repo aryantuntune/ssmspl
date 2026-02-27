@@ -19,7 +19,7 @@ interface AppState {
 export const fetchAppTheme = createAsyncThunk(
   'app/fetchAppTheme',
   async () => {
-    const res = await api.get('/api/portal/theme/theme');
+    const res = await api.get('/api/portal/theme');
     return res.data;
   }
 );
@@ -52,12 +52,12 @@ const appSlice = createSlice({
   extraReducers: (builder) => {
     builder.addCase(fetchAppTheme.fulfilled, (state, action) => {
       const data = action.payload;
-      if (data?.active_theme) {
+      if (data?.colors) {
         state.dynamicColors = {
-          primary: data.active_theme.primary,
-          primaryDark: data.active_theme.primaryDark,
-          primaryLight: data.active_theme.primaryLight,
-          accent: data.active_theme.accent,
+          primary: data.colors.primary,
+          primaryDark: data.colors.primaryDark,
+          primaryLight: data.colors.primaryLight,
+          accent: data.colors.accent,
         };
       }
     });
