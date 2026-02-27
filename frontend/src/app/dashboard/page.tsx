@@ -105,54 +105,6 @@ export default function DashboardPage() {
     }
   }, [wsStats]);
 
-  useEffect(() => {
-    api.get<User>("/api/auth/me").then(({ data }) => {
-      setUser(data);
-
-      const menu = data.menu_items || [];
-      const canSeeTickets = menu.includes("Ticketing");
-
-      // Fetch initial stats via HTTP (fallback / first paint)
-      api
-        .get<{ ticket_count: number; today_revenue: number; active_ferries: number; active_branches: number }>(
-          "/api/dashboard/stats"
-        )
-        .then(({ data: s }) => {
-          setStats({
-            ticketCount: s.ticket_count,
-            revenue: s.today_revenue,
-            activeFerries: s.active_ferries,
-            activeBranches: s.active_branches,
-          });
-        })
-        .catch(() => {
-          /* non-fatal -- WS will provide updates */
-        });
-
-      // Fetch recent tickets separately
-      if (canSeeTickets) {
-        api
-          .get("/api/tickets/", {
-            params: { limit: 5, sort_by: "id", sort_order: "desc" },
-          })
-          .then(({ data: d }) => {
-            const ticketData = d as { data?: TicketRow[] };
-            setRecentTickets(ticketData.data || []);
-          })
-          .catch(() => {
-            /* non-fatal */
-          });
-      }
-
-      // Fetch enhanced dashboard sections for users with Reports permission
-      if (menu.includes("Reports")) {
-        fetchEnhancedSections(7);
-      } else {
-        setSectionsLoading(false);
-      }
-    });
-  }, []);
-
   const fetchEnhancedSections = useCallback(
     async (days: number) => {
       setSectionsLoading(true);
@@ -221,6 +173,54 @@ export default function DashboardPage() {
     },
     []
   );
+
+  useEffect(() => {
+    api.get<User>("/api/auth/me").then(({ data }) => {
+      setUser(data);
+
+      const menu = data.menu_items || [];
+      const canSeeTickets = menu.includes("Ticketing");
+
+      // Fetch initial stats via HTTP (fallback / first paint)
+      api
+        .get<{ ticket_count: number; today_revenue: number; active_ferries: number; active_branches: number }>(
+          "/api/dashboard/stats"
+        )
+        .then(({ data: s }) => {
+          setStats({
+            ticketCount: s.ticket_count,
+            revenue: s.today_revenue,
+            activeFerries: s.active_ferries,
+            activeBranches: s.active_branches,
+          });
+        })
+        .catch(() => {
+          /* non-fatal -- WS will provide updates */
+        });
+
+      // Fetch recent tickets separately
+      if (canSeeTickets) {
+        api
+          .get("/api/tickets/", {
+            params: { limit: 5, sort_by: "id", sort_order: "desc" },
+          })
+          .then(({ data: d }) => {
+            const ticketData = d as { data?: TicketRow[] };
+            setRecentTickets(ticketData.data || []);
+          })
+          .catch(() => {
+            /* non-fatal */
+          });
+      }
+
+      // Fetch enhanced dashboard sections for users with Reports permission
+      if (menu.includes("Reports")) {
+        fetchEnhancedSections(7);
+      } else {
+        setSectionsLoading(false);
+      }
+    });
+  }, [fetchEnhancedSections]);
 
   if (!user) {
     return (
