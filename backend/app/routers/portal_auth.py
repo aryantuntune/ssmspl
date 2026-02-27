@@ -2,6 +2,7 @@ import random
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -14,6 +15,10 @@ from app.schemas.portal_user import (
     VerifyOtpRequest,
     ResendOtpRequest,
     ResetPasswordOtpRequest,
+    PortalUserMobileLoginResponse,
+    PortalUserProfileUpdate,
+    PortalUserChangePassword,
+    GoogleSignInRequest,
 )
 from app.services import portal_auth_service
 from app.dependencies import get_current_portal_user
@@ -200,3 +205,140 @@ async def forgot_password(request: Request, body: ResendOtpRequest, background_t
 async def reset_password(request: Request, body: ResetPasswordOtpRequest, db: AsyncSession = Depends(get_db)):
     await portal_auth_service.reset_password(db, body.email, body.otp, body.new_password)
     return {"message": "Password has been reset successfully. You can now log in with your new password."}
+
+
+@router.post(
+    "/mobile-login",
+    response_model=PortalUserMobileLoginResponse,
+    summary="Mobile app login for portal user",
+    description="Authenticate a customer for the mobile app. Returns tokens in JSON body (no cookies).",
+    responses={
+        200: {"description": "Successfully authenticated"},
+        401: {"description": "Invalid email or password"},
+        403: {"description": "Email not verified"},
+    },
+)
+@limiter.limit("10/minute")
+async def mobile_login(
+    request: Request,
+    body: PortalUserLogin,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+):
+    tokens = await portal_auth_service.login(db, body.email, body.password)
+    if random.random() < 0.05:
+        background_tasks.add_task(cleanup_expired_background)
+
+    result = await db.execute(
+        select(PortalUser).where(PortalUser.email == body.email)
+    )
+    user = result.scalar_one()
+
+    return PortalUserMobileLoginResponse(
+        access_token=tokens["access_token"],
+        refresh_token=tokens["refresh_token"],
+        user=PortalUserMeResponse(
+            id=user.id,
+            first_name=user.first_name,
+            last_name=user.last_name,
+            email=user.email,
+            mobile=user.mobile,
+            is_verified=user.is_verified,
+            created_at=user.created_at,
+            full_name=f"{user.first_name} {user.last_name}",
+        ),
+    )
+
+
+@router.post(
+    "/mobile-refresh",
+    summary="Refresh portal user access token (mobile)",
+    description="Exchange a refresh token for new tokens. Returns tokens in JSON body.",
+    responses={
+        200: {"description": "New token pair issued"},
+        401: {"description": "Invalid or expired refresh token"},
+    },
+)
+@limiter.limit("20/minute")
+async def mobile_refresh(
+    request: Request,
+    body: RefreshRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    tokens = await portal_auth_service.refresh_access_token(db, body.refresh_token)
+    return {
+        "access_token": tokens["access_token"],
+        "refresh_token": tokens["refresh_token"],
+        "token_type": "bearer",
+    }
+
+
+@router.put(
+    "/profile",
+    response_model=PortalUserMeResponse,
+    summary="Update portal user profile",
+)
+async def update_profile(
+    body: PortalUserProfileUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: PortalUser = Depends(get_current_portal_user),
+):
+    user = await portal_auth_service.update_profile(
+        db, current_user.id, body.first_name, body.last_name, body.mobile
+    )
+    return PortalUserMeResponse(
+        id=user.id,
+        first_name=user.first_name,
+        last_name=user.last_name,
+        email=user.email,
+        mobile=user.mobile,
+        is_verified=user.is_verified,
+        created_at=user.created_at,
+        full_name=f"{user.first_name} {user.last_name}",
+    )
+
+
+@router.post(
+    "/change-password",
+    summary="Change portal user password",
+)
+async def change_password(
+    body: PortalUserChangePassword,
+    db: AsyncSession = Depends(get_db),
+    current_user: PortalUser = Depends(get_current_portal_user),
+):
+    await portal_auth_service.change_password(
+        db, current_user.id, body.old_password, body.new_password
+    )
+    return {"message": "Password changed successfully"}
+
+
+@router.post(
+    "/google-signin",
+    response_model=PortalUserMobileLoginResponse,
+    summary="Google Sign-In for mobile app",
+)
+@limiter.limit("10/minute")
+async def google_signin(
+    request: Request,
+    body: GoogleSignInRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    result = await portal_auth_service.google_signin(
+        db, body.google_id, body.email, body.first_name, body.last_name
+    )
+    user = result["user"]
+    return PortalUserMobileLoginResponse(
+        access_token=result["access_token"],
+        refresh_token=result["refresh_token"],
+        user=PortalUserMeResponse(
+            id=user.id,
+            first_name=user.first_name,
+            last_name=user.last_name,
+            email=user.email,
+            mobile=user.mobile,
+            is_verified=user.is_verified,
+            created_at=user.created_at,
+            full_name=f"{user.first_name} {user.last_name}",
+        ),
+    )

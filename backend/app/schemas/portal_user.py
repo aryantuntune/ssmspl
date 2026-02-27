@@ -84,3 +84,33 @@ class ResetPasswordOtpRequest(BaseModel):
         if not re.match(r"^\d{6}$", v):
             raise ValueError("OTP must be exactly 6 digits")
         return v
+
+
+class PortalUserMobileLoginResponse(BaseModel):
+    access_token: str = Field(..., description="JWT access token")
+    refresh_token: str = Field(..., description="JWT refresh token")
+    token_type: str = Field(default="bearer")
+    user: PortalUserMeResponse
+
+
+class PortalUserProfileUpdate(BaseModel):
+    first_name: str | None = Field(None, max_length=60)
+    last_name: str | None = Field(None, max_length=60)
+    mobile: str | None = Field(None, max_length=60)
+
+
+class PortalUserChangePassword(BaseModel):
+    old_password: str = Field(..., description="Current password")
+    new_password: str = Field(..., min_length=8, description="New password")
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_password(cls, v: str) -> str:
+        return _validate_password_complexity(v)
+
+
+class GoogleSignInRequest(BaseModel):
+    google_id: str = Field(..., description="Google user ID")
+    email: EmailStr = Field(..., description="Google email")
+    first_name: str = Field(..., max_length=60)
+    last_name: str = Field(..., max_length=60)

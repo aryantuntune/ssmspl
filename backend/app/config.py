@@ -43,6 +43,12 @@ class Settings(BaseSettings):
     RAZORPAY_KEY_ID: str = ""
     RAZORPAY_KEY_SECRET: str = ""
 
+    # SabPaisa
+    SABPAISA_CLIENT_CODE: str = ""
+    SABPAISA_AUTH_KEY: str = ""
+    SABPAISA_AUTH_IV: str = ""
+    SABPAISA_BASE_URL: str = "https://securepay.sabpaisa.in"
+
     # Email (SMTP)
     SMTP_HOST: str = ""
     SMTP_PORT: int = 587

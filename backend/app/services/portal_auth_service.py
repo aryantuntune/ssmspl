@@ -175,3 +175,98 @@ async def reset_password(db: AsyncSession, email: str, otp: str, new_password: s
 
     user.password = get_password_hash(new_password)
     await db.commit()
+
+
+async def update_profile(
+    db: AsyncSession,
+    user_id: int,
+    first_name: str | None,
+    last_name: str | None,
+    mobile: str | None,
+) -> PortalUser:
+    result = await db.execute(select(PortalUser).where(PortalUser.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    if first_name is not None:
+        user.first_name = first_name
+    if last_name is not None:
+        user.last_name = last_name
+    if mobile is not None:
+        user.mobile = mobile
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
+async def change_password(
+    db: AsyncSession, user_id: int, old_password: str, new_password: str
+) -> None:
+    result = await db.execute(select(PortalUser).where(PortalUser.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    if not verify_password(old_password, user.password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current password is incorrect",
+        )
+    user.password = get_password_hash(new_password)
+    await db.commit()
+
+
+async def google_signin(
+    db: AsyncSession,
+    google_id: str,
+    email: str,
+    first_name: str,
+    last_name: str,
+) -> dict:
+    """Handle Google Sign-In. Creates account if new, logs in if existing."""
+    result = await db.execute(
+        select(PortalUser).where(PortalUser.google_id == google_id)
+    )
+    user = result.scalar_one_or_none()
+
+    if not user:
+        result = await db.execute(
+            select(PortalUser).where(PortalUser.email == email)
+        )
+        user = result.scalar_one_or_none()
+        if user:
+            user.google_id = google_id
+            user.is_verified = True
+        else:
+            import secrets
+
+            user = PortalUser(
+                first_name=first_name,
+                last_name=last_name,
+                email=email,
+                password=get_password_hash(secrets.token_urlsafe(32)),
+                mobile="",
+                is_verified=True,
+                google_id=google_id,
+            )
+            db.add(user)
+            await db.flush()
+
+    extra = {"role": "PORTAL_USER"}
+    access_token = create_access_token(subject=str(user.id), extra_claims=extra)
+    refresh_token_val = create_refresh_token(subject=str(user.id))
+
+    expires_at = datetime.now(timezone.utc) + timedelta(
+        days=settings.REFRESH_TOKEN_EXPIRE_DAYS
+    )
+    await token_service.store_refresh_token(
+        db, refresh_token_val, expires_at, portal_user_id=user.id
+    )
+
+    await db.commit()
+    await db.refresh(user)
+
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token_val,
+        "user": user,
+    }

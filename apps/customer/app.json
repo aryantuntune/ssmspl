@@ -1,0 +1,34 @@
+{
+  "expo": {
+    "name": "SSMSPL Customer",
+    "slug": "ssmspl-customer",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "backgroundColor": "#006994"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.ssmspl.customer"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#006994"
+      },
+      "package": "com.ssmspl.customer",
+      "edgeToEdgeEnabled": true,
+      "usesCleartextTraffic": false,
+      "versionCode": 1
+    },
+    "plugins": [
+      "expo-secure-store"
+    ],
+    "extra": {
+      "apiUrl": "https://api.carferry.online",
+      "googleClientId": ""
+    }
+  }
+}
