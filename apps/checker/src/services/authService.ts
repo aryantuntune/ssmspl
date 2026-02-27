@@ -1,6 +1,6 @@
 import api from './api';
 import { MobileLoginResponse } from '../types';
-import { setTokens, setCheckerData, clearAll } from './storageService';
+import { setTokens, setCheckerData, clearAll, getRefreshToken } from './storageService';
 
 export async function login(email: string, password: string): Promise<MobileLoginResponse> {
   const { data } = await api.post<MobileLoginResponse>('/api/auth/mobile-login', {
@@ -14,9 +14,12 @@ export async function login(email: string, password: string): Promise<MobileLogi
 
 export async function logout(): Promise<void> {
   try {
-    await api.post('/api/auth/logout');
+    const refreshToken = await getRefreshToken();
+    if (refreshToken) {
+      await api.post('/api/auth/logout', { refresh_token: refreshToken });
+    }
   } catch {
-    // Ignore — clear local state regardless
+    // Best-effort — proceed with local cleanup even if backend call fails
   }
   await clearAll();
 }

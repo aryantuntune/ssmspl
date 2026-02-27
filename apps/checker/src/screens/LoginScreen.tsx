@@ -2,41 +2,38 @@ import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
+  Image,
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
 } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors, spacing, borderRadius, typography } from '../theme';
 import { RootState, AppDispatch } from '../store';
 import { login, clearError } from '../store/slices/authSlice';
-import { RootStackParamList } from '../types';
+import { setSessionExpired } from '../store/slices/uiSlice';
 import Input from '../components/common/Input';
 import Button from '../components/common/Button';
 import Card from '../components/common/Card';
 
-type Props = {
-  navigation: NativeStackNavigationProp<RootStackParamList, 'Login'>;
-};
-
-export default function LoginScreen({ navigation }: Props) {
+export default function LoginScreen() {
   const dispatch = useDispatch<AppDispatch>();
-  const { isLoading, error, isAuthenticated } = useSelector((s: RootState) => s.auth);
+  const { isLoading, error } = useSelector((s: RootState) => s.auth);
+  const sessionExpired = useSelector((s: RootState) => s.ui.sessionExpired);
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
   useEffect(() => {
-    if (isAuthenticated) {
-      navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
-    }
-  }, [isAuthenticated, navigation]);
-
-  useEffect(() => {
     return () => { dispatch(clearError()); };
   }, [dispatch]);
+
+  useEffect(() => {
+    if (sessionExpired && (email || password)) {
+      dispatch(setSessionExpired(false));
+    }
+  }, [email, password, sessionExpired, dispatch]);
 
   const isValid = email.includes('@') && password.length >= 6;
 
@@ -52,14 +49,20 @@ export default function LoginScreen({ navigation }: Props) {
     >
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <View style={styles.header}>
-          <Text style={styles.icon}>🎫</Text>
+          <Image source={require('../../assets/logo.png')} style={styles.logo} resizeMode="contain" />
           <Text style={styles.title}>Checker Login</Text>
           <Text style={styles.subtitle}>SSMSPL Ferry Verification</Text>
         </View>
 
+        {sessionExpired && (
+          <View style={styles.sessionBanner} accessibilityRole="alert">
+            <Text style={styles.sessionText}>Session expired. Please log in again.</Text>
+          </View>
+        )}
+
         <Card style={styles.card}>
           {error && (
-            <View style={styles.errorBox}>
+            <View style={styles.errorBox} accessibilityRole="alert">
               <Text style={styles.errorText}>{error}</Text>
             </View>
           )}
@@ -71,6 +74,7 @@ export default function LoginScreen({ navigation }: Props) {
             value={email}
             onChangeText={setEmail}
             autoComplete="email"
+            accessibilityLabel="Email address"
           />
 
           <Input
@@ -79,6 +83,7 @@ export default function LoginScreen({ navigation }: Props) {
             isPassword
             value={password}
             onChangeText={setPassword}
+            accessibilityLabel="Password"
           />
 
           <Button
@@ -100,7 +105,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   scroll: { flexGrow: 1, justifyContent: 'center', padding: spacing.lg },
   header: { alignItems: 'center', marginBottom: spacing.xl },
-  icon: { fontSize: 56 },
+  logo: { width: 100, height: 84, marginBottom: spacing.xs },
   title: { ...typography.h1, color: colors.text, marginTop: spacing.sm },
   subtitle: { ...typography.body, color: colors.textSecondary, marginTop: spacing.xs },
   card: { padding: spacing.lg },
@@ -111,6 +116,13 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   errorText: { ...typography.bodySmall, color: colors.error, textAlign: 'center' },
+  sessionBanner: {
+    backgroundColor: colors.warningLight,
+    padding: spacing.md,
+    borderRadius: borderRadius.md,
+    marginBottom: spacing.md,
+  },
+  sessionText: { ...typography.bodySmall, color: colors.text, textAlign: 'center' as const },
   loginBtn: { marginTop: spacing.sm },
   footer: {
     ...typography.caption,

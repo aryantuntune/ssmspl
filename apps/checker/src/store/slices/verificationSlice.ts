@@ -1,7 +1,8 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import { VerificationResult, CheckInResult, VerificationRecord, VerificationOutcome } from '../../types';
 import * as verificationService from '../../services/verificationService';
-import { getTodayCount, incrementTodayCount } from '../../services/storageService';
+import { getTodayCount, incrementTodayCount, addToOfflineQueue, getVerificationHistory, saveVerificationHistory } from '../../services/storageService';
+import { friendlyError } from '../../utils/errorMessages';
 
 interface VerificationState {
   verifiedToday: number;
@@ -27,13 +28,28 @@ export const loadTodayCount = createAsyncThunk('verification/loadCount', async (
   return getTodayCount();
 });
 
+export const loadHistory = createAsyncThunk('verification/loadHistory', async () => {
+  return getVerificationHistory();
+});
+
 export const scanQR = createAsyncThunk(
   'verification/scanQR',
   async (payload: string, { rejectWithValue }) => {
     try {
-      return await verificationService.scanQR(payload);
+      const data = await verificationService.scanQR(payload);
+      const record = {
+        outcome: 'success' as const,
+        result: data,
+        checkIn: null,
+        error: null,
+        timestamp: new Date().toISOString(),
+      };
+      const history = await getVerificationHistory();
+      history.unshift(record);
+      await saveVerificationHistory(history);
+      return data;
     } catch (err: any) {
-      return rejectWithValue(err.response?.data?.detail || 'Scan failed');
+      return rejectWithValue(friendlyError(err));
     }
   },
 );
@@ -44,13 +60,16 @@ export const checkIn = createAsyncThunk(
     try {
       const result = await verificationService.checkIn(verificationCode);
       await incrementTodayCount();
+      // Persist history update
+      const history = await getVerificationHistory();
+      await saveVerificationHistory(history);
       return result;
     } catch (err: any) {
-      const detail = err.response?.data?.detail || 'Check-in failed';
-      if (err.response?.status === 409) {
-        return rejectWithValue('ALREADY_VERIFIED');
+      if (err.code === 'ERR_NETWORK' || err.message === 'Network Error') {
+        await addToOfflineQueue(verificationCode);
+        return rejectWithValue('Check-in saved offline. Will retry when connected.');
       }
-      return rejectWithValue(detail);
+      return rejectWithValue(friendlyError(err));
     }
   },
 );
@@ -62,14 +81,26 @@ export const lookupManual = createAsyncThunk(
     { rejectWithValue },
   ) => {
     try {
+      let data;
       if (params.type === 'booking') {
-        return await verificationService.lookupBooking(params.number, params.branchId);
+        data = await verificationService.lookupBooking(params.number, params.branchId);
       } else {
         if (!params.branchId) throw new Error('Branch ID required for ticket lookup');
-        return await verificationService.lookupTicket(params.number, params.branchId);
+        data = await verificationService.lookupTicket(params.number, params.branchId);
       }
+      const record = {
+        outcome: 'success' as const,
+        result: data,
+        checkIn: null,
+        error: null,
+        timestamp: new Date().toISOString(),
+      };
+      const history = await getVerificationHistory();
+      history.unshift(record);
+      await saveVerificationHistory(history);
+      return data;
     } catch (err: any) {
-      return rejectWithValue(err.response?.data?.detail || err.message || 'Lookup failed');
+      return rejectWithValue(friendlyError(err));
     }
   },
 );
@@ -93,6 +124,11 @@ const verificationSlice = createSlice({
     builder
       .addCase(loadTodayCount.fulfilled, (state, action) => {
         state.verifiedToday = action.payload;
+      })
+      .addCase(loadHistory.fulfilled, (state, action) => {
+        if (state.recentVerifications.length === 0 && action.payload.length > 0) {
+          state.recentVerifications = action.payload.slice(0, MAX_RECENT);
+        }
       })
       .addCase(scanQR.pending, (state) => {
         state.isScanning = true;
@@ -141,7 +177,7 @@ const verificationSlice = createSlice({
         state.isCheckingIn = false;
         const msg = action.payload as string;
         state.error = msg;
-        if (msg === 'ALREADY_VERIFIED') {
+        if (msg.includes('ALREADY_VERIFIED')) {
           state.recentVerifications = [
             {
               outcome: 'already_verified' as VerificationOutcome,

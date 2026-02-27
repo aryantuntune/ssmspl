@@ -10,6 +10,7 @@ import { scanQR, checkIn, clearResult } from '../store/slices/verificationSlice'
 import { RootStackParamList } from '../types';
 import Loading from '../components/common/Loading';
 import TicketDetailsModal from '../components/ticket/TicketDetailsModal';
+import NetworkBanner from '../components/common/NetworkBanner';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'QRScanner'>;
@@ -100,6 +101,7 @@ export default function QRScannerScreen({ navigation }: Props) {
 
   return (
     <View style={styles.container}>
+      <NetworkBanner />
       <CameraView
         style={StyleSheet.absoluteFillObject}
         facing="back"
@@ -126,13 +128,15 @@ export default function QRScannerScreen({ navigation }: Props) {
         </View>
       </View>
 
+      <Text style={styles.hintText}>Align QR code within the frame</Text>
+
       {/* Controls */}
       <View style={styles.controls}>
-        <TouchableOpacity onPress={handleClose} style={styles.controlBtn}>
+        <TouchableOpacity onPress={handleClose} style={styles.controlBtn} accessibilityLabel="Close scanner" accessibilityRole="button">
           <Text style={styles.controlIcon}>✕</Text>
         </TouchableOpacity>
-        <TouchableOpacity onPress={() => setFlashOn(!flashOn)} style={styles.controlBtn}>
-          <Text style={styles.controlIcon}>{flashOn ? '🔦' : '💡'}</Text>
+        <TouchableOpacity onPress={() => setFlashOn(!flashOn)} style={styles.controlBtn} accessibilityLabel={flashOn ? 'Turn flash off' : 'Turn flash on'} accessibilityRole="button">
+          <Text style={styles.controlIcon}>{flashOn ? 'Flash ON' : 'Flash OFF'}</Text>
         </TouchableOpacity>
       </View>
 
@@ -192,6 +196,7 @@ const styles = StyleSheet.create({
   cornerBL: { bottom: 0, left: 0, borderBottomWidth: 3, borderLeftWidth: 3 },
   cornerBR: { bottom: 0, right: 0, borderBottomWidth: 3, borderRightWidth: 3 },
   instruction: { ...typography.body, color: 'rgba(255,255,255,0.8)' },
+  hintText: { color: 'rgba(255,255,255,0.8)', textAlign: 'center', marginTop: spacing.md, ...typography.bodySmall },
   controls: {
     position: 'absolute',
     top: 60,

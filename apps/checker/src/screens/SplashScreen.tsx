@@ -1,38 +1,24 @@
 import React, { useEffect } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
-import { useDispatch, useSelector } from 'react-redux';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { View, Text, Image, StyleSheet, ActivityIndicator } from 'react-native';
+import { useDispatch } from 'react-redux';
 import { colors, typography } from '../theme';
-import { RootState, AppDispatch } from '../store';
+import { AppDispatch } from '../store';
 import { checkAuthStatus } from '../store/slices/authSlice';
-import { RootStackParamList } from '../types';
 
-type Props = {
-  navigation: NativeStackNavigationProp<RootStackParamList, 'Splash'>;
-};
+const logoWhite = require('../../assets/logo-white.png');
 
-export default function SplashScreen({ navigation }: Props) {
+export default function SplashScreen() {
   const dispatch = useDispatch<AppDispatch>();
-  const { isCheckingAuth, isAuthenticated } = useSelector((s: RootState) => s.auth);
 
   useEffect(() => {
     dispatch(checkAuthStatus());
   }, [dispatch]);
 
-  useEffect(() => {
-    if (!isCheckingAuth) {
-      navigation.reset({
-        index: 0,
-        routes: [{ name: isAuthenticated ? 'Home' : 'Login' }],
-      });
-    }
-  }, [isCheckingAuth, isAuthenticated, navigation]);
-
   return (
-    <View style={styles.container}>
-      <Text style={styles.icon}>🎫</Text>
+    <View style={styles.container} accessibilityLabel="Loading SSMSPL Checker">
+      <Image source={logoWhite} style={styles.logo} resizeMode="contain" />
       <Text style={styles.title}>SSMSPL Checker</Text>
-      <ActivityIndicator size="large" color={colors.textOnPrimary} style={styles.loader} />
+      <ActivityIndicator size="large" color={colors.textOnPrimary} style={styles.loader} accessibilityLabel="Loading" />
       <Text style={styles.sub}>Loading...</Text>
     </View>
   );
@@ -45,7 +31,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  icon: { fontSize: 64, marginBottom: 16 },
+  logo: { width: 120, height: 100, marginBottom: 16 },
   title: { ...typography.h1, color: colors.textOnPrimary },
   loader: { marginTop: 32 },
   sub: { ...typography.body, color: 'rgba(255,255,255,0.7)', marginTop: 12 },

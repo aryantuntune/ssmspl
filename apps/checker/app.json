@@ -22,8 +22,12 @@
         "backgroundColor": "#4338CA"
       },
       "package": "com.ssmspl.checker",
-      "permissions": ["CAMERA"],
-      "edgeToEdgeEnabled": true
+      "permissions": [
+        "CAMERA"
+      ],
+      "edgeToEdgeEnabled": true,
+      "usesCleartextTraffic": false,
+      "versionCode": 1
     },
     "plugins": [
       "expo-secure-store",
@@ -32,10 +36,12 @@
         {
           "cameraPermission": "This app needs camera access to scan QR codes on ferry tickets."
         }
-      ]
+      ],
+      "@sentry/react-native/expo"
     ],
     "extra": {
-      "apiUrl": "https://carferry.online"
+      "apiUrl": "https://api.carferry.online",
+      "sentryDsn": ""
     }
   }
 }

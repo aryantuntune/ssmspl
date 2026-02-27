@@ -4,13 +4,17 @@ import { getAccessToken, getRefreshToken, setTokens, clearAll } from './storageS
 import { MobileRefreshResponse } from '../types';
 import { logger } from '../utils/logger';
 
+// SSL Certificate Pinning
+// For production builds, configure android:networkSecurityConfig in app.json
+// or use expo-build-properties plugin with a custom network_security_config.xml.
+
 const BASE_URL =
   Constants.expoConfig?.extra?.apiUrl ||
   (__DEV__ ? 'http://10.0.2.2:8000' : 'https://api.ssmspl.com');
 
 const api = axios.create({
   baseURL: BASE_URL,
-  timeout: 15000,
+  timeout: 30000,
   headers: { 'Content-Type': 'application/json' },
 });
 
@@ -22,6 +26,34 @@ api.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
   }
   return config;
 });
+
+// --- Response interceptor: retry on network errors & 5xx with exponential backoff ---
+const MAX_RETRIES = 3;
+const RETRY_BASE_DELAY = 1000; // 1 second
+
+api.interceptors.response.use(
+  (response) => response,
+  async (error: AxiosError) => {
+    const config = error.config as InternalAxiosRequestConfig & { __retryCount?: number };
+    if (!config) return Promise.reject(error);
+
+    const retryCount = config.__retryCount ?? 0;
+    const isNetworkError = !error.response;
+    const isServerError = error.response && error.response.status >= 500;
+
+    if ((isNetworkError || isServerError) && retryCount < MAX_RETRIES) {
+      config.__retryCount = retryCount + 1;
+      const delay = RETRY_BASE_DELAY * Math.pow(2, retryCount); // 1s, 2s, 4s
+      logger.warn(
+        `Retry ${config.__retryCount}/${MAX_RETRIES} after ${delay}ms for ${config.url}`,
+      );
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      return api(config);
+    }
+
+    return Promise.reject(error);
+  },
+);
 
 // --- Response interceptor: handle 401 with token refresh ---
 let isRefreshing = false;

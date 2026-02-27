@@ -2,6 +2,7 @@ import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import { CheckerUser } from '../../types';
 import * as authService from '../../services/authService';
 import { getAccessToken, clearAll } from '../../services/storageService';
+import { friendlyError } from '../../utils/errorMessages';
 
 interface AuthState {
   checker: CheckerUser | null;
@@ -38,9 +39,7 @@ export const login = createAsyncThunk(
       const response = await authService.login(creds.email, creds.password);
       return response.user;
     } catch (err: any) {
-      const message =
-        err.response?.data?.detail || err.message || 'Login failed';
-      return rejectWithValue(message);
+      return rejectWithValue(friendlyError(err));
     }
   },
 );

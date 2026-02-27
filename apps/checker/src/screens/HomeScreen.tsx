@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
+  Image,
   StyleSheet,
   ScrollView,
   RefreshControl,
@@ -12,17 +13,22 @@ import {
   TextStyle,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import * as Haptics from 'expo-haptics';
 import { useDispatch, useSelector } from 'react-redux';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors, spacing, borderRadius, typography } from '../theme';
 import { RootState, AppDispatch } from '../store';
 import { logout } from '../store/slices/authSlice';
-import { loadTodayCount, lookupManual, clearResult, checkIn } from '../store/slices/verificationSlice';
+import { loadTodayCount, lookupManual, clearResult, checkIn, loadHistory } from '../store/slices/verificationSlice';
 import { RootStackParamList, VerificationRecord } from '../types';
 import Button from '../components/common/Button';
 import StatCard from '../components/common/StatCard';
+import OfflineQueueBadge from '../components/common/OfflineQueueBadge';
+import { flushOfflineQueue } from '../utils/offlineQueue';
+import { syncPendingCount } from '../store/slices/uiSlice';
 import Card from '../components/common/Card';
 import TicketDetailsModal from '../components/ticket/TicketDetailsModal';
+import NetworkBanner from '../components/common/NetworkBanner';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Home'>;
@@ -31,6 +37,7 @@ type Props = {
 export default function HomeScreen({ navigation }: Props) {
   const dispatch = useDispatch<AppDispatch>();
   const { checker } = useSelector((s: RootState) => s.auth);
+  const isOnline = useSelector((s: RootState) => s.ui.isOnline);
   const {
     verifiedToday,
     lastResult,
@@ -49,12 +56,32 @@ export default function HomeScreen({ navigation }: Props) {
 
   useEffect(() => {
     dispatch(loadTodayCount());
+    dispatch(syncPendingCount());
+    dispatch(loadHistory());
   }, [dispatch]);
+
+  useEffect(() => {
+    if (lastCheckIn) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }
+  }, [lastCheckIn]);
+
+  useEffect(() => {
+    if (error && showDetails) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    }
+  }, [error, showDetails]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await dispatch(loadTodayCount());
     setRefreshing(false);
+  }, [dispatch]);
+
+  const handleRetryQueue = useCallback(async () => {
+    await flushOfflineQueue();
+    dispatch(syncPendingCount());
+    dispatch(loadTodayCount());
   }, [dispatch]);
 
   const handleLogout = () => {
@@ -101,13 +128,16 @@ export default function HomeScreen({ navigation }: Props) {
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header */}
       <View style={styles.header}>
-        <View>
-          <Text style={styles.headerTitle}>🚢 SSMSPL Checker</Text>
-          {checker && (
-            <Text style={styles.headerSub}>
-              {checker.full_name} • {checker.route_name || 'No route'}
-            </Text>
-          )}
+        <View style={styles.headerLeft}>
+          <Image source={require('../../assets/logo-white.png')} style={styles.headerLogo} resizeMode="contain" />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.headerTitle}>SSMSPL Checker</Text>
+            {checker && (
+              <Text style={styles.headerSub}>
+                {checker.full_name} • {checker.route_name || 'No route'}
+              </Text>
+            )}
+          </View>
         </View>
         <TouchableOpacity onPress={handleLogout} style={styles.avatar}>
           <Text style={styles.avatarText}>
@@ -115,6 +145,8 @@ export default function HomeScreen({ navigation }: Props) {
           </Text>
         </TouchableOpacity>
       </View>
+
+      <NetworkBanner />
 
       <ScrollView
         contentContainerStyle={styles.content}
@@ -126,12 +158,15 @@ export default function HomeScreen({ navigation }: Props) {
         {/* Stat */}
         <StatCard label="Verified Today" value={verifiedToday} badge="Live" />
 
+        <OfflineQueueBadge onRetry={handleRetryQueue} />
+
         {/* Actions */}
         <View style={styles.actions}>
           <Button
             title="Scan QR Code"
             icon="📷"
             onPress={() => navigation.navigate('QRScanner')}
+            disabled={!isOnline}
           />
           <Button
             title="Manual Entry"
@@ -141,6 +176,7 @@ export default function HomeScreen({ navigation }: Props) {
               setManualNumber('');
               setManualModalVisible(true);
             }}
+            disabled={!isOnline}
           />
         </View>
 
@@ -266,6 +302,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flex: 1 },
+  headerLogo: { width: 36, height: 30 },
   headerTitle: { ...typography.h3, color: colors.textOnPrimary },
   headerSub: { ...typography.caption, color: 'rgba(255,255,255,0.8)', marginTop: 2 },
   avatar: {

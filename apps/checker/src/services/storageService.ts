@@ -10,6 +10,17 @@ const KEYS = {
   VERIFICATION_COUNT: 'ssmspl_verification_count',
 };
 
+const OFFLINE_QUEUE_KEY = 'ssmspl_offline_queue';
+const VERIFICATION_HISTORY_KEY = 'ssmspl_verification_history';
+const MAX_HISTORY = 50;
+const HISTORY_MAX_AGE_DAYS = 7;
+
+export interface PendingCheckIn {
+  verificationCode: string;
+  timestamp: string;
+  retryCount: number;
+}
+
 // --- Secure token storage ---
 
 export async function getAccessToken(): Promise<string | null> {
@@ -95,6 +106,51 @@ export async function incrementTodayCount(): Promise<number> {
   data.count += 1;
   await AsyncStorage.setItem(KEYS.VERIFICATION_COUNT, JSON.stringify(data));
   return data.count;
+}
+
+// --- Offline Check-In Queue ---
+
+export async function getOfflineQueue(): Promise<PendingCheckIn[]> {
+  try {
+    const raw = await AsyncStorage.getItem(OFFLINE_QUEUE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function setOfflineQueue(queue: PendingCheckIn[]): Promise<void> {
+  await AsyncStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(queue));
+}
+
+export async function addToOfflineQueue(verificationCode: string): Promise<void> {
+  const queue = await getOfflineQueue();
+  queue.push({ verificationCode, timestamp: new Date().toISOString(), retryCount: 0 });
+  await setOfflineQueue(queue);
+}
+
+export async function removeFromOfflineQueue(verificationCode: string): Promise<void> {
+  const queue = await getOfflineQueue();
+  await setOfflineQueue(queue.filter(q => q.verificationCode !== verificationCode));
+}
+
+// --- Persistent Verification History ---
+
+export async function getVerificationHistory(): Promise<any[]> {
+  try {
+    const raw = await AsyncStorage.getItem(VERIFICATION_HISTORY_KEY);
+    if (!raw) return [];
+    const history = JSON.parse(raw);
+    const cutoff = Date.now() - HISTORY_MAX_AGE_DAYS * 24 * 60 * 60 * 1000;
+    return history.filter((h: any) => new Date(h.timestamp).getTime() > cutoff);
+  } catch {
+    return [];
+  }
+}
+
+export async function saveVerificationHistory(records: any[]): Promise<void> {
+  const trimmed = records.slice(0, MAX_HISTORY);
+  await AsyncStorage.setItem(VERIFICATION_HISTORY_KEY, JSON.stringify(trimmed));
 }
 
 // --- Clear all ---
