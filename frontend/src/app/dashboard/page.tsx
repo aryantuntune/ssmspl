@@ -116,7 +116,7 @@ export default function DashboardPage() {
         periodStart.setDate(periodStart.getDate() - (days - 1));
         const periodStartStr = toISODate(periodStart);
 
-        const [summaryRes, revenueRes, branchRes, itemRes] = await Promise.all([
+        const [summaryRes, revenueRes, branchRes, itemRes] = await Promise.allSettled([
           api.get("/api/dashboard/today-summary"),
           api.get("/api/reports/revenue", {
             params: {
@@ -133,10 +133,58 @@ export default function DashboardPage() {
           }),
         ]);
 
-        setTodaySummary(summaryRes.data);
-        setRevenueData(revenueRes.data.rows || []);
-        setBranchData(branchRes.data.rows || []);
-        setItemData(itemRes.data.rows || []);
+        // Map today-summary: backend returns { branches, payment_modes } with "revenue" field
+        if (summaryRes.status === "fulfilled") {
+          const raw = summaryRes.value.data;
+          setTodaySummary({
+            total_tickets: raw.total_tickets ?? 0,
+            total_revenue: raw.total_revenue ?? 0,
+            branch_breakdown: (raw.branches || raw.branch_breakdown || []).map(
+              (b: { branch_name: string; ticket_count: number; revenue?: number; total_revenue?: number }) => ({
+                branch_name: b.branch_name,
+                ticket_count: b.ticket_count ?? 0,
+                total_revenue: b.total_revenue ?? b.revenue ?? 0,
+              })
+            ),
+            payment_mode_breakdown: (raw.payment_modes || raw.payment_mode_breakdown || []).map(
+              (p: { payment_mode_name?: string; payment_mode?: string; ticket_count: number; revenue?: number; total_revenue?: number }) => ({
+                payment_mode: p.payment_mode ?? p.payment_mode_name ?? "",
+                ticket_count: p.ticket_count ?? 0,
+                total_revenue: p.total_revenue ?? p.revenue ?? 0,
+              })
+            ),
+          });
+        }
+
+        if (revenueRes.status === "fulfilled") {
+          setRevenueData(revenueRes.value.data.rows || []);
+        }
+
+        if (branchRes.status === "fulfilled") {
+          setBranchData(
+            (branchRes.value.data.rows || []).map(
+              (r: { branch_name: string; total_revenue?: number; ticket_count?: number }) => ({
+                branch_name: r.branch_name ?? "",
+                total_revenue: r.total_revenue ?? 0,
+                ticket_count: r.ticket_count ?? 0,
+              })
+            )
+          );
+        }
+
+        // Map item-breakdown: backend returns "total_qty" but frontend expects "total_quantity"
+        if (itemRes.status === "fulfilled") {
+          setItemData(
+            (itemRes.value.data.rows || []).map(
+              (r: { item_name: string; is_vehicle?: boolean; total_revenue?: number; total_qty?: number; total_quantity?: number }) => ({
+                item_name: r.item_name ?? "",
+                is_vehicle: r.is_vehicle ?? false,
+                total_revenue: r.total_revenue ?? 0,
+                total_quantity: r.total_quantity ?? r.total_qty ?? 0,
+              })
+            )
+          );
+        }
       } catch (err) {
         console.error("Dashboard data fetch error:", err);
       } finally {
@@ -261,7 +309,7 @@ export default function DashboardPage() {
   const allStatCards = [
     {
       label: "Tickets Issued",
-      value: stats.ticketCount.toLocaleString("en-IN"),
+      value: (stats.ticketCount ?? 0).toLocaleString("en-IN"),
       icon: Ticket,
       color: "text-blue-600",
       bg: "bg-blue-100",
@@ -327,7 +375,7 @@ export default function DashboardPage() {
 
   // Derive top 5 items from item data, sorted by revenue
   const topItems = [...itemData]
-    .sort((a, b) => b.total_revenue - a.total_revenue)
+    .sort((a, b) => (b.total_revenue ?? 0) - (a.total_revenue ?? 0))
     .slice(0, 5);
 
   return (
@@ -475,7 +523,7 @@ export default function DashboardPage() {
                     <div className="bg-blue-50 rounded-xl p-4">
                       <p className="text-sm text-blue-600 font-medium">Total Tickets</p>
                       <p className="text-2xl font-bold text-blue-900 mt-1">
-                        {todaySummary.total_tickets.toLocaleString("en-IN")}
+                        {(todaySummary.total_tickets ?? 0).toLocaleString("en-IN")}
                       </p>
                     </div>
                     <div className="bg-emerald-50 rounded-xl p-4">
@@ -503,7 +551,7 @@ export default function DashboardPage() {
                             {todaySummary.branch_breakdown.map((row) => (
                               <tr key={row.branch_name} className="border-b border-border last:border-0">
                                 <td className="py-2 px-3">{row.branch_name}</td>
-                                <td className="py-2 px-3 text-right">{row.ticket_count.toLocaleString("en-IN")}</td>
+                                <td className="py-2 px-3 text-right">{(row.ticket_count ?? 0).toLocaleString("en-IN")}</td>
                                 <td className="py-2 px-3 text-right font-medium">{"\u20B9"}{formatCurrency(row.total_revenue)}</td>
                               </tr>
                             ))}
@@ -530,7 +578,7 @@ export default function DashboardPage() {
                             {todaySummary.payment_mode_breakdown.map((row) => (
                               <tr key={row.payment_mode} className="border-b border-border last:border-0">
                                 <td className="py-2 px-3">{row.payment_mode}</td>
-                                <td className="py-2 px-3 text-right">{row.ticket_count.toLocaleString("en-IN")}</td>
+                                <td className="py-2 px-3 text-right">{(row.ticket_count ?? 0).toLocaleString("en-IN")}</td>
                                 <td className="py-2 px-3 text-right font-medium">{"\u20B9"}{formatCurrency(row.total_revenue)}</td>
                               </tr>
                             ))}
@@ -641,7 +689,7 @@ export default function DashboardPage() {
                                   </Badge>
                                 </div>
                               </td>
-                              <td className="py-2 px-3 text-right">{item.total_quantity.toLocaleString("en-IN")}</td>
+                              <td className="py-2 px-3 text-right">{(item.total_quantity ?? 0).toLocaleString("en-IN")}</td>
                               <td className="py-2 px-3 text-right font-medium">{"\u20B9"}{formatCurrency(item.total_revenue)}</td>
                             </tr>
                           ))}
