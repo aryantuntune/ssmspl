@@ -111,7 +111,7 @@ async def get_all_items(
     return list(result.scalars().all())
 
 
-async def create_item(db: AsyncSession, item_in: ItemCreate) -> Item:
+async def create_item(db: AsyncSession, item_in: ItemCreate, creator_role: str | None = None, creator_route_id: int | None = None) -> Item:
     # Check uniqueness of name
     existing = await db.execute(
         select(Item).where(Item.name == item_in.name)
@@ -145,6 +145,32 @@ async def create_item(db: AsyncSession, item_in: ItemCreate) -> Item:
         is_active=True,
     )
     db.add(item)
+    await db.flush()  # get item.id before commit
+
+    # Auto-create placeholder rates for the new item
+    from app.services.item_rate_service import auto_create_rates_for_new_item
+    from app.models.route import Route
+
+    route_branch_tuples: list[tuple[int, int]] = []
+    if creator_role in ("SUPER_ADMIN", "ADMIN"):
+        # All active routes × both branches
+        routes_result = await db.execute(
+            select(Route).where(Route.is_active == True)
+        )
+        for r in routes_result.scalars().all():
+            route_branch_tuples.append((r.id, r.branch_id_one))
+            route_branch_tuples.append((r.id, r.branch_id_two))
+    elif creator_role == "MANAGER" and creator_route_id:
+        # Only the manager's assigned route × both branches
+        route_result = await db.execute(select(Route).where(Route.id == creator_route_id))
+        r = route_result.scalar_one_or_none()
+        if r:
+            route_branch_tuples.append((r.id, r.branch_id_one))
+            route_branch_tuples.append((r.id, r.branch_id_two))
+
+    if route_branch_tuples:
+        await auto_create_rates_for_new_item(db, item.id, route_branch_tuples)
+
     await db.commit()
     await db.refresh(item)
     return item

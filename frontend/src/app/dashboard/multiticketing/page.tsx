@@ -10,6 +10,7 @@ import {
   TicketItemCreate,
   TicketPayementCreate,
   Ticket,
+  Route,
 } from "@/types";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -148,6 +149,10 @@ export default function MultiTicketingPage() {
   const [initData, setInitData] = useState<MultiTicketInit | null>(null);
   const [initError, setInitError] = useState("");
 
+  // Branch switcher
+  const [selectedBranchId, setSelectedBranchId] = useState<number | null>(null);
+  const [routeInfo, setRouteInfo] = useState<Route | null>(null);
+
   // Ticket grids
   const [tickets, setTickets] = useState<TicketGrid[]>([emptyTicket()]);
 
@@ -170,9 +175,10 @@ export default function MultiTicketingPage() {
   }, []);
 
   /* ── Fetch init data ── */
-  const fetchInit = useCallback(async () => {
+  const fetchInit = useCallback(async (branchId?: number | null) => {
     try {
-      const { data } = await api.get<MultiTicketInit>("/api/tickets/multi-ticket-init");
+      const branchParam = branchId ? `?branch_id=${branchId}` : "";
+      const { data } = await api.get<MultiTicketInit>(`/api/tickets/multi-ticket-init${branchParam}`);
       setInitData(data);
       setInitError("");
       // Initialize tickets with SF item if configured
@@ -194,6 +200,20 @@ export default function MultiTicketingPage() {
   useEffect(() => {
     fetchInit();
   }, [fetchInit]);
+
+  /* ── Fetch route info for branch switcher ── */
+  useEffect(() => {
+    if (!initData?.route_id) return;
+    api.get<Route>(`/api/routes/${initData.route_id}`).then(({ data }) => {
+      setRouteInfo(data);
+    }).catch(() => { /* ignore */ });
+  }, [initData?.route_id]);
+
+  /* ── Branch switch handler ── */
+  const handleBranchSwitch = (branchId: number) => {
+    setSelectedBranchId(branchId);
+    fetchInit(branchId);
+  };
 
   /* ── Form reset ── */
   const resetForm = useCallback(() => {
@@ -455,7 +475,8 @@ export default function MultiTicketingPage() {
 
     setSubmitting(true);
     try {
-      const { data } = await api.post<Ticket[]>("/api/tickets/batch", {
+      const branchParam = selectedBranchId ? `?branch_id=${selectedBranchId}` : "";
+      const { data } = await api.post<Ticket[]>(`/api/tickets/batch${branchParam}`, {
         tickets: payload,
       });
       setPrintData(data);
@@ -493,7 +514,7 @@ export default function MultiTicketingPage() {
         {initError && (
           <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg text-destructive text-sm mb-4">
             {initError}
-            <Button variant="link" onClick={fetchInit} className="ml-2 h-auto p-0 text-sm">
+            <Button variant="link" onClick={() => fetchInit(selectedBranchId)} className="ml-2 h-auto p-0 text-sm">
               Retry
             </Button>
           </div>
@@ -509,9 +530,27 @@ export default function MultiTicketingPage() {
                     <span className="text-foreground font-medium">Route:</span>{" "}
                     <span className="font-semibold text-foreground">{initData.route_name}</span>
                   </div>
-                  <div>
-                    <span className="text-foreground font-medium">Branch:</span>{" "}
+                  <div className="flex items-center gap-2">
+                    <span className="text-foreground font-medium">Operating from:</span>{" "}
                     <span className="font-semibold text-foreground">{initData.branch_name}</span>
+                    {routeInfo && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="ml-2 text-xs h-7"
+                        onClick={() => {
+                          const siblingId = initData.branch_id === routeInfo.branch_id_one
+                            ? routeInfo.branch_id_two
+                            : routeInfo.branch_id_one;
+                          handleBranchSwitch(siblingId);
+                        }}
+                      >
+                        Switch to{" "}
+                        {initData.branch_id === routeInfo.branch_id_one
+                          ? routeInfo.branch_two_name
+                          : routeInfo.branch_one_name}
+                      </Button>
+                    )}
                   </div>
                   <div>
                     <span className="text-foreground font-medium">Date:</span>{" "}

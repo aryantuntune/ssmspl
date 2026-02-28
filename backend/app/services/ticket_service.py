@@ -201,9 +201,17 @@ def _cross_check_amounts(computed_amount: float, computed_net: float, submitted_
         )
 
 
-async def get_current_rate(db: AsyncSession, item_id: int, route_id: int) -> dict:
+async def get_current_rate(db: AsyncSession, item_id: int, route_id: int, branch_id: int | None = None) -> dict:
     today = datetime.date.today()
-    result = await db.execute(
+
+    # If no branch_id provided, default to route's branch_id_one (backward compat)
+    if branch_id is None:
+        route_result = await db.execute(select(Route).where(Route.id == route_id))
+        route = route_result.scalar_one_or_none()
+        if route:
+            branch_id = route.branch_id_one
+
+    query = (
         select(ItemRate)
         .where(
             ItemRate.item_id == item_id,
@@ -215,11 +223,15 @@ async def get_current_rate(db: AsyncSession, item_id: int, route_id: int) -> dic
         .order_by(ItemRate.applicable_from_date.desc())
         .limit(1)
     )
+    if branch_id is not None:
+        query = query.where(ItemRate.branch_id == branch_id)
+
+    result = await db.execute(query)
     ir = result.scalar_one_or_none()
     if not ir:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"No active rate found for item {item_id} and route {route_id}",
+            detail=f"No active rate found for item {item_id}, route {route_id}, branch {branch_id}",
         )
     return {
         "rate": float(ir.rate) if ir.rate is not None else 0,
@@ -245,7 +257,7 @@ async def get_departure_options(db: AsyncSession, branch_id: int) -> list[dict]:
     ]
 
 
-async def get_multi_ticket_init(db: AsyncSession, user) -> dict:
+async def get_multi_ticket_init(db: AsyncSession, user, branch_id: int | None = None) -> dict:
     """Return all data needed to populate the multi-ticket form."""
     if not user.route_id:
         raise HTTPException(
@@ -261,8 +273,15 @@ async def get_multi_ticket_init(db: AsyncSession, user) -> dict:
 
     route_name = await _get_route_display_name(db, route.id)
 
-    # Determine branch: use branch_id_one as the user's operating branch
-    branch_id = route.branch_id_one
+    # Determine operating branch: use provided branch_id or default to branch_id_one
+    if branch_id is not None:
+        if branch_id not in (route.branch_id_one, route.branch_id_two):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Branch {branch_id} does not belong to the user's route",
+            )
+    else:
+        branch_id = route.branch_id_one
     branch_name = await _get_branch_name(db, branch_id)
 
     # Get ferry time window for this branch
@@ -300,6 +319,7 @@ async def get_multi_ticket_init(db: AsyncSession, user) -> dict:
         )
         .where(
             ItemRate.route_id == user.route_id,
+            ItemRate.branch_id == branch_id,
             ItemRate.is_active == True,
             ItemRate.applicable_from_date.is_not(None),
             ItemRate.applicable_from_date <= today,
@@ -359,6 +379,7 @@ async def get_multi_ticket_init(db: AsyncSession, user) -> dict:
                 .where(
                     ItemRate.item_id == sf_item_id,
                     ItemRate.route_id == user.route_id,
+                    ItemRate.branch_id == branch_id,
                     ItemRate.is_active == True,
                     ItemRate.applicable_from_date.is_not(None),
                     ItemRate.applicable_from_date <= today,
@@ -408,7 +429,7 @@ async def _validate_off_hours(db: AsyncSession, branch_id: int) -> None:
             )
 
 
-async def create_multi_tickets(db: AsyncSession, data, user) -> list[dict]:
+async def create_multi_tickets(db: AsyncSession, data, user, branch_id: int | None = None) -> list[dict]:
     """Create multiple tickets in a single transaction."""
     if not user.route_id:
         raise HTTPException(
@@ -422,7 +443,14 @@ async def create_multi_tickets(db: AsyncSession, data, user) -> list[dict]:
     if not route:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assigned route not found")
 
-    branch_id = route.branch_id_one
+    if branch_id is not None:
+        if branch_id not in (route.branch_id_one, route.branch_id_two):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Branch {branch_id} does not belong to the user's route",
+            )
+    else:
+        branch_id = route.branch_id_one
 
     # Validate off-hours
     await _validate_off_hours(db, branch_id)

@@ -15,7 +15,8 @@ class ItemRate(AuditMixin, Base):
     rate: Mapped[float | None] = mapped_column(Numeric(38, 2), nullable=True)
     item_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("items.id"), nullable=True)
     route_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("routes.id"), nullable=True)
+    branch_id: Mapped[int] = mapped_column(Integer, ForeignKey("branches.id"), nullable=False)
     is_active: Mapped[bool | None] = mapped_column(Boolean, default=True, nullable=True)
 
     def __repr__(self) -> str:
-        return f"<ItemRate id={self.id} item_id={self.item_id} route_id={self.route_id}>"
+        return f"<ItemRate id={self.id} item_id={self.item_id} route_id={self.route_id} branch_id={self.branch_id}>"

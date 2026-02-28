@@ -9,6 +9,7 @@ class ItemRateBase(BaseModel):
     rate: float | None = Field(None, gt=1, description="Rate amount (must be > 1)", examples=[150.00])
     item_id: int = Field(..., description="Item ID", examples=[1])
     route_id: int = Field(..., description="Route ID", examples=[1])
+    branch_id: int = Field(..., description="Branch ID (direction)", examples=[101])
 
 
 class ItemRateCreate(ItemRateBase):
@@ -21,6 +22,7 @@ class ItemRateCreate(ItemRateBase):
                     "rate": 150.00,
                     "item_id": 1,
                     "route_id": 1,
+                    "branch_id": 101,
                 }
             ]
         }
@@ -33,6 +35,7 @@ class ItemRateUpdate(BaseModel):
     rate: float | None = Field(None, gt=1, description="Updated rate amount (must be > 1)")
     item_id: int | None = Field(None, description="Updated item ID")
     route_id: int | None = Field(None, description="Updated route ID")
+    branch_id: int | None = Field(None, description="Updated branch ID (direction)")
     is_active: bool | None = Field(None, description="Set false to soft-delete (deactivate) the item rate")
 
     model_config = {
@@ -55,9 +58,11 @@ class ItemRateRead(BaseModel):
     rate: float | None = Field(None, description="Rate amount")
     item_id: int | None = Field(None, description="Item ID")
     route_id: int | None = Field(None, description="Route ID")
+    branch_id: int | None = Field(None, description="Branch ID (direction)")
     is_active: bool | None = Field(None, description="Whether the item rate is active")
     item_name: str | None = Field(None, description="Name of the item")
     route_name: str | None = Field(None, description="Display name of the route (Branch One - Branch Two)")
+    branch_name: str | None = Field(None, description="Name of the branch (direction)")
     created_at: datetime | None = Field(None, description="Record creation timestamp")
     updated_at: datetime | None = Field(None, description="Record last update timestamp")
 

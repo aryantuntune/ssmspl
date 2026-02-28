@@ -101,10 +101,11 @@ async def count_tickets(
 async def rate_lookup(
     item_id: int = Query(..., description="Item ID"),
     route_id: int = Query(..., description="Route ID"),
+    branch_id: int | None = Query(None, description="Branch ID (direction). Defaults to route's branch_id_one if not provided."),
     db: AsyncSession = Depends(get_db),
     _=Depends(_ticket_roles),
 ):
-    return await ticket_service.get_current_rate(db, item_id, route_id)
+    return await ticket_service.get_current_rate(db, item_id, route_id, branch_id)
 
 
 @router.get(
@@ -136,10 +137,11 @@ async def departure_options(
     },
 )
 async def multi_ticket_init(
+    branch_id: int | None = Query(None, description="Operating branch ID. Defaults to route's branch_id_one."),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(_ticket_roles),
 ):
-    return await ticket_service.get_multi_ticket_init(db, current_user)
+    return await ticket_service.get_multi_ticket_init(db, current_user, branch_id)
 
 
 @router.post(
@@ -158,10 +160,11 @@ async def multi_ticket_init(
 )
 async def create_multi_tickets(
     body: MultiTicketCreate,
+    branch_id: int | None = Query(None, description="Operating branch ID. Defaults to route's branch_id_one."),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(_ticket_roles),
 ):
-    return await ticket_service.create_multi_tickets(db, body, current_user)
+    return await ticket_service.create_multi_tickets(db, body, current_user, branch_id)
 
 
 @router.post(

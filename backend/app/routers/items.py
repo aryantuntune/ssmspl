@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.dependencies import require_roles
 from app.core.rbac import UserRole
+from app.models.user import User
 from app.schemas.item import ItemCreate, ItemRead, ItemUpdate
 from app.services import item_service
 
@@ -77,7 +78,7 @@ async def count_items(
     response_model=ItemRead,
     status_code=201,
     summary="Create a new item",
-    description="Add a new item to the system. Requires **Super Admin** or **Admin** role.",
+    description="Add a new item to the system. Requires **Super Admin**, **Admin**, or **Manager** role. Auto-creates placeholder rates.",
     responses={
         201: {"description": "Item created successfully"},
         401: {"description": "Not authenticated"},
@@ -88,9 +89,9 @@ async def count_items(
 async def create_item(
     body: ItemCreate,
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)),
+    current_user: User = Depends(require_roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER)),
 ):
-    return await item_service.create_item(db, body)
+    return await item_service.create_item(db, body, creator_role=current_user.role.value, creator_route_id=current_user.route_id)
 
 
 @router.get(
@@ -117,7 +118,7 @@ async def get_item(
     "/{item_id}",
     response_model=ItemRead,
     summary="Update item details",
-    description="Partially update an item's information. Set `is_active=false` to soft-delete. Requires **Super Admin** or **Admin** role.",
+    description="Partially update an item's information. Set `is_active=false` to soft-delete (Super Admin only). Requires **Super Admin** or **Admin** role.",
     responses={
         200: {"description": "Item updated successfully"},
         401: {"description": "Not authenticated"},
@@ -130,6 +131,13 @@ async def update_item(
     item_id: int,
     body: ItemUpdate,
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)),
+    current_user: User = Depends(require_roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)),
 ):
+    # Only SUPER_ADMIN can globally deactivate items
+    if body.is_active is False and current_user.role != UserRole.SUPER_ADMIN:
+        from fastapi import HTTPException, status
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only Super Admin can deactivate items globally",
+        )
     return await item_service.update_item(db, item_id, body)

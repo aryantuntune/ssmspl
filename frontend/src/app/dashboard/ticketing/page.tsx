@@ -466,7 +466,7 @@ export default function TicketingPage() {
     if (formRouteId) {
       try {
         const res = await api.get<RateLookupResponse>(
-          `/api/tickets/rate-lookup?item_id=${itemId}&route_id=${formRouteId}`
+          `/api/tickets/rate-lookup?item_id=${itemId}&route_id=${formRouteId}${formBranchId ? `&branch_id=${formBranchId}` : ""}`
         );
         setFormItems((prev) =>
           prev.map((fi) =>
@@ -1787,7 +1787,7 @@ export default function TicketingPage() {
                               if (!fi.item_id || fi.is_cancelled) return fi;
                               try {
                                 const res = await api.get<RateLookupResponse>(
-                                  `/api/tickets/rate-lookup?item_id=${fi.item_id}&route_id=${newRouteId}`
+                                  `/api/tickets/rate-lookup?item_id=${fi.item_id}&route_id=${newRouteId}${formBranchId ? `&branch_id=${formBranchId}` : ""}`
                                 );
                                 return { ...fi, rate: res.data.rate, levy: res.data.levy };
                               } catch {

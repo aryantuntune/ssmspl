@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import api from "@/lib/api";
-import { Item, Route, ItemRate, ItemRateCreate, ItemRateUpdate } from "@/types";
+import { Item, Route, ItemRate, ItemRateCreate, ItemRateUpdate, User, Branch } from "@/types";
 import DataTable, { Column } from "@/components/dashboard/DataTable";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -25,7 +25,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
-import { Plus } from "lucide-react";
+import { Plus, X } from "lucide-react";
 
 interface ItemRateFormData {
   applicable_from_date: string;
@@ -33,6 +33,7 @@ interface ItemRateFormData {
   rate: string;
   item_id: string;
   route_id: string;
+  branch_id: string;
   is_active: boolean;
 }
 
@@ -42,6 +43,7 @@ const emptyForm: ItemRateFormData = {
   rate: "",
   item_id: "",
   route_id: "",
+  branch_id: "",
   is_active: true,
 };
 
@@ -51,10 +53,21 @@ function formatRouteLabel(r: Route): string {
     : `Route ${r.id}`;
 }
 
+/** Get the two branches of a route as options */
+function getRouteBranches(route: Route | undefined): { id: number; name: string }[] {
+  if (!route) return [];
+  const branches: { id: number; name: string }[] = [];
+  if (route.branch_id_one) branches.push({ id: route.branch_id_one, name: route.branch_one_name ?? `Branch ${route.branch_id_one}` });
+  if (route.branch_id_two) branches.push({ id: route.branch_id_two, name: route.branch_two_name ?? `Branch ${route.branch_id_two}` });
+  return branches;
+}
+
 export default function ItemRatesPage() {
   const [itemRates, setItemRates] = useState<ItemRate[]>([]);
   const [items, setItems] = useState<Item[]>([]);
   const [routes, setRoutes] = useState<Route[]>([]);
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [tableLoading, setTableLoading] = useState(false);
   const [error, setError] = useState("");
   const [formError, setFormError] = useState("");
@@ -67,6 +80,7 @@ export default function ItemRatesPage() {
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [itemFilter, setItemFilter] = useState("");
   const [routeFilter, setRouteFilter] = useState("");
+  const [branchFilter, setBranchFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [fromDate, setFromDate] = useState("");
 
@@ -84,6 +98,20 @@ export default function ItemRatesPage() {
   const [upcomingDate, setUpcomingDate] = useState("");
   const [upcomingError, setUpcomingError] = useState("");
   const [upcomingSubmitting, setUpcomingSubmitting] = useState(false);
+
+  // Cross-branch warning
+  const [crossBranchWarning, setCrossBranchWarning] = useState<string | null>(null);
+
+  const isManager = currentUser?.role === "MANAGER";
+
+  const fetchCurrentUser = useCallback(async () => {
+    try {
+      const resp = await api.get<User>("/api/auth/me");
+      setCurrentUser(resp.data);
+    } catch {
+      // ignore
+    }
+  }, []);
 
   const fetchItems = useCallback(async () => {
     try {
@@ -103,6 +131,15 @@ export default function ItemRatesPage() {
     }
   }, []);
 
+  const fetchBranches = useCallback(async () => {
+    try {
+      const resp = await api.get<Branch[]>("/api/branches/?skip=0&limit=200&status=active&sort_by=id&sort_order=asc");
+      setBranches(resp.data);
+    } catch {
+      // branches dropdown will be empty
+    }
+  }, []);
+
   const fetchItemRates = useCallback(async () => {
     setTableLoading(true);
     try {
@@ -116,10 +153,11 @@ export default function ItemRatesPage() {
 
       if (itemFilter) params.set("item_filter", itemFilter);
       if (routeFilter) params.set("route_filter", routeFilter);
+      if (branchFilter) params.set("branch_filter", branchFilter);
       if (statusFilter) params.set("status", statusFilter);
       if (fromDate) params.set("from_date", fromDate);
 
-      const filterKeys = ["item_filter", "route_filter", "status", "from_date"];
+      const filterKeys = ["item_filter", "route_filter", "branch_filter", "status", "from_date"];
       const countParams = new URLSearchParams(
         Object.fromEntries([...params].filter(([k]) => filterKeys.includes(k)))
       );
@@ -136,13 +174,38 @@ export default function ItemRatesPage() {
     } finally {
       setTableLoading(false);
     }
-  }, [page, pageSize, sortBy, sortOrder, itemFilter, routeFilter, statusFilter, fromDate]);
+  }, [page, pageSize, sortBy, sortOrder, itemFilter, routeFilter, branchFilter, statusFilter, fromDate]);
+
+  useEffect(() => {
+    fetchCurrentUser();
+    fetchItems();
+    fetchRoutes();
+    fetchBranches();
+  }, [fetchCurrentUser, fetchItems, fetchRoutes, fetchBranches]);
 
   useEffect(() => {
     fetchItemRates();
-    fetchItems();
-    fetchRoutes();
-  }, [fetchItemRates, fetchItems, fetchRoutes]);
+  }, [fetchItemRates]);
+
+  // Manager scoping: auto-set route filter
+  useEffect(() => {
+    if (isManager && currentUser?.route_id) {
+      setRouteFilter(String(currentUser.route_id));
+    }
+  }, [isManager, currentUser?.route_id]);
+
+  // When route changes in form, clear branch
+  const handleFormRouteChange = (v: string) => {
+    setForm({ ...form, route_id: v === "none" ? "" : v, branch_id: "" });
+  };
+
+  // Get branches for the selected form route
+  const selectedFormRoute = routes.find((r) => String(r.id) === form.route_id);
+  const formRouteBranches = getRouteBranches(selectedFormRoute);
+
+  // Get branches for the route filter (for branch filter dropdown)
+  const selectedFilterRoute = routes.find((r) => String(r.id) === routeFilter);
+  const filterRouteBranches = getRouteBranches(selectedFilterRoute);
 
   const openCreateModal = () => {
     setEditingRate(null);
@@ -159,6 +222,7 @@ export default function ItemRatesPage() {
       rate: ir.rate != null ? String(ir.rate) : "",
       item_id: ir.item_id != null ? String(ir.item_id) : "",
       route_id: ir.route_id != null ? String(ir.route_id) : "",
+      branch_id: ir.branch_id != null ? String(ir.branch_id) : "",
       is_active: ir.is_active ?? true,
     });
     setFormError("");
@@ -178,8 +242,9 @@ export default function ItemRatesPage() {
 
     const itemId = parseInt(form.item_id);
     const routeId = parseInt(form.route_id);
-    if (!itemId || !routeId) {
-      setFormError("Please select both an item and a route.");
+    const branchId = parseInt(form.branch_id);
+    if (!itemId || !routeId || !branchId) {
+      setFormError("Please select an item, route, and branch.");
       return;
     }
 
@@ -189,6 +254,7 @@ export default function ItemRatesPage() {
         const update: ItemRateUpdate = {};
         if (itemId !== editingRate.item_id) update.item_id = itemId;
         if (routeId !== editingRate.route_id) update.route_id = routeId;
+        if (branchId !== editingRate.branch_id) update.branch_id = branchId;
         const newDate = form.applicable_from_date || null;
         if (newDate !== editingRate.applicable_from_date) update.applicable_from_date = newDate;
         const newLevy = form.levy ? parseFloat(form.levy) : null;
@@ -197,10 +263,34 @@ export default function ItemRatesPage() {
         if (newRate !== editingRate.rate) update.rate = newRate;
         if (form.is_active !== (editingRate.is_active ?? true)) update.is_active = form.is_active;
         await api.patch(`/api/item-rates/${editingRate.id}`, update);
+
+        // Cross-branch warning: check sibling branch rate
+        if (newRate !== editingRate.rate || newLevy !== editingRate.levy) {
+          const route = routes.find((r) => r.id === routeId);
+          if (route) {
+            const siblingBranchId = branchId === route.branch_id_one ? route.branch_id_two : route.branch_id_one;
+            const siblingBranchName = branchId === route.branch_id_one ? route.branch_two_name : route.branch_one_name;
+            const currentBranchName = branchId === route.branch_id_one ? route.branch_one_name : route.branch_two_name;
+            try {
+              const siblingResp = await api.get<ItemRate[]>(
+                `/api/item-rates/?item_filter=${itemId}&route_filter=${routeId}&branch_filter=${siblingBranchId}&status=active&limit=1&sort_by=applicable_from_date&sort_order=desc`
+              );
+              const sibling = siblingResp.data[0];
+              if (sibling && (sibling.rate !== newRate || sibling.levy !== newLevy)) {
+                setCrossBranchWarning(
+                  `Rate updated for ${currentBranchName}. ${siblingBranchName} still has rate ${sibling.rate?.toFixed(2) ?? "N/A"} / levy ${sibling.levy?.toFixed(2) ?? "N/A"} \u2014 update it too?`
+                );
+              }
+            } catch {
+              // ignore sibling lookup failure
+            }
+          }
+        }
       } else {
         const create: ItemRateCreate = {
           item_id: itemId,
           route_id: routeId,
+          branch_id: branchId,
           applicable_from_date: form.applicable_from_date || null,
           levy: form.levy ? parseFloat(form.levy) : null,
           rate: form.rate ? parseFloat(form.rate) : null,
@@ -256,7 +346,7 @@ export default function ItemRatesPage() {
     setPage(1);
   };
 
-  const hasActiveFilters = itemFilter || routeFilter || statusFilter || fromDate;
+  const hasActiveFilters = itemFilter || routeFilter || branchFilter || statusFilter || fromDate;
 
   const columns: Column<ItemRate>[] = [
     {
@@ -276,6 +366,12 @@ export default function ItemRatesPage() {
       label: "Route",
       sortable: true,
       render: (ir) => <span className="font-medium">{ir.route_name ?? ir.route_id}</span>,
+    },
+    {
+      key: "branch_id",
+      label: "Branch",
+      sortable: true,
+      render: (ir) => <span>{ir.branch_name ?? ir.branch_id ?? "\u2014"}</span>,
     },
     {
       key: "rate",
@@ -335,30 +431,42 @@ export default function ItemRatesPage() {
         <div>
           <h1 className="text-2xl font-bold">Item Rate Management</h1>
           <p className="text-muted-foreground text-sm mt-1">
-            Manage rates and levies for items on specific routes
+            Manage rates and levies for items on specific routes and branches
           </p>
         </div>
         <div className="flex gap-3">
           <Button onClick={openCreateModal}>
             <Plus className="h-4 w-4 mr-2" /> Add Item Rate
           </Button>
-          <Button
-            variant="outline"
-            className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"
-            onClick={() => {
-              setUpcomingDate("");
-              setUpcomingError("");
-              setShowUpcomingModal(true);
-            }}
-          >
-            <Plus className="h-4 w-4 mr-2" /> Add Item Rates for Upcoming Date
-          </Button>
+          {!isManager && (
+            <Button
+              variant="outline"
+              className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"
+              onClick={() => {
+                setUpcomingDate("");
+                setUpcomingError("");
+                setShowUpcomingModal(true);
+              }}
+            >
+              <Plus className="h-4 w-4 mr-2" /> Add Item Rates for Upcoming Date
+            </Button>
+          )}
         </div>
       </div>
 
       {error && (
         <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg text-destructive text-sm">
           {error}
+        </div>
+      )}
+
+      {/* Cross-branch warning */}
+      {crossBranchWarning && (
+        <div className="p-3 bg-amber-50 border border-amber-300 rounded-lg text-amber-800 text-sm flex items-center justify-between">
+          <span>{crossBranchWarning}</span>
+          <Button variant="ghost" size="sm" onClick={() => setCrossBranchWarning(null)}>
+            <X className="h-4 w-4" />
+          </Button>
         </div>
       )}
 
@@ -394,8 +502,10 @@ export default function ItemRatesPage() {
                 value={routeFilter || "all"}
                 onValueChange={(v) => {
                   setRouteFilter(v === "all" ? "" : v);
+                  setBranchFilter("");
                   setPage(1);
                 }}
+                disabled={isManager}
               >
                 <SelectTrigger className="w-full sm:w-[220px]">
                   <SelectValue placeholder="All Routes" />
@@ -407,6 +517,34 @@ export default function ItemRatesPage() {
                       {formatRouteLabel(r)}
                     </SelectItem>
                   ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="mb-1.5 block">Branch</Label>
+              <Select
+                value={branchFilter || "all"}
+                onValueChange={(v) => {
+                  setBranchFilter(v === "all" ? "" : v);
+                  setPage(1);
+                }}
+              >
+                <SelectTrigger className="w-full sm:w-[180px]">
+                  <SelectValue placeholder="All Branches" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Branches</SelectItem>
+                  {routeFilter
+                    ? filterRouteBranches.map((b) => (
+                        <SelectItem key={b.id} value={String(b.id)}>
+                          {b.name}
+                        </SelectItem>
+                      ))
+                    : branches.map((b) => (
+                        <SelectItem key={b.id} value={String(b.id)}>
+                          {b.name}
+                        </SelectItem>
+                      ))}
                 </SelectContent>
               </Select>
             </div>
@@ -447,7 +585,8 @@ export default function ItemRatesPage() {
                 size="sm"
                 onClick={() => {
                   setItemFilter("");
-                  setRouteFilter("");
+                  if (!isManager) setRouteFilter("");
+                  setBranchFilter("");
                   setStatusFilter("");
                   setFromDate("");
                   setPage(1);
@@ -489,6 +628,7 @@ export default function ItemRatesPage() {
                   ["ID", viewRate.id],
                   ["Item", viewRate.item_name ?? viewRate.item_id],
                   ["Route", viewRate.route_name ?? viewRate.route_id],
+                  ["Branch", viewRate.branch_name ?? viewRate.branch_id ?? "\u2014"],
                   ["Rate", viewRate.rate != null ? viewRate.rate.toFixed(2) : "\u2014"],
                   ["Levy", viewRate.levy != null ? viewRate.levy.toFixed(2) : "\u2014"],
                   ["Applicable From", viewRate.applicable_from_date ?? "\u2014"],
@@ -600,9 +740,7 @@ export default function ItemRatesPage() {
               <Label>Route *</Label>
               <Select
                 value={form.route_id || "none"}
-                onValueChange={(v) =>
-                  setForm({ ...form, route_id: v === "none" ? "" : v })
-                }
+                onValueChange={handleFormRouteChange}
               >
                 <SelectTrigger className="mt-1.5">
                   <SelectValue placeholder="Select a route" />
@@ -612,6 +750,28 @@ export default function ItemRatesPage() {
                   {routes.map((r) => (
                     <SelectItem key={r.id} value={String(r.id)}>
                       {formatRouteLabel(r)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Branch (Direction) *</Label>
+              <Select
+                value={form.branch_id || "none"}
+                onValueChange={(v) =>
+                  setForm({ ...form, branch_id: v === "none" ? "" : v })
+                }
+                disabled={!form.route_id}
+              >
+                <SelectTrigger className="mt-1.5">
+                  <SelectValue placeholder={form.route_id ? "Select a branch" : "Select a route first"} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Select a branch</SelectItem>
+                  {formRouteBranches.map((b) => (
+                    <SelectItem key={b.id} value={String(b.id)}>
+                      {b.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
