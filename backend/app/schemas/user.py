@@ -82,7 +82,7 @@ class UserRead(UserBase):
     route_name: str | None = Field(None, description="Display name of assigned route (e.g. 'Old Goa - Panaji')")
     last_login: datetime | None = Field(None, description="Timestamp of last successful login")
     created_at: datetime = Field(..., description="Account creation timestamp")
-    updated_at: datetime = Field(..., description="Last profile update timestamp")
+    updated_at: datetime | None = Field(None, description="Last profile update timestamp")
 
     model_config = {"from_attributes": True}
 
