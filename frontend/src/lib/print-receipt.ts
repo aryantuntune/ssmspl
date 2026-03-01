@@ -191,7 +191,7 @@ function buildReceiptHtml(data: ReceiptData, logoBase64: string | null, qrBase64
   td.r { text-align: right; white-space: nowrap; }
   .r { text-align: right; }
   .header-line { display: flex; justify-content: space-between; }
-  .note { font-size: ${paperWidth === "58mm" ? "8px" : "9px"}; line-height: 1.1; }
+  .note { font-size: ${paperWidth === "58mm" ? "9px" : "11px"}; font-weight: 900; line-height: 1.2; }
   @media print {
     body { margin: 0; padding: 2mm 2mm; transform: scale(0.92); transform-origin: top center; }
   }
