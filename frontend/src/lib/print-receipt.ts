@@ -193,7 +193,7 @@ function buildReceiptHtml(data: ReceiptData, logoBase64: string | null, qrBase64
   .header-line { display: flex; justify-content: space-between; }
   .note { font-size: ${paperWidth === "58mm" ? "8px" : "9px"}; line-height: 1.1; }
   @media print {
-    body { margin: 0; padding: 2mm 2mm; }
+    body { margin: 0; padding: 2mm 2mm; transform: scale(0.92); transform-origin: top center; }
   }
 </style></head><body>
 ${logoHtml}
