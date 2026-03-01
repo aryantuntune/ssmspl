@@ -101,11 +101,10 @@ async def count_tickets(
 async def rate_lookup(
     item_id: int = Query(..., description="Item ID"),
     route_id: int = Query(..., description="Route ID"),
-    branch_id: int | None = Query(None, description="Branch ID (direction). Defaults to route's branch_id_one if not provided."),
     db: AsyncSession = Depends(get_db),
     _=Depends(_ticket_roles),
 ):
-    return await ticket_service.get_current_rate(db, item_id, route_id, branch_id)
+    return await ticket_service.get_current_rate(db, item_id, route_id)
 
 
 @router.get(

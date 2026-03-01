@@ -151,25 +151,18 @@ async def create_item(db: AsyncSession, item_in: ItemCreate, creator_role: str |
     from app.services.item_rate_service import auto_create_rates_for_new_item
     from app.models.route import Route
 
-    route_branch_tuples: list[tuple[int, int]] = []
+    route_ids: list[int] = []
     if creator_role in ("SUPER_ADMIN", "ADMIN"):
-        # All active routes × both branches
+        # All active routes
         routes_result = await db.execute(
-            select(Route).where(Route.is_active == True)
+            select(Route.id).where(Route.is_active == True)
         )
-        for r in routes_result.scalars().all():
-            route_branch_tuples.append((r.id, r.branch_id_one))
-            route_branch_tuples.append((r.id, r.branch_id_two))
+        route_ids = [row[0] for row in routes_result.all()]
     elif creator_role == "MANAGER" and creator_route_id:
-        # Only the manager's assigned route × both branches
-        route_result = await db.execute(select(Route).where(Route.id == creator_route_id))
-        r = route_result.scalar_one_or_none()
-        if r:
-            route_branch_tuples.append((r.id, r.branch_id_one))
-            route_branch_tuples.append((r.id, r.branch_id_two))
+        route_ids = [creator_route_id]
 
-    if route_branch_tuples:
-        await auto_create_rates_for_new_item(db, item.id, route_branch_tuples)
+    if route_ids:
+        await auto_create_rates_for_new_item(db, item.id, route_ids)
 
     await db.commit()
     await db.refresh(item)

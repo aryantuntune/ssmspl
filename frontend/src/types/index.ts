@@ -184,11 +184,9 @@ export interface ItemRate {
   rate: number | null;
   item_id: number | null;
   route_id: number | null;
-  branch_id: number | null;
   is_active: boolean | null;
   item_name: string | null;
   route_name: string | null;
-  branch_name: string | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -199,7 +197,6 @@ export interface ItemRateCreate {
   rate?: number | null;
   item_id: number;
   route_id: number;
-  branch_id: number;
 }
 
 export interface ItemRateUpdate {
@@ -208,7 +205,6 @@ export interface ItemRateUpdate {
   rate?: number | null;
   item_id?: number;
   route_id?: number;
-  branch_id?: number;
   is_active?: boolean;
 }
 

@@ -31,13 +31,8 @@ async def _get_route_display_name(db: AsyncSession, route_id: int) -> str | None
     return f"{row.branch_one_name} - {row.branch_two_name}"
 
 
-async def _get_branch_name(db: AsyncSession, branch_id: int) -> str | None:
-    result = await db.execute(select(Branch.name).where(Branch.id == branch_id))
-    return result.scalar_one_or_none()
-
-
 async def _enrich_item_rate(db: AsyncSession, ir: ItemRate) -> dict:
-    """Convert an ItemRate ORM object to a dict with item_name, route_name, branch_name."""
+    """Convert an ItemRate ORM object to a dict with item_name and route_name."""
     item_name = None
     if ir.item_id:
         res = await db.execute(select(Item.name).where(Item.id == ir.item_id))
@@ -47,10 +42,6 @@ async def _enrich_item_rate(db: AsyncSession, ir: ItemRate) -> dict:
     if ir.route_id:
         route_name = await _get_route_display_name(db, ir.route_id)
 
-    branch_name = None
-    if ir.branch_id:
-        branch_name = await _get_branch_name(db, ir.branch_id)
-
     return {
         "id": ir.id,
         "applicable_from_date": ir.applicable_from_date,
@@ -58,11 +49,9 @@ async def _enrich_item_rate(db: AsyncSession, ir: ItemRate) -> dict:
         "rate": float(ir.rate) if ir.rate is not None else None,
         "item_id": ir.item_id,
         "route_id": ir.route_id,
-        "branch_id": ir.branch_id,
         "is_active": ir.is_active,
         "item_name": item_name,
         "route_name": route_name,
-        "branch_name": branch_name,
     }
 
 
@@ -79,7 +68,6 @@ def _apply_filters(
     status_filter: str | None = None,
     item_filter: int | None = None,
     route_filter: int | None = None,
-    branch_filter: int | None = None,
     id_filter: int | None = None,
     id_op: str = "eq",
     id_filter_end: int | None = None,
@@ -101,31 +89,26 @@ def _apply_filters(
     if route_filter is not None:
         query = query.where(ItemRate.route_id == route_filter)
 
-    if branch_filter is not None:
-        query = query.where(ItemRate.branch_id == branch_filter)
-
     if from_date is not None:
-        # Subquery: for each (item_id, route_id, branch_id), find the latest
+        # Subquery: for each (item_id, route_id), find the latest
         # applicable_from_date that is <= the selected from_date.
         latest_subq = (
             select(
                 ItemRate.item_id.label("sub_item_id"),
                 ItemRate.route_id.label("sub_route_id"),
-                ItemRate.branch_id.label("sub_branch_id"),
                 func.max(ItemRate.applicable_from_date).label("max_date"),
             )
             .where(
                 ItemRate.applicable_from_date.is_not(None),
                 ItemRate.applicable_from_date <= from_date,
             )
-            .group_by(ItemRate.item_id, ItemRate.route_id, ItemRate.branch_id)
+            .group_by(ItemRate.item_id, ItemRate.route_id)
             .subquery()
         )
         # Keep only rows whose date matches the latest for their combo
         query = query.where(
             ItemRate.item_id == latest_subq.c.sub_item_id,
             ItemRate.route_id == latest_subq.c.sub_route_id,
-            ItemRate.branch_id == latest_subq.c.sub_branch_id,
             ItemRate.applicable_from_date == latest_subq.c.max_date,
         )
 
@@ -139,12 +122,11 @@ def _apply_filters(
 async def count_item_rates(
     db: AsyncSession, status_filter: str | None = None,
     item_filter: int | None = None, route_filter: int | None = None,
-    branch_filter: int | None = None,
     id_filter: int | None = None, id_op: str = "eq", id_filter_end: int | None = None,
     from_date: date_type | None = None,
 ) -> int:
     query = select(func.count()).select_from(ItemRate)
-    query = _apply_filters(query, status_filter, item_filter, route_filter, branch_filter, id_filter, id_op, id_filter_end, from_date)
+    query = _apply_filters(query, status_filter, item_filter, route_filter, id_filter, id_op, id_filter_end, from_date)
     result = await db.execute(query)
     return result.scalar()
 
@@ -156,7 +138,6 @@ SORTABLE_COLUMNS = {
     "rate": ItemRate.rate,
     "item_id": ItemRate.item_id,
     "route_id": ItemRate.route_id,
-    "branch_id": ItemRate.branch_id,
     "is_active": ItemRate.is_active,
 }
 
@@ -165,7 +146,6 @@ async def get_all_item_rates(
     db: AsyncSession, skip: int = 0, limit: int = 50, sort_by: str = "id", sort_order: str = "asc",
     status_filter: str | None = None,
     item_filter: int | None = None, route_filter: int | None = None,
-    branch_filter: int | None = None,
     id_filter: int | None = None, id_op: str = "eq", id_filter_end: int | None = None,
     from_date: date_type | None = None,
 ) -> list[dict]:
@@ -173,7 +153,7 @@ async def get_all_item_rates(
     order = column.desc() if sort_order == "desc" else column.asc()
 
     query = select(ItemRate)
-    query = _apply_filters(query, status_filter, item_filter, route_filter, branch_filter, id_filter, id_op, id_filter_end, from_date)
+    query = _apply_filters(query, status_filter, item_filter, route_filter, id_filter, id_op, id_filter_end, from_date)
     result = await db.execute(query.order_by(order).offset(skip).limit(limit))
     rows = result.scalars().all()
 
@@ -183,34 +163,21 @@ async def get_all_item_rates(
     return enriched
 
 
-async def _validate_references(db: AsyncSession, item_id: int | None, route_id: int | None, branch_id: int | None = None):
+async def _validate_references(db: AsyncSession, item_id: int | None, route_id: int | None):
     if item_id is not None:
         result = await db.execute(select(Item.id).where(Item.id == item_id))
         if not result.scalar_one_or_none():
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Item ID {item_id} not found")
     if route_id is not None:
         result = await db.execute(select(Route).where(Route.id == route_id))
-        route = result.scalar_one_or_none()
-        if not route:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Route ID {route_id} not found")
-        # Validate branch belongs to route
-        if branch_id is not None:
-            if branch_id not in (route.branch_id_one, route.branch_id_two):
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Branch ID {branch_id} does not belong to Route ID {route_id}",
-                )
-    if branch_id is not None and route_id is None:
-        result = await db.execute(select(Branch.id).where(Branch.id == branch_id))
         if not result.scalar_one_or_none():
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Branch ID {branch_id} not found")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Route ID {route_id} not found")
 
 
-async def _check_duplicate(db: AsyncSession, item_id: int, route_id: int, branch_id: int, applicable_from_date, exclude_id: int | None = None):
+async def _check_duplicate(db: AsyncSession, item_id: int, route_id: int, applicable_from_date, exclude_id: int | None = None):
     query = select(ItemRate).where(
         ItemRate.item_id == item_id,
         ItemRate.route_id == route_id,
-        ItemRate.branch_id == branch_id,
         ItemRate.applicable_from_date == applicable_from_date,
     )
     if exclude_id is not None:
@@ -219,13 +186,13 @@ async def _check_duplicate(db: AsyncSession, item_id: int, route_id: int, branch
     if result.scalar_one_or_none():
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="An item rate with the same item, route, branch, and applicable date already exists",
+            detail="An item rate with the same item, route, and applicable date already exists",
         )
 
 
 async def create_item_rate(db: AsyncSession, data: ItemRateCreate) -> dict:
-    await _validate_references(db, data.item_id, data.route_id, data.branch_id)
-    await _check_duplicate(db, data.item_id, data.route_id, data.branch_id, data.applicable_from_date)
+    await _validate_references(db, data.item_id, data.route_id)
+    await _check_duplicate(db, data.item_id, data.route_id, data.applicable_from_date)
 
     result = await db.execute(select(func.coalesce(func.max(ItemRate.id), 0)))
     next_id = result.scalar() + 1
@@ -237,7 +204,6 @@ async def create_item_rate(db: AsyncSession, data: ItemRateCreate) -> dict:
         rate=data.rate,
         item_id=data.item_id,
         route_id=data.route_id,
-        branch_id=data.branch_id,
         is_active=True,
     )
     db.add(ir)
@@ -259,13 +225,13 @@ async def bulk_create_for_upcoming_date(db: AsyncSession, new_date: date_type) -
             detail="No active item rates found to duplicate",
         )
 
-    # Check which (item_id, route_id, branch_id) combos already exist for the new date
+    # Check which (item_id, route_id) combos already exist for the new date
     existing = await db.execute(
-        select(ItemRate.item_id, ItemRate.route_id, ItemRate.branch_id).where(
+        select(ItemRate.item_id, ItemRate.route_id).where(
             ItemRate.applicable_from_date == new_date,
         )
     )
-    existing_combos = {(row[0], row[1], row[2]) for row in existing.all()}
+    existing_combos = {(row[0], row[1]) for row in existing.all()}
 
     # Get next id
     id_result = await db.execute(select(func.coalesce(func.max(ItemRate.id), 0)))
@@ -273,7 +239,7 @@ async def bulk_create_for_upcoming_date(db: AsyncSession, new_date: date_type) -
 
     created = 0
     for rate in active_rates:
-        if (rate.item_id, rate.route_id, rate.branch_id) in existing_combos:
+        if (rate.item_id, rate.route_id) in existing_combos:
             continue
         ir = ItemRate(
             id=next_id,
@@ -282,7 +248,6 @@ async def bulk_create_for_upcoming_date(db: AsyncSession, new_date: date_type) -
             rate=rate.rate,
             item_id=rate.item_id,
             route_id=rate.route_id,
-            branch_id=rate.branch_id,
             is_active=True,
         )
         db.add(ir)
@@ -309,14 +274,13 @@ async def update_item_rate(db: AsyncSession, item_rate_id: int, data: ItemRateUp
 
     new_item_id = update_data.get("item_id", ir.item_id)
     new_route_id = update_data.get("route_id", ir.route_id)
-    new_branch_id = update_data.get("branch_id", ir.branch_id)
     new_date = update_data.get("applicable_from_date", ir.applicable_from_date)
 
-    if "item_id" in update_data or "route_id" in update_data or "branch_id" in update_data:
-        await _validate_references(db, new_item_id, new_route_id, new_branch_id)
+    if "item_id" in update_data or "route_id" in update_data:
+        await _validate_references(db, new_item_id, new_route_id)
 
-    if "item_id" in update_data or "route_id" in update_data or "branch_id" in update_data or "applicable_from_date" in update_data:
-        await _check_duplicate(db, new_item_id, new_route_id, new_branch_id, new_date, exclude_id=item_rate_id)
+    if "item_id" in update_data or "route_id" in update_data or "applicable_from_date" in update_data:
+        await _check_duplicate(db, new_item_id, new_route_id, new_date, exclude_id=item_rate_id)
 
     for field, value in update_data.items():
         setattr(ir, field, value)
@@ -328,8 +292,8 @@ async def update_item_rate(db: AsyncSession, item_rate_id: int, data: ItemRateUp
 # ── Auto-populate helpers ──
 
 
-async def auto_create_rates_for_route(db: AsyncSession, route_id: int, branch_id_one: int, branch_id_two: int) -> int:
-    """Create placeholder item_rate rows for all active items × both branches of a route.
+async def auto_create_rates_for_route(db: AsyncSession, route_id: int) -> int:
+    """Create placeholder item_rate rows for all active items on a route.
     Called after route creation. Uses rate=None, levy=None (NULL bypasses CHECK rate > 1).
     Returns count of rows created.
     """
@@ -347,42 +311,7 @@ async def auto_create_rates_for_route(db: AsyncSession, route_id: int, branch_id
     next_id = id_result.scalar() + 1
 
     created = 0
-    for branch_id in (branch_id_one, branch_id_two):
-        for item_id in item_ids:
-            ir = ItemRate(
-                id=next_id,
-                applicable_from_date=today,
-                levy=None,
-                rate=None,
-                item_id=item_id,
-                route_id=route_id,
-                branch_id=branch_id,
-                is_active=True,
-            )
-            db.add(ir)
-            next_id += 1
-            created += 1
-
-    return created
-
-
-async def auto_create_rates_for_new_item(db: AsyncSession, item_id: int, route_branch_tuples: list[tuple[int, int]]) -> int:
-    """Create placeholder item_rate rows for a new item across specified (route_id, branch_id) pairs.
-    Called after item creation. Uses rate=None, levy=None.
-    Returns count of rows created.
-    """
-    import datetime
-    today = datetime.date.today()
-
-    if not route_branch_tuples:
-        return 0
-
-    # Get next id
-    id_result = await db.execute(select(func.coalesce(func.max(ItemRate.id), 0)))
-    next_id = id_result.scalar() + 1
-
-    created = 0
-    for route_id, branch_id in route_branch_tuples:
+    for item_id in item_ids:
         ir = ItemRate(
             id=next_id,
             applicable_from_date=today,
@@ -390,7 +319,39 @@ async def auto_create_rates_for_new_item(db: AsyncSession, item_id: int, route_b
             rate=None,
             item_id=item_id,
             route_id=route_id,
-            branch_id=branch_id,
+            is_active=True,
+        )
+        db.add(ir)
+        next_id += 1
+        created += 1
+
+    return created
+
+
+async def auto_create_rates_for_new_item(db: AsyncSession, item_id: int, route_ids: list[int]) -> int:
+    """Create placeholder item_rate rows for a new item across specified route IDs.
+    Called after item creation. Uses rate=None, levy=None.
+    Returns count of rows created.
+    """
+    import datetime
+    today = datetime.date.today()
+
+    if not route_ids:
+        return 0
+
+    # Get next id
+    id_result = await db.execute(select(func.coalesce(func.max(ItemRate.id), 0)))
+    next_id = id_result.scalar() + 1
+
+    created = 0
+    for route_id in route_ids:
+        ir = ItemRate(
+            id=next_id,
+            applicable_from_date=today,
+            levy=None,
+            rate=None,
+            item_id=item_id,
+            route_id=route_id,
             is_active=True,
         )
         db.add(ir)

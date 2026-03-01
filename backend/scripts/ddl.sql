@@ -357,29 +357,18 @@ CREATE TRIGGER set_users_updated_at
 ALTER TABLE tickets ADD COLUMN IF NOT EXISTS boat_id INTEGER REFERENCES boats(id);
 
 -- ============================================================
--- PATCH: Add branch_id to item_rates (directional pricing)
+-- PATCH: Remove branch_id from item_rates (revert to route-only pricing)
 -- ============================================================
 
--- Add branch_id column (nullable first for safe migration)
-ALTER TABLE item_rates ADD COLUMN IF NOT EXISTS branch_id INTEGER REFERENCES branches(id);
+-- Drop the directional unique index if it exists
+DROP INDEX IF EXISTS uq_item_rate_direction;
 
--- Duplicate existing rows for branch_id_two (originals become branch_id_one)
-INSERT INTO item_rates (applicable_from_date, levy, rate, item_id, route_id, branch_id, is_active, created_at)
-SELECT ir.applicable_from_date, ir.levy, ir.rate, ir.item_id, ir.route_id,
-       r.branch_id_two, ir.is_active, ir.created_at
-FROM item_rates ir JOIN routes r ON r.id = ir.route_id
-WHERE ir.branch_id IS NULL;
+-- Remove branch_id column
+ALTER TABLE item_rates DROP COLUMN IF EXISTS branch_id;
 
--- Set branch_id on original rows
-UPDATE item_rates ir SET branch_id = r.branch_id_one
-FROM routes r WHERE ir.route_id = r.id AND ir.branch_id IS NULL;
-
--- Make NOT NULL after backfill
-ALTER TABLE item_rates ALTER COLUMN branch_id SET NOT NULL;
-
--- Add directional unique index
-CREATE UNIQUE INDEX IF NOT EXISTS uq_item_rate_direction
-  ON item_rates (item_id, route_id, branch_id, applicable_from_date)
+-- Add route-only unique index
+CREATE UNIQUE INDEX IF NOT EXISTS uq_item_rate_route
+  ON item_rates (item_id, route_id, applicable_from_date)
   WHERE applicable_from_date IS NOT NULL;
 
 -- ============================================================

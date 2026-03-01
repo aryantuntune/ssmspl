@@ -179,7 +179,7 @@ async def create_route(db: AsyncSession, route_in: RouteCreate) -> dict:
 
     # Auto-create placeholder rates for all active items × both branches
     from app.services.item_rate_service import auto_create_rates_for_route
-    await auto_create_rates_for_route(db, route.id, route.branch_id_one, route.branch_id_two)
+    await auto_create_rates_for_route(db, route.id)
 
     await db.commit()
     await db.refresh(route)

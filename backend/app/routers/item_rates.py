@@ -19,7 +19,7 @@ _item_rate_roles = require_roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.
     "",
     response_model=list[ItemRateRead],
     summary="List all item rates",
-    description="Paginated list of all item rates with item, route, and branch names. Managers see only their route's rates.",
+    description="Paginated list of all item rates with item and route names. Managers see only their route's rates.",
     responses={
         200: {"description": "List of item rates returned"},
         401: {"description": "Not authenticated"},
@@ -29,11 +29,10 @@ _item_rate_roles = require_roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.
 async def list_item_rates(
     skip: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(5, ge=1, le=200, description="Maximum number of records to return"),
-    sort_by: str = Query("id", description="Column to sort by (id, applicable_from_date, levy, rate, item_id, route_id, branch_id, is_active)"),
+    sort_by: str = Query("id", description="Column to sort by (id, applicable_from_date, levy, rate, item_id, route_id, is_active)"),
     sort_order: str = Query("asc", description="Sort direction (asc or desc)"),
     item_filter: int | None = Query(None, ge=1, description="Filter by item ID"),
     route_filter: int | None = Query(None, ge=1, description="Filter by route ID"),
-    branch_filter: int | None = Query(None, ge=1, description="Filter by branch ID (direction)"),
     id_filter: int | None = Query(None, ge=1, description="Filter by item rate ID (or range start for between)"),
     id_op: str = Query("eq", description="ID comparison operator: eq, lt, gt, or between"),
     id_filter_end: int | None = Query(None, ge=1, description="Range end for between operator"),
@@ -45,7 +44,7 @@ async def list_item_rates(
     # Manager scoping: force route filter to their assigned route
     if current_user.role == UserRole.MANAGER:
         route_filter = current_user.route_id
-    return await item_rate_service.get_all_item_rates(db, skip, limit, sort_by, sort_order, status, item_filter, route_filter, branch_filter, id_filter, id_op, id_filter_end, from_date)
+    return await item_rate_service.get_all_item_rates(db, skip, limit, sort_by, sort_order, status, item_filter, route_filter, id_filter, id_op, id_filter_end, from_date)
 
 
 @router.get(
@@ -62,7 +61,6 @@ async def list_item_rates(
 async def count_item_rates(
     item_filter: int | None = Query(None, ge=1, description="Filter by item ID"),
     route_filter: int | None = Query(None, ge=1, description="Filter by route ID"),
-    branch_filter: int | None = Query(None, ge=1, description="Filter by branch ID (direction)"),
     id_filter: int | None = Query(None, ge=1, description="Filter by item rate ID (or range start for between)"),
     id_op: str = Query("eq", description="ID comparison operator: eq, lt, gt, or between"),
     id_filter_end: int | None = Query(None, ge=1, description="Range end for between operator"),
@@ -73,7 +71,7 @@ async def count_item_rates(
 ):
     if current_user.role == UserRole.MANAGER:
         route_filter = current_user.route_id
-    return await item_rate_service.count_item_rates(db, status, item_filter, route_filter, branch_filter, id_filter, id_op, id_filter_end, from_date)
+    return await item_rate_service.count_item_rates(db, status, item_filter, route_filter, id_filter, id_op, id_filter_end, from_date)
 
 
 @router.post(
@@ -81,13 +79,13 @@ async def count_item_rates(
     response_model=ItemRateRead,
     status_code=201,
     summary="Create a new item rate",
-    description="Add a new item rate for a specific item, route, and branch. Managers can only create for their assigned route.",
+    description="Add a new item rate for a specific item and route. Managers can only create for their assigned route.",
     responses={
         201: {"description": "Item rate created successfully"},
         401: {"description": "Not authenticated"},
         403: {"description": "Insufficient role permissions"},
-        404: {"description": "Item, route, or branch not found"},
-        409: {"description": "Duplicate item rate (same item, route, branch, and date)"},
+        404: {"description": "Item or route not found"},
+        409: {"description": "Duplicate item rate (same item, route, and date)"},
     },
 )
 async def create_item_rate(
@@ -182,8 +180,8 @@ async def get_item_rate(
         200: {"description": "Item rate updated successfully"},
         401: {"description": "Not authenticated"},
         403: {"description": "Insufficient role permissions"},
-        404: {"description": "Item rate, item, route, or branch not found"},
-        409: {"description": "Duplicate item rate (same item, route, branch, and date)"},
+        404: {"description": "Item rate, item, or route not found"},
+        409: {"description": "Duplicate item rate (same item, route, and date)"},
     },
 )
 async def update_item_rate(

@@ -201,15 +201,8 @@ def _cross_check_amounts(computed_amount: float, computed_net: float, submitted_
         )
 
 
-async def get_current_rate(db: AsyncSession, item_id: int, route_id: int, branch_id: int | None = None) -> dict:
+async def get_current_rate(db: AsyncSession, item_id: int, route_id: int) -> dict:
     today = datetime.date.today()
-
-    # If no branch_id provided, default to route's branch_id_one (backward compat)
-    if branch_id is None:
-        route_result = await db.execute(select(Route).where(Route.id == route_id))
-        route = route_result.scalar_one_or_none()
-        if route:
-            branch_id = route.branch_id_one
 
     query = (
         select(ItemRate)
@@ -223,15 +216,13 @@ async def get_current_rate(db: AsyncSession, item_id: int, route_id: int, branch
         .order_by(ItemRate.applicable_from_date.desc())
         .limit(1)
     )
-    if branch_id is not None:
-        query = query.where(ItemRate.branch_id == branch_id)
 
     result = await db.execute(query)
     ir = result.scalar_one_or_none()
     if not ir:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"No active rate found for item {item_id}, route {route_id}, branch {branch_id}",
+            detail=f"No active rate found for item {item_id}, route {route_id}",
         )
     return {
         "rate": float(ir.rate) if ir.rate is not None else 0,
@@ -319,7 +310,6 @@ async def get_multi_ticket_init(db: AsyncSession, user, branch_id: int | None = 
         )
         .where(
             ItemRate.route_id == user.route_id,
-            ItemRate.branch_id == branch_id,
             ItemRate.is_active == True,
             ItemRate.applicable_from_date.is_not(None),
             ItemRate.applicable_from_date <= today,
@@ -379,7 +369,6 @@ async def get_multi_ticket_init(db: AsyncSession, user, branch_id: int | None = 
                 .where(
                     ItemRate.item_id == sf_item_id,
                     ItemRate.route_id == user.route_id,
-                    ItemRate.branch_id == branch_id,
                     ItemRate.is_active == True,
                     ItemRate.applicable_from_date.is_not(None),
                     ItemRate.applicable_from_date <= today,
