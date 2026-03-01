@@ -135,27 +135,24 @@ function buildReceiptHtml(data: ReceiptData, logoBase64: string | null, qrBase64
   const time = formatReceiptTime(createdAt, departure);
   const dateStr = formatReceiptDate(ticketDate);
   const footerDateTime = formatFooterDateTime(ticketDate, createdAt, departure);
-  // Build item rows — two-row layout per item for narrow paper
+  // Build item rows — single row per item
   const itemRows = items
     .map((item) => {
       const amtStr = item.amount.toFixed(2);
       const qtyStr = Number.isInteger(item.quantity) ? String(item.quantity) : item.quantity.toFixed(2);
       const lines: string[] = [];
-      // Row 1: description (full width)
-      lines.push(`<tr><td colspan="4" class="desc">${escHtml(item.name)}</td></tr>`);
-      // Row 2: qty, rate, levy, amount (right-aligned numbers)
       lines.push(
         `<tr>` +
-          `<td class="r num">${qtyStr}</td>` +
-          `<td class="r num">${item.rate.toFixed(2)}</td>` +
-          `<td class="r num">${item.levy.toFixed(2)}</td>` +
-          `<td class="r num">${amtStr}</td>` +
+          `<td>${escHtml(item.name)}</td>` +
+          `<td class="r">${qtyStr}</td>` +
+          `<td class="r">${item.rate.toFixed(2)}</td>` +
+          `<td class="r">${item.levy.toFixed(2)}</td>` +
+          `<td class="r">${amtStr}</td>` +
           `</tr>`
       );
-      // Vehicle number sub-line
       if (item.vehicleNo) {
         lines.push(
-          `<tr><td colspan="4" style="padding-left:8px;">&nbsp;&nbsp;${escHtml(item.vehicleNo)}</td></tr>`
+          `<tr><td colspan="5" style="padding-left:8px;">&nbsp;&nbsp;${escHtml(item.vehicleNo)}</td></tr>`
         );
       }
       return lines.join("");
@@ -163,11 +160,11 @@ function buildReceiptHtml(data: ReceiptData, logoBase64: string | null, qrBase64
     .join("");
 
   const logoHtml = logoBase64
-    ? `<img src="${logoBase64}" style="width:100px;height:auto;margin:0 auto 6px;display:block;" />`
+    ? `<img src="${logoBase64}" style="width:80px;height:auto;margin:0 auto 4px;display:block;" />`
     : "";
 
   const qrHtml = qrBase64
-    ? `<img src="${qrBase64}" style="width:120px;height:120px;margin:0 auto;display:block;" />`
+    ? `<img src="${qrBase64}" style="width:100px;height:100px;margin:0 auto;display:block;" />`
     : "";
 
   return `<!DOCTYPE html>
@@ -177,25 +174,22 @@ function buildReceiptHtml(data: ReceiptData, logoBase64: string | null, qrBase64
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
     font-family: "Courier New", Courier, monospace;
-    font-size: ${paperWidth === "58mm" ? "13px" : "15px"};
+    font-size: ${paperWidth === "58mm" ? "11px" : "12px"};
     font-weight: 700;
     width: ${widthMm}mm;
     padding: 3mm 2mm;
-    line-height: 1.4;
+    line-height: 1.3;
     color: #000;
     -webkit-print-color-adjust: exact;
   }
   .center { text-align: center; }
   .bold { font-weight: 900; }
-  .dash { border-top: 2px solid #000; margin: 4px 0; }
+  .dash { border-top: 2px solid #000; margin: 3px 0; }
   table { width: 100%; border-collapse: collapse; }
-  td { padding: 2px 2px; vertical-align: top; }
-  td.num { white-space: nowrap; }
-  td.desc { padding-bottom: 0; }
+  td { padding: 1px 2px; vertical-align: top; }
   .r { text-align: right; }
-  .row { display: flex; justify-content: space-between; }
-  .note { font-size: ${paperWidth === "58mm" ? "11px" : "13px"}; }
-  .total-line { display: flex; justify-content: space-between; align-items: baseline; }
+  .header-line { display: flex; justify-content: space-between; }
+  .note { font-size: ${paperWidth === "58mm" ? "9px" : "10px"}; }
   @media print {
     body { margin: 0; padding: 3mm 2mm; }
   }
@@ -206,9 +200,8 @@ ${logoHtml}
 <div class="center bold">${escHtml(branchName.toUpperCase())}</div>
 <div class="center">MAHARASHTRA MARITIME BOARD APPROVAL</div>
 <div class="center bold">${escHtml(fromTo)}</div>
-<div>Ph: ${escHtml(branchPhone)}</div>
-<div class="row"><span>TIME: ${time}</span><span>DATE: ${dateStr}</span></div>
-<div>CASH MEMO NO: ${ticketNo}</div>
+<div class="header-line"><span>Ph: ${escHtml(branchPhone)}</span><span>TIME: ${time}</span></div>
+<div class="header-line"><span>CASH MEMO NO: ${ticketNo}</span><span>DATE: ${dateStr}</span></div>
 <div class="dash"></div>
 <table>
 <tr class="bold"><td>Description</td><td class="r">Qty</td><td class="r">Rate</td><td class="r">Levy</td><td class="r">Amount</td></tr>
@@ -218,7 +211,7 @@ ${logoHtml}
 ${itemRows}
 </table>
 <div class="dash"></div>
-<div class="total-line"><span class="bold">NET TOTAL WITH GOVT.TAX.&nbsp;:</span><span class="bold">${netAmount.toFixed(2)}</span></div>
+<div class="header-line"><span class="bold">NET TOTAL WITH GOVT.TAX. :</span><span class="bold">${netAmount.toFixed(2)}</span></div>
 <div class="dash"></div>
 <div class="note">NOTE: Tantrik Durustimule Velevar na sutlyas</div>
 <div class="note">va ushira pohochlyas company jababdar rahanar</div>
@@ -226,10 +219,9 @@ ${itemRows}
 <div class="note">Ferry Boatit TICKET DAKHVAVE.</div>
 <div class="center note">HAPPY JOURNEY - www.carferry.online</div>
 <div class="dash"></div>
-<div class="row"><span>DATE: ${footerDateTime}</span></div>
-<div class="row"><span>BY: ${escHtml(createdBy)}</span></div>
+<div class="header-line"><span>DATE: ${footerDateTime}</span><span>BY: ${escHtml(createdBy)}</span></div>
 <div>CASH MEMO NO: ${ticketNo}</div>
-<div class="total-line"><span>NET TOTAL WITH GOVT.TAX.&nbsp;:</span><span class="bold">${netAmount.toFixed(2)}</span></div>
+<div class="header-line"><span>NET TOTAL WITH GOVT.TAX. :</span><span class="bold">${netAmount.toFixed(2)}</span></div>
 <div class="dash"></div>
 ${qrHtml}
 </body></html>`;
