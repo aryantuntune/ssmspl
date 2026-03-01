@@ -183,11 +183,13 @@ function buildReceiptHtml(data: ReceiptData, logoBase64: string | null, qrBase64
   .center { text-align: center; }
   .bold { font-weight: 900; }
   .dash { border-top: 2px solid #000; margin: 2px 0; }
-  table { width: 100%; border-collapse: collapse; }
-  td { padding: 0 2px; vertical-align: top; }
+  table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  td { padding: 0 1px; vertical-align: top; overflow: hidden; }
+  td:first-child { width: 40%; font-size: ${paperWidth === "58mm" ? "10px" : "11px"}; }
+  td.r { width: 15%; white-space: nowrap; }
   .r { text-align: right; }
   .header-line { display: flex; justify-content: space-between; }
-  .note { font-size: ${paperWidth === "58mm" ? "9px" : "10px"}; }
+  .note { font-size: ${paperWidth === "58mm" ? "8px" : "9px"}; line-height: 1.1; }
   @media print {
     body { margin: 0; padding: 2mm 2mm; }
   }
@@ -211,10 +213,7 @@ ${itemRows}
 <div class="dash"></div>
 <div class="header-line"><span class="bold">NET TOTAL WITH GOVT.TAX. :</span><span class="bold">${fmtNum(netAmount)}</span></div>
 <div class="dash"></div>
-<div class="note">NOTE: Tantrik Durustimule Velevar na sutlyas</div>
-<div class="note">va ushira pohochlyas company jababdar rahanar</div>
-<div class="note">nahi.</div>
-<div class="note">Ferry Boatit TICKET DAKHVAVE.</div>
+<div class="note">NOTE: Tantrik Durustimule Velevar na sutlyas va ushira pohochlyas company jababdar rahanar nahi. Ferry Boatit TICKET DAKHVAVE.</div>
 <div class="center note">HAPPY JOURNEY - www.carferry.online</div>
 <div class="dash"></div>
 <div class="header-line"><span>DATE: ${footerDateTime}</span><span>BY: ${escHtml(createdBy)}</span></div>
