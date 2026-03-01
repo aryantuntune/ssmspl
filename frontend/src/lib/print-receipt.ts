@@ -135,7 +135,7 @@ function buildReceiptHtml(data: ReceiptData, logoBase64: string | null, qrBase64
   const time = formatReceiptTime(createdAt, departure);
   const dateStr = formatReceiptDate(ticketDate);
   const footerDateTime = formatFooterDateTime(ticketDate, createdAt, departure);
-  const dash = "- ".repeat(paperWidth === "58mm" ? 16 : 22);
+  const dash = ""; // solid line via CSS border
 
   // Build item rows
   const itemRows = items
@@ -143,10 +143,11 @@ function buildReceiptHtml(data: ReceiptData, logoBase64: string | null, qrBase64
       const amtStr = item.amount.toFixed(2);
       const lines: string[] = [];
       // Main line: description  qty  rate  levy  amount
+      const qtyStr = Number.isInteger(item.quantity) ? String(item.quantity) : item.quantity.toFixed(2);
       lines.push(
         `<tr>` +
           `<td>${escHtml(item.name)}</td>` +
-          `<td class="r">${item.quantity.toFixed(2)}</td>` +
+          `<td class="r">${qtyStr}</td>` +
           `<td class="r">${item.rate.toFixed(2)}</td>` +
           `<td class="r">${item.levy.toFixed(2)}</td>` +
           `<td class="r">${amtStr}</td>` +
@@ -163,11 +164,11 @@ function buildReceiptHtml(data: ReceiptData, logoBase64: string | null, qrBase64
     .join("");
 
   const logoHtml = logoBase64
-    ? `<img src="${logoBase64}" style="width:80px;height:auto;margin:0 auto 4px;display:block;" />`
+    ? `<img src="${logoBase64}" style="width:100px;height:auto;margin:0 auto 6px;display:block;" />`
     : "";
 
   const qrHtml = qrBase64
-    ? `<img src="${qrBase64}" style="width:100px;height:100px;margin:0 auto;display:block;" />`
+    ? `<img src="${qrBase64}" style="width:120px;height:120px;margin:0 auto;display:block;" />`
     : "";
 
   return `<!DOCTYPE html>
@@ -177,20 +178,22 @@ function buildReceiptHtml(data: ReceiptData, logoBase64: string | null, qrBase64
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
     font-family: "Courier New", Courier, monospace;
-    font-size: ${paperWidth === "58mm" ? "11px" : "12px"};
+    font-size: ${paperWidth === "58mm" ? "13px" : "15px"};
+    font-weight: 700;
     width: ${widthMm}mm;
     padding: 3mm 2mm;
-    line-height: 1.3;
+    line-height: 1.4;
     color: #000;
+    -webkit-print-color-adjust: exact;
   }
   .center { text-align: center; }
-  .bold { font-weight: bold; }
-  .dash { letter-spacing: 1px; color: #666; overflow: hidden; white-space: nowrap; }
+  .bold { font-weight: 900; }
+  .dash { border-top: 2px solid #000; margin: 4px 0; }
   table { width: 100%; border-collapse: collapse; }
-  td { padding: 1px 0; vertical-align: top; }
+  td { padding: 2px 3px; vertical-align: top; white-space: nowrap; }
   .r { text-align: right; }
   .header-line { display: flex; justify-content: space-between; }
-  .note { font-size: ${paperWidth === "58mm" ? "9px" : "10px"}; }
+  .note { font-size: ${paperWidth === "58mm" ? "11px" : "13px"}; }
   @media print {
     body { margin: 0; padding: 3mm 2mm; }
   }
