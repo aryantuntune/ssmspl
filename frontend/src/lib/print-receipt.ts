@@ -183,10 +183,12 @@ function buildReceiptHtml(data: ReceiptData, logoBase64: string | null, qrBase64
   .center { text-align: center; }
   .bold { font-weight: 900; }
   .dash { border-top: 2px solid #000; margin: 2px 0; }
-  table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-  td { padding: 0 1px; vertical-align: top; overflow: hidden; }
-  td:first-child { width: 40%; font-size: ${paperWidth === "58mm" ? "10px" : "11px"}; }
-  td.r { width: 15%; white-space: nowrap; }
+  table { width: 100%; border-collapse: collapse; }
+  col.desc { width: auto; }
+  col.num { width: ${paperWidth === "58mm" ? "36px" : "44px"}; }
+  col.amt { width: ${paperWidth === "58mm" ? "42px" : "50px"}; }
+  td { padding: 0 1px; vertical-align: top; }
+  td.r { text-align: right; white-space: nowrap; }
   .r { text-align: right; }
   .header-line { display: flex; justify-content: space-between; }
   .note { font-size: ${paperWidth === "58mm" ? "8px" : "9px"}; line-height: 1.1; }
@@ -204,10 +206,9 @@ ${logoHtml}
 <div class="header-line"><span>CASH MEMO NO: ${ticketNo}</span><span>DATE: ${dateStr}</span></div>
 <div class="dash"></div>
 <table>
+<colgroup><col class="desc"/><col class="num"/><col class="num"/><col class="num"/><col class="amt"/></colgroup>
 <tr class="bold"><td>Description</td><td class="r">Qty</td><td class="r">Rate</td><td class="r">Levy</td><td class="r">Amount</td></tr>
-</table>
-<div class="dash"></div>
-<table>
+<tr><td colspan="5"><div class="dash"></div></td></tr>
 ${itemRows}
 </table>
 <div class="dash"></div>
