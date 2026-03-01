@@ -138,16 +138,14 @@ function buildReceiptHtml(data: ReceiptData, logoBase64: string | null, qrBase64
   // Build item rows — single row per item
   const itemRows = items
     .map((item) => {
-      const amtStr = item.amount.toFixed(2);
-      const qtyStr = Number.isInteger(item.quantity) ? String(item.quantity) : item.quantity.toFixed(2);
       const lines: string[] = [];
       lines.push(
         `<tr>` +
           `<td>${escHtml(item.name)}</td>` +
-          `<td class="r">${qtyStr}</td>` +
-          `<td class="r">${item.rate.toFixed(2)}</td>` +
-          `<td class="r">${item.levy.toFixed(2)}</td>` +
-          `<td class="r">${amtStr}</td>` +
+          `<td class="r">${fmtNum(item.quantity)}</td>` +
+          `<td class="r">${fmtNum(item.rate)}</td>` +
+          `<td class="r">${fmtNum(item.levy)}</td>` +
+          `<td class="r">${fmtNum(item.amount)}</td>` +
           `</tr>`
       );
       if (item.vehicleNo) {
@@ -164,7 +162,7 @@ function buildReceiptHtml(data: ReceiptData, logoBase64: string | null, qrBase64
     : "";
 
   const qrHtml = qrBase64
-    ? `<img src="${qrBase64}" style="width:100px;height:100px;margin:0 auto;display:block;" />`
+    ? `<img src="${qrBase64}" style="width:140px;height:140px;margin:0 auto;display:block;" />`
     : "";
 
   return `<!DOCTYPE html>
@@ -177,21 +175,21 @@ function buildReceiptHtml(data: ReceiptData, logoBase64: string | null, qrBase64
     font-size: ${paperWidth === "58mm" ? "11px" : "12px"};
     font-weight: 700;
     width: ${widthMm}mm;
-    padding: 3mm 2mm;
-    line-height: 1.3;
+    padding: 2mm 2mm;
+    line-height: 1.2;
     color: #000;
     -webkit-print-color-adjust: exact;
   }
   .center { text-align: center; }
   .bold { font-weight: 900; }
-  .dash { border-top: 2px solid #000; margin: 3px 0; }
+  .dash { border-top: 2px solid #000; margin: 2px 0; }
   table { width: 100%; border-collapse: collapse; }
-  td { padding: 1px 2px; vertical-align: top; }
+  td { padding: 0 2px; vertical-align: top; }
   .r { text-align: right; }
   .header-line { display: flex; justify-content: space-between; }
   .note { font-size: ${paperWidth === "58mm" ? "9px" : "10px"}; }
   @media print {
-    body { margin: 0; padding: 3mm 2mm; }
+    body { margin: 0; padding: 2mm 2mm; }
   }
 </style></head><body>
 ${logoHtml}
@@ -211,7 +209,7 @@ ${logoHtml}
 ${itemRows}
 </table>
 <div class="dash"></div>
-<div class="header-line"><span class="bold">NET TOTAL WITH GOVT.TAX. :</span><span class="bold">${netAmount.toFixed(2)}</span></div>
+<div class="header-line"><span class="bold">NET TOTAL WITH GOVT.TAX. :</span><span class="bold">${fmtNum(netAmount)}</span></div>
 <div class="dash"></div>
 <div class="note">NOTE: Tantrik Durustimule Velevar na sutlyas</div>
 <div class="note">va ushira pohochlyas company jababdar rahanar</div>
@@ -221,7 +219,7 @@ ${itemRows}
 <div class="dash"></div>
 <div class="header-line"><span>DATE: ${footerDateTime}</span><span>BY: ${escHtml(createdBy)}</span></div>
 <div>CASH MEMO NO: ${ticketNo}</div>
-<div class="header-line"><span>NET TOTAL WITH GOVT.TAX. :</span><span class="bold">${netAmount.toFixed(2)}</span></div>
+<div class="header-line"><span>NET TOTAL WITH GOVT.TAX. :</span><span class="bold">${fmtNum(netAmount)}</span></div>
 <div class="dash"></div>
 ${qrHtml}
 </body></html>`;
@@ -229,6 +227,11 @@ ${qrHtml}
 
 function escHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+/** Format number: drop .00 decimals, keep non-zero decimals */
+function fmtNum(n: number): string {
+  return n % 1 === 0 ? String(n) : n.toFixed(2);
 }
 
 // ── Print via hidden iframe ──
