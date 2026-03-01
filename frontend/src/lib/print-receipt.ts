@@ -135,28 +135,27 @@ function buildReceiptHtml(data: ReceiptData, logoBase64: string | null, qrBase64
   const time = formatReceiptTime(createdAt, departure);
   const dateStr = formatReceiptDate(ticketDate);
   const footerDateTime = formatFooterDateTime(ticketDate, createdAt, departure);
-  const dash = ""; // solid line via CSS border
-
-  // Build item rows
+  // Build item rows — two-row layout per item for narrow paper
   const itemRows = items
     .map((item) => {
       const amtStr = item.amount.toFixed(2);
-      const lines: string[] = [];
-      // Main line: description  qty  rate  levy  amount
       const qtyStr = Number.isInteger(item.quantity) ? String(item.quantity) : item.quantity.toFixed(2);
+      const lines: string[] = [];
+      // Row 1: description (full width)
+      lines.push(`<tr><td colspan="4" class="desc">${escHtml(item.name)}</td></tr>`);
+      // Row 2: qty, rate, levy, amount (right-aligned numbers)
       lines.push(
         `<tr>` +
-          `<td>${escHtml(item.name)}</td>` +
-          `<td class="r">${qtyStr}</td>` +
-          `<td class="r">${item.rate.toFixed(2)}</td>` +
-          `<td class="r">${item.levy.toFixed(2)}</td>` +
-          `<td class="r">${amtStr}</td>` +
+          `<td class="r num">${qtyStr}</td>` +
+          `<td class="r num">${item.rate.toFixed(2)}</td>` +
+          `<td class="r num">${item.levy.toFixed(2)}</td>` +
+          `<td class="r num">${amtStr}</td>` +
           `</tr>`
       );
       // Vehicle number sub-line
       if (item.vehicleNo) {
         lines.push(
-          `<tr><td colspan="5" style="padding-left:8px;">&nbsp;&nbsp;${escHtml(item.vehicleNo)}</td></tr>`
+          `<tr><td colspan="4" style="padding-left:8px;">&nbsp;&nbsp;${escHtml(item.vehicleNo)}</td></tr>`
         );
       }
       return lines.join("");
@@ -190,10 +189,13 @@ function buildReceiptHtml(data: ReceiptData, logoBase64: string | null, qrBase64
   .bold { font-weight: 900; }
   .dash { border-top: 2px solid #000; margin: 4px 0; }
   table { width: 100%; border-collapse: collapse; }
-  td { padding: 2px 3px; vertical-align: top; white-space: nowrap; }
+  td { padding: 2px 2px; vertical-align: top; }
+  td.num { white-space: nowrap; }
+  td.desc { padding-bottom: 0; }
   .r { text-align: right; }
-  .header-line { display: flex; justify-content: space-between; }
+  .row { display: flex; justify-content: space-between; }
   .note { font-size: ${paperWidth === "58mm" ? "11px" : "13px"}; }
+  .total-line { display: flex; justify-content: space-between; align-items: baseline; }
   @media print {
     body { margin: 0; padding: 3mm 2mm; }
   }
@@ -204,29 +206,31 @@ ${logoHtml}
 <div class="center bold">${escHtml(branchName.toUpperCase())}</div>
 <div class="center">MAHARASHTRA MARITIME BOARD APPROVAL</div>
 <div class="center bold">${escHtml(fromTo)}</div>
-<div class="header-line"><span>Ph: ${escHtml(branchPhone)}</span><span>TIME: ${time}</span></div>
-<div class="header-line"><span>CASH MEMO NO: ${ticketNo}</span><span>DATE: ${dateStr}</span></div>
-<div class="dash">${dash}</div>
+<div>Ph: ${escHtml(branchPhone)}</div>
+<div class="row"><span>TIME: ${time}</span><span>DATE: ${dateStr}</span></div>
+<div>CASH MEMO NO: ${ticketNo}</div>
+<div class="dash"></div>
 <table>
 <tr class="bold"><td>Description</td><td class="r">Qty</td><td class="r">Rate</td><td class="r">Levy</td><td class="r">Amount</td></tr>
 </table>
-<div class="dash">${dash}</div>
+<div class="dash"></div>
 <table>
 ${itemRows}
 </table>
-<div class="dash">${dash}</div>
-<div class="header-line"><span class="bold">NET TOTAL WITH GOVT.TAX. :</span><span class="bold">${netAmount.toFixed(2)}</span></div>
-<div class="dash">${dash}</div>
+<div class="dash"></div>
+<div class="total-line"><span class="bold">NET TOTAL WITH GOVT.TAX.&nbsp;:</span><span class="bold">${netAmount.toFixed(2)}</span></div>
+<div class="dash"></div>
 <div class="note">NOTE: Tantrik Durustimule Velevar na sutlyas</div>
 <div class="note">va ushira pohochlyas company jababdar rahanar</div>
 <div class="note">nahi.</div>
 <div class="note">Ferry Boatit TICKET DAKHVAVE.</div>
 <div class="center note">HAPPY JOURNEY - www.carferry.online</div>
-<div class="dash">${dash}</div>
-<div class="header-line"><span>DATE: ${footerDateTime}</span><span>BY: ${escHtml(createdBy)}</span></div>
+<div class="dash"></div>
+<div class="row"><span>DATE: ${footerDateTime}</span></div>
+<div class="row"><span>BY: ${escHtml(createdBy)}</span></div>
 <div>CASH MEMO NO: ${ticketNo}</div>
-<div class="header-line"><span>NET TOTAL WITH GOVT.TAX. :</span><span class="bold">${netAmount.toFixed(2)}</span></div>
-<div class="dash">${dash}</div>
+<div class="total-line"><span>NET TOTAL WITH GOVT.TAX.&nbsp;:</span><span class="bold">${netAmount.toFixed(2)}</span></div>
+<div class="dash"></div>
 ${qrHtml}
 </body></html>`;
 }
