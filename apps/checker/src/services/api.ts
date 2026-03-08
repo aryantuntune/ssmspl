@@ -10,7 +10,7 @@ import { logger } from '../utils/logger';
 
 const BASE_URL =
   Constants.expoConfig?.extra?.apiUrl ||
-  (__DEV__ ? 'http://10.0.2.2:8000' : 'https://api.ssmspl.com');
+  (__DEV__ ? 'http://10.0.2.2:8000' : 'https://api.carferry.online');
 
 const api = axios.create({
   baseURL: BASE_URL,
