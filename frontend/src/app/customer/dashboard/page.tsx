@@ -66,17 +66,22 @@ export default function BookingPage() {
   const [errorTitle, setErrorTitle] = useState("Missing Details");
   const [submitting, setSubmitting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [paymentSimulated, setPaymentSimulated] = useState(false);
 
-  // Check for success param and set default date
+  // Check for success param, set default date, check payment config
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("success")) {
       setShowSuccess(true);
-      // Clean up the URL
       window.history.replaceState({}, "", window.location.pathname);
     }
     const today = new Date().toISOString().split("T")[0];
     setTravelDate(today);
+
+    // Check if payment gateway is in simulation mode
+    api.get("/api/portal/payment/config")
+      .then((res) => setPaymentSimulated(!res.data.configured))
+      .catch(() => {});
   }, []);
 
   // Load branches on mount
@@ -280,7 +285,8 @@ export default function BookingPage() {
   const handleConfirmBooking = async () => {
     setSubmitting(true);
     try {
-      const res = await api.post("/api/portal/bookings", {
+      // Step 1: Create booking
+      const bookingRes = await api.post("/api/portal/bookings", {
         from_branch_id: parseInt(fromBranch),
         to_branch_id: parseInt(toBranch),
         travel_date: travelDate,
@@ -291,9 +297,47 @@ export default function BookingPage() {
           vehicle_no: item.vehicle_no || undefined,
         })),
       });
-      setShowPreview(false);
-      // Redirect to booking detail page for payment
-      window.location.href = `/customer/history/${res.data.id}`;
+
+      const bookingId = bookingRes.data.id;
+
+      // Step 2: Immediately create payment order
+      try {
+        const payRes = await api.post("/api/portal/payment/create-order", {
+          booking_id: bookingId,
+          platform: "web",
+        });
+
+        setShowPreview(false);
+
+        if (payRes.data.simulated) {
+          // Simulated mode — GET redirect to mock checkout
+          window.location.href = payRes.data.ccavenue_url;
+        } else {
+          // Real CCAvenue — create hidden form and POST
+          const form = document.createElement("form");
+          form.method = "POST";
+          form.action = payRes.data.ccavenue_url;
+
+          const encInput = document.createElement("input");
+          encInput.type = "hidden";
+          encInput.name = "encRequest";
+          encInput.value = payRes.data.enc_request;
+          form.appendChild(encInput);
+
+          const codeInput = document.createElement("input");
+          codeInput.type = "hidden";
+          codeInput.name = "access_code";
+          codeInput.value = payRes.data.access_code;
+          form.appendChild(codeInput);
+
+          document.body.appendChild(form);
+          form.submit();
+        }
+      } catch {
+        // Payment creation failed but booking was created — send to history page
+        setShowPreview(false);
+        window.location.href = `/customer/history/${bookingId}`;
+      }
     } catch (error: unknown) {
       const axiosDetail = (error as { response?: { data?: { detail?: string | object[] } } })
         ?.response?.data?.detail;
@@ -778,6 +822,16 @@ export default function BookingPage() {
                 </div>
               </div>
 
+              {/* Simulation mode indicator */}
+              {paymentSimulated && (
+                <div className="mx-6 mt-4 px-4 py-2.5 rounded-xl bg-amber-50 border border-amber-200 flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                  <p className="text-xs text-amber-700">
+                    <span className="font-semibold">Test Mode:</span> Payment will be simulated. No real charges.
+                  </p>
+                </div>
+              )}
+
               {/* Footer */}
               <div className="p-6 border-t border-slate-100 bg-slate-50 flex flex-col sm:flex-row gap-3">
                 <button
@@ -789,14 +843,14 @@ export default function BookingPage() {
                 <button
                   onClick={handleConfirmBooking}
                   disabled={submitting}
-                  className="flex-1 py-3 rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 font-bold text-slate-900 flex items-center justify-center gap-2 disabled:opacity-50"
+                  className="flex-1 py-3 rounded-xl bg-gradient-to-r from-green-500 to-emerald-600 font-bold text-white flex items-center justify-center gap-2 disabled:opacity-50"
                 >
                   {submitting ? (
                     <Loader2 className="w-5 h-5 animate-spin" />
                   ) : (
                     <>
                       <CheckCircle className="w-5 h-5" />
-                      <span>Confirm Booking</span>
+                      <span>Confirm & Pay ₹{grandTotal.toFixed(2)}</span>
                     </>
                   )}
                 </button>
