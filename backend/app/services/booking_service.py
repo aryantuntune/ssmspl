@@ -519,7 +519,7 @@ async def create_booking(
         net_amount=net_amount,
         route_id=route.id,
         portal_user_id=portal_user.id,
-        status="PENDING",
+        status="CONFIRMED",
         verification_code=uuid_mod.uuid4(),
     )
     db.add(booking)

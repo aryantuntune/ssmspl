@@ -40,7 +40,7 @@ function App() {
     return () => sub.remove();
   }, []);
 
-  // Handle ssmspl://payment-callback deep link from SabPaisa payment flow
+  // Handle ssmspl://payment-callback deep link from payment gateway flow
   useEffect(() => {
     const handleDeepLink = (event: { url: string }) => {
       try {
