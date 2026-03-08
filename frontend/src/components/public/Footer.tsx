@@ -55,7 +55,7 @@ export default function Footer() {
           {/* Operating Hours */}
           <div className="text-center">
             <h4 className="font-bold text-white mb-3 text-lg">Operating Hours</h4>
-            <p className="text-white/90 text-sm">9:00 AM - 5:00 PM</p>
+            <p className="text-white/90 text-sm">6:00 AM - 10:00 PM</p>
             <p className="text-white/90 text-sm">Open 7 Days a Week</p>
           </div>
         </div>
@@ -105,6 +105,8 @@ export default function Footer() {
               <li><Link href="/route/dighi-agardande" className="text-gray-400 hover:text-amber-400 transition-colors">Dighi - Agardande</Link></li>
               <li><Link href="/route/veshvi-bagmandale" className="text-gray-400 hover:text-amber-400 transition-colors">Veshvi - Bagmandale</Link></li>
               <li><Link href="/route/vasai-bhayander" className="text-gray-400 hover:text-amber-400 transition-colors">Vasai - Bhayander</Link></li>
+              <li><Link href="/route/ambet-mahpral" className="text-gray-400 hover:text-amber-400 transition-colors">Ambet - Mahpral</Link></li>
+              <li><Link href="/route/virar-saphale" className="text-gray-400 hover:text-amber-400 transition-colors">Virar - Saphale</Link></li>
             </ul>
           </div>
 

@@ -30,6 +30,14 @@ const ROUTES = [
     name: "Vasai \u2013 Bhayander",
     phones: ["8624063900", "8600314710"],
   },
+  {
+    name: "Ambet \u2013 Mahpral",
+    phones: ["+91 9422431371"],
+  },
+  {
+    name: "Virar \u2013 Saphale",
+    phones: ["+91 9422431371"],
+  },
 ];
 
 /* ------------------------------------------------------------------ */
@@ -453,7 +461,7 @@ export default function ContactPage() {
                 iconBg="bg-purple-100"
                 title="Operating Hours"
               >
-                <p>Monday - Sunday: 9:00 AM - 5:00 PM</p>
+                <p>Monday - Sunday: 6:00 AM - 10:00 PM</p>
                 <p>Open all 7 days of the week</p>
               </ContactInfoCard>
             </div>

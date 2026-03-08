@@ -46,6 +46,13 @@ const ROUTES = [
     description:
       "Connecting coastal communities with reliable ferry services for passengers and vehicles.",
   },
+  {
+    name: "Virar – Saphale",
+    slug: "virar-saphale",
+    image: null,
+    description:
+      "Also known as Jalsar, this route connects Virar and Saphale under the Sagarmala Project.",
+  },
 ];
 
 const SERVICES = [
@@ -101,7 +108,7 @@ const WHY_CHOOSE_US = [
     ),
   },
   {
-    title: "6 Major Routes",
+    title: "7 Major Routes",
     description: "Extensive network connecting key destinations across Maharashtra.",
     icon: (
       <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -124,7 +131,7 @@ export default function HomePage() {
   return (
     <div>
       {/* Hero Section */}
-      <section className="relative bg-[#0c3547] overflow-hidden">
+      <section className="relative bg-[#0c3547] overflow-hidden min-h-screen flex items-center">
         {/* Background Video */}
         <video
           autoPlay
@@ -138,7 +145,7 @@ export default function HomePage() {
         {/* Dark overlay for text readability */}
         <div className="absolute inset-0 bg-black/50" />
 
-        <div className="relative max-w-7xl mx-auto px-4 py-24 md:py-32 text-center">
+        <div className="relative max-w-7xl mx-auto px-4 py-24 md:py-32 text-center w-full">
           <div className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-sm px-4 py-2 rounded-full mb-6">
             <svg className="w-4 h-4 text-amber-400" fill="currentColor" viewBox="0 0 24 24">
               <path d="M20 21c-1.39 0-2.78-.47-4-1.32-2.44 1.71-5.56 1.71-8 0C6.78 20.53 5.39 21 4 21H2v-2h2c1.38 0 2.74-.35 4-.99 2.52 1.29 5.48 1.29 8 0 1.26.65 2.62.99 4 .99h2v2h-2zM3.95 19H4c1.6 0 3.02-.88 4-2 .98 1.12 2.4 2 4 2s3.02-.88 4-2c.98 1.12 2.4 2 4 2h.05l1.89-6.68c.08-.26.06-.54-.06-.78s-.34-.42-.6-.5L20 10.62V6c0-1.1-.9-2-2-2h-3V1H9v3H6c-1.1 0-2 .9-2 2v4.62l-1.29.42a1.007 1.007 0 00-.66 1.28L3.95 19zM6 6h12v3.97L12 8 6 9.97V6z" />
@@ -200,13 +207,21 @@ export default function HomePage() {
                 key={route.name}
                 className="group bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 overflow-hidden border border-gray-100"
               >
-                <div className="relative h-48 overflow-hidden">
-                  <Image
-                    src={route.image}
-                    alt={route.name}
-                    fill
-                    className="object-cover group-hover:scale-105 transition-transform duration-500"
-                  />
+                <div className="relative h-48 overflow-hidden bg-gradient-to-br from-[#0c3547] to-[#1a6b8a]">
+                  {route.image ? (
+                    <Image
+                      src={route.image}
+                      alt={route.name}
+                      fill
+                      className="object-cover group-hover:scale-105 transition-transform duration-500"
+                    />
+                  ) : (
+                    <div className="flex items-center justify-center h-full">
+                      <svg className="w-16 h-16 text-white/20" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M20 21c-1.39 0-2.78-.47-4-1.32-2.44 1.71-5.56 1.71-8 0C6.78 20.53 5.39 21 4 21H2v-2h2c1.38 0 2.74-.35 4-.99 2.52 1.29 5.48 1.29 8 0 1.26.65 2.62.99 4 .99h2v2h-2zM3.95 19H4c1.6 0 3.02-.88 4-2 .98 1.12 2.4 2 4 2s3.02-.88 4-2c.98 1.12 2.4 2 4 2h.05l1.89-6.68c.08-.26.06-.54-.06-.78s-.34-.42-.6-.5L20 10.62V6c0-1.1-.9-2-2-2h-3V1H9v3H6c-1.1 0-2 .9-2 2v4.62l-1.29.42a1.007 1.007 0 00-.66 1.28L3.95 19zM6 6h12v3.97L12 8 6 9.97V6z" />
+                      </svg>
+                    </div>
+                  )}
                   <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
                   <div className="absolute bottom-3 left-3">
                     <span className="bg-gradient-to-r from-amber-500 to-orange-500 text-white text-xs font-bold px-3 py-1 rounded-full">
@@ -311,7 +326,7 @@ export default function HomePage() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
               {[
                 { value: "20+", label: "Years of Service" },
-                { value: "6", label: "Active Routes" },
+                { value: "7", label: "Active Routes" },
                 { value: "65+", label: "Employees" },
                 { value: "1M+", label: "Passengers Served" },
               ].map((stat) => (
@@ -368,7 +383,7 @@ export default function HomePage() {
               <p className="text-gray-300 leading-relaxed mb-4">
                 Our first venture was the Dabhol-Dhopave ferry service - the
                 first Ferry Boat Service in Maharashtra. Since then, we have
-                expanded to operate 6 routes across the Konkan coast, serving
+                expanded to operate 7 routes across the Konkan coast, serving
                 thousands of passengers daily.
               </p>
               <p className="text-gray-300 leading-relaxed mb-6">
@@ -388,7 +403,7 @@ export default function HomePage() {
                   <svg className="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                   </svg>
-                  <span className="text-sm font-medium text-white">6 Active Routes</span>
+                  <span className="text-sm font-medium text-white">7 Active Routes</span>
                 </div>
                 <div className="flex items-center gap-2 bg-white/10 px-4 py-2 rounded-lg">
                   <svg className="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
