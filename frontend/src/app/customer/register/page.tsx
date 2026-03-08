@@ -20,6 +20,33 @@ import {
   XCircle,
 } from "lucide-react";
 
+// Password complexity checks
+const passwordChecks = (pw: string) => ({
+  length: pw.length >= 8,
+  uppercase: /[A-Z]/.test(pw),
+  lowercase: /[a-z]/.test(pw),
+  digit: /\d/.test(pw),
+  special: /[!@#$%^&*(),.?":{}|<>_\-+=\[\]\\\/~`]/.test(pw),
+});
+
+const parseErrorDetail = (detail: unknown): string => {
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    const messages = detail
+      .map((e: { loc?: string[]; msg?: string }) => {
+        const field = e.loc?.slice(-1)[0]; // last element e.g. "password", "email"
+        const msg = e.msg?.replace(/^Value error, /, "") || "Invalid value";
+        if (field && field !== "__root__") {
+          const label = field.replace(/_/g, " ");
+          return `${label.charAt(0).toUpperCase() + label.slice(1)}: ${msg}`;
+        }
+        return msg;
+      });
+    return messages.join("\n");
+  }
+  return "Something went wrong. Please try again.";
+};
+
 export default function CustomerRegisterPage() {
   const router = useRouter();
   const [formData, setFormData] = useState({
@@ -63,6 +90,10 @@ export default function CustomerRegisterPage() {
     setAlert((prev) => ({ ...prev, show: false }));
   };
 
+  const pw = passwordChecks(formData.password);
+  const allPasswordChecksPass =
+    pw.length && pw.uppercase && pw.lowercase && pw.digit && pw.special;
+
   const handleSubmit = async () => {
     if (
       !formData.first_name ||
@@ -75,11 +106,11 @@ export default function CustomerRegisterPage() {
       return;
     }
 
-    if (formData.password.length < 8) {
+    if (!allPasswordChecksPass) {
       showAlertModal(
         "error",
         "Weak Password",
-        "Password must be at least 8 characters."
+        "Password must be at least 8 characters and include uppercase, lowercase, a number, and a special character."
       );
       return;
     }
@@ -99,21 +130,21 @@ export default function CustomerRegisterPage() {
       }, 2000);
     } catch (err: unknown) {
       setLoading(false);
-      const detail = (
-        err as { response?: { data?: { detail?: unknown } } }
-      )?.response?.data?.detail;
-      if (typeof detail === "string") {
-        showAlertModal(
-          "error",
-          "Registration Failed",
-          detail,
-          detail.includes("already")
-        );
+      const resp = (err as { response?: { status?: number; data?: { detail?: unknown } } })?.response;
+      const detail = resp?.data?.detail;
+      const message = parseErrorDetail(detail);
+      const isAlreadyRegistered = typeof detail === "string" && detail.includes("already");
+
+      if (resp?.status === 422) {
+        showAlertModal("error", "Validation Error", message);
+      } else if (resp?.status === 409) {
+        showAlertModal("error", "Already Registered", message, true);
       } else {
         showAlertModal(
           "error",
-          "Error",
-          "Something went wrong. Please try again."
+          "Registration Failed",
+          message,
+          isAlreadyRegistered
         );
       }
     }
@@ -285,9 +316,36 @@ export default function CustomerRegisterPage() {
                     )}
                   </button>
                 </div>
-                <p className="text-xs text-white/40 mt-2">
-                  Must be at least 8 characters
-                </p>
+                {formData.password.length > 0 && (
+                  <div className="mt-2 space-y-1">
+                    {[
+                      { ok: pw.length, label: "At least 8 characters" },
+                      { ok: pw.uppercase, label: "One uppercase letter" },
+                      { ok: pw.lowercase, label: "One lowercase letter" },
+                      { ok: pw.digit, label: "One number" },
+                      { ok: pw.special, label: "One special character" },
+                    ].map(({ ok, label }) => (
+                      <div
+                        key={label}
+                        className={`flex items-center gap-1.5 text-xs ${
+                          ok ? "text-green-400" : "text-white/40"
+                        }`}
+                      >
+                        {ok ? (
+                          <CheckCircle className="w-3 h-3" />
+                        ) : (
+                          <XCircle className="w-3 h-3" />
+                        )}
+                        {label}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {formData.password.length === 0 && (
+                  <p className="text-xs text-white/40 mt-2">
+                    Must include uppercase, lowercase, number &amp; special character
+                  </p>
+                )}
               </div>
 
               {/* Submit Button */}
@@ -385,7 +443,7 @@ export default function CustomerRegisterPage() {
               >
                 {alert.title}
               </h2>
-              <p className="text-white/60">{alert.message}</p>
+              <p className="text-white/60 whitespace-pre-line">{alert.message}</p>
             </div>
 
             {alert.showLinks && (

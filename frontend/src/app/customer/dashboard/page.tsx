@@ -87,7 +87,17 @@ export default function BookingPage() {
         const data = res.data || [];
         setBranches(data.map((b: Record<string, unknown>) => ({ id: b.id, name: b.name })));
       })
-      .catch(() => setBranches([]));
+      .catch((err) => {
+        setBranches([]);
+        const status = err?.response?.status;
+        if (status === 401) {
+          // Token expired — interceptor will handle redirect
+        } else if (status) {
+          setErrorTitle("Loading Error");
+          setErrorMessage(`Failed to load departure points (error ${status}). Please refresh the page or try again later.`);
+          setShowError(true);
+        }
+      });
   }, []);
 
   // Load destination branches when from branch changes

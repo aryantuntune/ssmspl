@@ -19,6 +19,7 @@ class PortalUser(Base):
     mobile: Mapped[str] = mapped_column(String(60), nullable=False)
     google_id: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True, index=True)
     is_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
     remember_token: Mapped[str | None] = mapped_column(String(100), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

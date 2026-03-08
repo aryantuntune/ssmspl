@@ -156,6 +156,7 @@ CREATE TABLE IF NOT EXISTS portal_users (
     password            VARCHAR(60) NOT NULL,
     mobile              VARCHAR(60) NOT NULL,
     is_verified         BOOLEAN NOT NULL DEFAULT FALSE,
+    is_active           BOOLEAN NOT NULL DEFAULT TRUE,
     remember_token      VARCHAR(100),
     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at          TIMESTAMPTZ,

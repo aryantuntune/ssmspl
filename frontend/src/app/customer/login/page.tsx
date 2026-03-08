@@ -28,22 +28,43 @@ export default function CustomerLoginPage() {
     e.preventDefault();
     setError("");
     setUnverifiedEmail("");
+
+    if (!form.email || !form.password) {
+      setError("Please enter both email and password.");
+      return;
+    }
+
     setLoading(true);
     try {
       await api.post("/api/portal/auth/login", form);
       router.push("/customer/dashboard");
     } catch (err: unknown) {
-      const status = (err as { response?: { status?: number } })?.response?.status;
-      const detail =
-        (err as { response?: { data?: { detail?: unknown } } })?.response?.data
-          ?.detail;
-      if (status === 403 && typeof detail === "string" && detail.toLowerCase().includes("not verified")) {
+      const resp = (err as { response?: { status?: number; data?: { detail?: unknown } } })?.response;
+      const detail = resp?.data?.detail;
+
+      if (resp?.status === 403 && typeof detail === "string" && detail.toLowerCase().includes("not verified")) {
         setError(detail);
         setUnverifiedEmail(form.email);
+      } else if (resp?.status === 401) {
+        setError("Invalid email or password. Please try again.");
+      } else if (resp?.status === 422) {
+        // Pydantic validation error
+        if (Array.isArray(detail)) {
+          const messages = detail.map((e: { msg?: string }) => e.msg || "Invalid input").join(". ");
+          setError(messages);
+        } else if (typeof detail === "string") {
+          setError(detail);
+        } else {
+          setError("Please check your email and password format.");
+        }
+      } else if (resp?.status === 429) {
+        setError("Too many login attempts. Please wait a minute and try again.");
       } else if (typeof detail === "string") {
         setError(detail);
+      } else if (!resp) {
+        setError("Unable to connect to server. Please check your internet connection.");
       } else {
-        setError("Login failed. Please check your credentials.");
+        setError("Login failed. Please try again later.");
       }
     } finally {
       setLoading(false);
