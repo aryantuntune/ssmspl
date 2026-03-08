@@ -125,7 +125,7 @@ export default function BookingPage() {
       .catch(() => setToBranches([]));
   }, [fromBranch]);
 
-  // Load items and schedules when BOTH fromBranch AND toBranch are set
+  // Load items and schedules when toBranch changes (which always resets when fromBranch changes)
   useEffect(() => {
     if (!fromBranch || !toBranch) return;
 
@@ -146,7 +146,8 @@ export default function BookingPage() {
         setFerryTime("");
       })
       .catch(() => setFerrySchedules([]));
-  }, [fromBranch, toBranch]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [toBranch]);
 
   const addItem = () => {
     const newId = Math.max(...items.map((i) => i.id)) + 1;
