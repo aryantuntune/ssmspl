@@ -13,9 +13,6 @@ import logging
 import time
 import uuid
 
-from Crypto.Cipher import AES
-from Crypto.Util.Padding import pad, unpad
-
 from app.config import settings
 
 logger = logging.getLogger("ssmspl.ccavenue")
@@ -32,6 +29,13 @@ def is_configured() -> bool:
     )
 
 
+def _get_crypto():
+    """Lazy import pycryptodome — only needed when CCAvenue is actually configured."""
+    from Crypto.Cipher import AES
+    from Crypto.Util.Padding import pad, unpad
+    return AES, pad, unpad
+
+
 def _derive_key() -> bytes:
     """Derive AES-128 key as MD5 hash of the working key."""
     return hashlib.md5(settings.CCAVENUE_WORKING_KEY.encode("utf-8")).digest()
@@ -39,6 +43,7 @@ def _derive_key() -> bytes:
 
 def _encrypt(plaintext: str) -> str:
     """AES-128-CBC encrypt, PKCS7 pad, return lowercase hex string."""
+    AES, pad, _ = _get_crypto()
     key = _derive_key()
     cipher = AES.new(key, AES.MODE_CBC, _IV)
     padded = pad(plaintext.encode("utf-8"), AES.block_size)
@@ -48,6 +53,7 @@ def _encrypt(plaintext: str) -> str:
 
 def _decrypt(hex_string: str) -> str:
     """Decode hex, AES-128-CBC decrypt, PKCS7 unpad."""
+    AES, _, unpad = _get_crypto()
     key = _derive_key()
     cipher = AES.new(key, AES.MODE_CBC, _IV)
     decoded = bytes.fromhex(hex_string)
