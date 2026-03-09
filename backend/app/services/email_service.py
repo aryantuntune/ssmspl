@@ -281,3 +281,31 @@ async def send_booking_confirmation(booking: dict, to_email: str) -> None:
         logger.info(f"Booking confirmation email sent to {to_email}")
     except Exception as e:
         logger.error(f"Failed to send booking confirmation email to {to_email}: {e}")
+
+
+async def send_daily_report_email(to_emails: list[str], subject: str, html_body: str) -> None:
+    """Send daily report to multiple recipients. Fire-and-forget, logs errors."""
+    if not settings.SMTP_HOST:
+        logger.info("SMTP not configured, skipping daily report email")
+        return
+
+    for to_email in to_emails:
+        try:
+            msg = MIMEMultipart("alternative")
+            msg["Subject"] = subject
+            msg["From"] = settings.SMTP_FROM_EMAIL
+            msg["To"] = to_email
+
+            msg.attach(MIMEText(html_body, "html"))
+
+            await aiosmtplib.send(
+                msg,
+                hostname=settings.SMTP_HOST,
+                port=settings.SMTP_PORT,
+                username=settings.SMTP_USER,
+                password=settings.SMTP_PASSWORD,
+                start_tls=True,
+            )
+            logger.info(f"Daily report email sent to {to_email}")
+        except Exception as e:
+            logger.error(f"Failed to send daily report email to {to_email}: {e}")

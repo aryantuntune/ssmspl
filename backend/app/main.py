@@ -15,7 +15,7 @@ from app.config import settings
 from app.database import engine, get_db
 from app.middleware.rate_limit import limiter, rate_limit_exceeded_handler, RateLimitExceeded, SLOWAPI_AVAILABLE
 from app.middleware.security import SecurityHeadersMiddleware
-from app.routers import auth, users, boats, branches, routes, items, item_rates, ferry_schedules, payment_modes, tickets, portal_auth, company, booking, portal_bookings, reports, verification, contact, dashboard, portal_payment, portal_theme
+from app.routers import auth, users, boats, branches, routes, items, item_rates, ferry_schedules, payment_modes, tickets, portal_auth, company, booking, portal_bookings, reports, verification, contact, dashboard, portal_payment, portal_theme, settings as settings_router
 
 logger = logging.getLogger("ssmspl")
 
@@ -24,15 +24,24 @@ logger = logging.getLogger("ssmspl")
 async def lifespan(app: FastAPI):
     # --- Startup ---
     from app.services.booking_expiry_service import expiry_loop
+    from app.services.daily_report_service import daily_report_loop
+
     task = asyncio.create_task(expiry_loop())
+    report_task = asyncio.create_task(daily_report_loop())
     logger.info("Booking expiry background task started")
+    logger.info("Daily report scheduler started")
 
     yield
 
     # --- Shutdown: clean up connections ---
     task.cancel()
+    report_task.cancel()
     try:
         await task
+    except asyncio.CancelledError:
+        pass
+    try:
+        await report_task
     except asyncio.CancelledError:
         pass
     await engine.dispose()
@@ -235,6 +244,7 @@ app.include_router(contact.router)
 app.include_router(dashboard.router)
 app.include_router(portal_payment.router)
 app.include_router(portal_theme.router)
+app.include_router(settings_router.router)
 
 
 @app.get("/health", tags=["Health"])

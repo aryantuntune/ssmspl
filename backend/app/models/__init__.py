@@ -16,6 +16,7 @@ from app.models.booking_item import BookingItem
 from app.models.sys_update_log import SysUpdateLog
 from app.models.refresh_token import RefreshToken
 from app.models.payment_transaction import PaymentTransaction
+from app.models.daily_report_recipient import DailyReportRecipient
 
 __all__ = [
     "User",
@@ -37,4 +38,5 @@ __all__ = [
     "SysUpdateLog",
     "RefreshToken",
     "PaymentTransaction",
+    "DailyReportRecipient",
 ]

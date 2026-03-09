@@ -373,5 +373,17 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_item_rate_route
   WHERE applicable_from_date IS NOT NULL;
 
 -- ============================================================
+-- PATCH: Daily report recipients table
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS daily_report_recipients (
+    id SERIAL PRIMARY KEY,
+    email VARCHAR(255) NOT NULL UNIQUE,
+    label VARCHAR(100),
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- ============================================================
 -- END OF DDL
 -- ============================================================

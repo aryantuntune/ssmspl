@@ -441,6 +441,15 @@ export interface SysUpdateLog {
   updated_at: string;
 }
 
+// ── Daily report recipient types ──
+
+export interface DailyReportRecipient {
+  id: number;
+  email: string;
+  label: string | null;
+  is_active: boolean;
+}
+
 // ── Refresh token types ──
 
 export interface RefreshToken {
