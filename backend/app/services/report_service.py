@@ -717,13 +717,14 @@ async def get_branch_item_summary(
     date_to: datetime.date,
     branch_id: int | None = None,
 ) -> dict:
-    # Item rows: group by item name and effective rate (rate + levy).
+    # Item rows: group by item name, rate, and levy.
     # The "Rate" shown on the receipt includes levy so that
     # sum(net) == sum(payment mode amounts) == Ticket.net_amount total.
     q = (
         select(
             Item.name.label("item_name"),
-            (TicketItem.rate + TicketItem.levy).label("effective_rate"),
+            TicketItem.rate,
+            TicketItem.levy,
             func.coalesce(func.sum(
                 case((TicketItem.is_cancelled == False, TicketItem.quantity), else_=0)
             ), 0).label("quantity"),
@@ -732,7 +733,7 @@ async def get_branch_item_summary(
         .join(Item, Item.id == TicketItem.item_id)
         .where(Ticket.is_cancelled == False)
         .where(TicketItem.is_cancelled == False)
-        .group_by(Item.name, TicketItem.rate + TicketItem.levy)
+        .group_by(Item.name, TicketItem.rate, TicketItem.levy)
         .order_by(Item.name)
     )
     q = _apply_ticket_filters(q, date_from, date_to, branch_id)
@@ -743,11 +744,12 @@ async def get_branch_item_summary(
     grand_total = 0
     for r in result:
         qty = int(r.quantity)
-        net = r.effective_rate * qty
+        effective_rate = r.rate + r.levy
+        net = effective_rate * qty
         grand_total += net
         rows.append({
             "item_name": r.item_name,
-            "rate": r.effective_rate,
+            "rate": effective_rate,
             "quantity": qty,
             "net": net,
         })
