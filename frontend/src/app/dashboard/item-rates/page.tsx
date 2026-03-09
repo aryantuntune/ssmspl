@@ -279,7 +279,7 @@ export default function ItemRatesPage() {
     setPage(1);
   };
 
-  const hasActiveFilters = itemFilter || routeFilter || statusFilter || fromDate;
+  const hasActiveFilters = itemFilter || (!isManager && routeFilter) || statusFilter || fromDate;
 
   const columns: Column<ItemRate>[] = [
     {

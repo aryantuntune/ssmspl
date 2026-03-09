@@ -999,7 +999,10 @@ export default function TicketingPage() {
 
   const clearFilters = () => {
     setBranchFilter("");
-    setRouteFilter("");
+    // Preserve route lock for scoped users
+    if (!isRouteRestricted) {
+      setRouteFilter("");
+    }
     setDateFrom("");
     setDateTo("");
     setStatusFilter("");
@@ -1015,7 +1018,7 @@ export default function TicketingPage() {
 
   const hasActiveFilters =
     branchFilter ||
-    routeFilter ||
+    (!isRouteRestricted && routeFilter) ||
     dateFrom ||
     dateTo ||
     statusFilter ||
@@ -1101,7 +1104,8 @@ export default function TicketingPage() {
           <Button variant="ghost" size="sm" onClick={() => handleView(ticket)}>
             View
           </Button>
-          {!ticket.is_cancelled && (
+          {!ticket.is_cancelled &&
+            ["SUPER_ADMIN", "ADMIN", "MANAGER"].includes(user?.role || "") && (
             <Button
               variant="ghost"
               size="sm"
@@ -1111,7 +1115,7 @@ export default function TicketingPage() {
               <Printer className="h-4 w-4" />
             </Button>
           )}
-          {user?.role === "ADMIN" && (
+          {["SUPER_ADMIN", "ADMIN"].includes(user?.role || "") && (
             <Button variant="ghost" size="sm" onClick={() => handleEdit(ticket)}>
               Edit
             </Button>
