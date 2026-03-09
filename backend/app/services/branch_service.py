@@ -23,7 +23,11 @@ def _apply_filters(
     id_filter: int | None = None,
     id_op: str = "eq",
     id_filter_end: int | None = None,
+    branch_ids: list[int] | None = None,
 ):
+    if branch_ids is not None:
+        query = query.where(Branch.id.in_(branch_ids))
+
     if id_filter is not None:
         if id_op == "between" and id_filter_end is not None:
             query = query.where(Branch.id >= id_filter, Branch.id <= id_filter_end)
@@ -66,9 +70,10 @@ async def count_branches(
     db: AsyncSession, search: str | None = None, status: str | None = None,
     search_column: str = "all", match_type: str = "contains",
     id_filter: int | None = None, id_op: str = "eq", id_filter_end: int | None = None,
+    branch_ids: list[int] | None = None,
 ) -> int:
     query = select(func.count()).select_from(Branch)
-    query = _apply_filters(query, search, status, search_column, match_type, id_filter, id_op, id_filter_end)
+    query = _apply_filters(query, search, status, search_column, match_type, id_filter, id_op, id_filter_end, branch_ids)
     result = await db.execute(query)
     return result.scalar()
 
@@ -87,11 +92,12 @@ async def get_all_branches(
     search: str | None = None, status: str | None = None,
     search_column: str = "all", match_type: str = "contains",
     id_filter: int | None = None, id_op: str = "eq", id_filter_end: int | None = None,
+    branch_ids: list[int] | None = None,
 ) -> list[Branch]:
     column = SORTABLE_COLUMNS.get(sort_by, Branch.id)
     order = column.desc() if sort_order == "desc" else column.asc()
     query = select(Branch)
-    query = _apply_filters(query, search, status, search_column, match_type, id_filter, id_op, id_filter_end)
+    query = _apply_filters(query, search, status, search_column, match_type, id_filter, id_op, id_filter_end, branch_ids)
     query = query.order_by(order).offset(skip)
     if limit is not None:
         query = query.limit(limit)

@@ -1,9 +1,11 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.dependencies import require_roles
 from app.core.rbac import UserRole
+from app.core.route_scope import needs_route_scope
+from app.models.user import User
 from app.schemas.route import RouteCreate, RouteRead, RouteUpdate
 from app.services import route_service
 
@@ -12,6 +14,15 @@ router = APIRouter(prefix="/api/routes", tags=["Routes"])
 # Route listing is accessible to BILLING_OPERATOR too (for ticket form dropdowns)
 _route_read_roles = require_roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.BILLING_OPERATOR)
 _route_roles = require_roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER)
+
+
+def _get_scope_route_ids(user: User) -> list[int] | None:
+    """Return route IDs to filter by, or None for global roles."""
+    if not needs_route_scope(user):
+        return None
+    if not user.route_id:
+        return []
+    return [user.route_id]
 
 
 @router.get(
@@ -36,9 +47,10 @@ async def list_routes(
     id_filter_end: int | None = Query(None, ge=1, description="Range end for between operator"),
     status: str | None = Query(None, description="Filter by status: active, inactive, or all (default all)"),
     db: AsyncSession = Depends(get_db),
-    _=Depends(_route_read_roles),
+    current_user: User = Depends(_route_read_roles),
 ):
-    return await route_service.get_all_routes(db, skip, limit, sort_by, sort_order, status, branch_filter, id_filter, id_op, id_filter_end)
+    route_ids = _get_scope_route_ids(current_user)
+    return await route_service.get_all_routes(db, skip, limit, sort_by, sort_order, status, branch_filter, id_filter, id_op, id_filter_end, route_ids=route_ids)
 
 
 @router.get(
@@ -59,9 +71,10 @@ async def count_routes(
     id_filter_end: int | None = Query(None, ge=1, description="Range end for between operator"),
     status: str | None = Query(None, description="Filter by status: active, inactive, or all (default all)"),
     db: AsyncSession = Depends(get_db),
-    _=Depends(_route_read_roles),
+    current_user: User = Depends(_route_read_roles),
 ):
-    return await route_service.count_routes(db, status, branch_filter, id_filter, id_op, id_filter_end)
+    route_ids = _get_scope_route_ids(current_user)
+    return await route_service.count_routes(db, status, branch_filter, id_filter, id_op, id_filter_end, route_ids=route_ids)
 
 
 @router.post(
@@ -102,8 +115,11 @@ async def create_route(
 async def get_route(
     route_id: int,
     db: AsyncSession = Depends(get_db),
-    _=Depends(_route_roles),
+    current_user: User = Depends(_route_roles),
 ):
+    if needs_route_scope(current_user) and current_user.route_id:
+        if route_id != current_user.route_id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Route not assigned to you")
     return await route_service.get_route_by_id(db, route_id)
 
 

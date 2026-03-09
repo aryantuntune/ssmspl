@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.dependencies import require_roles
 from app.core.rbac import UserRole
-from app.core.route_scope import needs_route_scope
+from app.core.route_scope import needs_route_scope, get_route_branch_ids
 from app.models.user import User
 from app.schemas.ticket import (
     TicketCreate, TicketRead, TicketUpdate, RateLookupResponse,
@@ -109,8 +109,11 @@ async def rate_lookup(
     item_id: int = Query(..., description="Item ID"),
     route_id: int = Query(..., description="Route ID"),
     db: AsyncSession = Depends(get_db),
-    _=Depends(_ticket_roles),
+    current_user: User = Depends(_ticket_roles),
 ):
+    if needs_route_scope(current_user) and current_user.route_id:
+        if route_id != current_user.route_id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Route not assigned to you")
     return await ticket_service.get_current_rate(db, item_id, route_id)
 
 
@@ -125,8 +128,12 @@ async def rate_lookup(
 async def departure_options(
     branch_id: int = Query(..., description="Branch ID"),
     db: AsyncSession = Depends(get_db),
-    _=Depends(_ticket_roles),
+    current_user: User = Depends(_ticket_roles),
 ):
+    if needs_route_scope(current_user) and current_user.route_id:
+        b1, b2 = await get_route_branch_ids(db, current_user.route_id)
+        if branch_id not in (b1, b2):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Branch not in your assigned route")
     return await ticket_service.get_departure_options(db, branch_id)
 
 
@@ -207,9 +214,12 @@ async def create_ticket(
 async def get_ticket_qr(
     ticket_id: int,
     db: AsyncSession = Depends(get_db),
-    _=Depends(_ticket_roles),
+    current_user: User = Depends(_ticket_roles),
 ):
     ticket_data = await ticket_service.get_ticket_by_id(db, ticket_id)
+    if needs_route_scope(current_user) and current_user.route_id:
+        if ticket_data.get("route_id") != current_user.route_id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Ticket not in your assigned route")
     verification_code = ticket_data.get("verification_code")
     if not verification_code:
         raise HTTPException(
@@ -235,9 +245,13 @@ async def get_ticket_qr(
 async def get_ticket(
     ticket_id: int,
     db: AsyncSession = Depends(get_db),
-    _=Depends(_ticket_roles),
+    current_user: User = Depends(_ticket_roles),
 ):
-    return await ticket_service.get_ticket_by_id(db, ticket_id)
+    ticket_data = await ticket_service.get_ticket_by_id(db, ticket_id)
+    if needs_route_scope(current_user) and current_user.route_id:
+        if ticket_data.get("route_id") != current_user.route_id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Ticket not in your assigned route")
+    return ticket_data
 
 
 @router.patch(
@@ -257,6 +271,10 @@ async def update_ticket(
     ticket_id: int,
     body: TicketUpdate,
     db: AsyncSession = Depends(get_db),
-    _=Depends(_ticket_roles),
+    current_user: User = Depends(_ticket_roles),
 ):
+    if needs_route_scope(current_user) and current_user.route_id:
+        existing = await ticket_service.get_ticket_by_id(db, ticket_id)
+        if existing.get("route_id") != current_user.route_id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Ticket not in your assigned route")
     return await ticket_service.update_ticket(db, ticket_id, body)

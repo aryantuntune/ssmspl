@@ -1,9 +1,11 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.dependencies import require_roles
 from app.core.rbac import UserRole
+from app.core.route_scope import needs_route_scope, get_route_branch_ids
+from app.models.user import User
 from app.schemas.ferry_schedule import FerryScheduleCreate, FerryScheduleRead, FerryScheduleUpdate
 from app.services import ferry_schedule_service
 
@@ -11,6 +13,16 @@ router = APIRouter(prefix="/api/ferry-schedules", tags=["Ferry Schedules"])
 
 # Read access includes BILLING_OPERATOR (for ticket form departure dropdown)
 _read_roles = require_roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.BILLING_OPERATOR)
+
+
+async def _get_scope_branch_ids(db: AsyncSession, user: User) -> list[int] | None:
+    """Return branch IDs to filter schedules by, or None for global roles."""
+    if not needs_route_scope(user):
+        return None
+    if not user.route_id:
+        return []
+    b1, b2 = await get_route_branch_ids(db, user.route_id)
+    return [b1, b2] if b1 else []
 
 
 @router.get(
@@ -34,9 +46,10 @@ async def list_schedules(
     id_op: str = Query("eq", description="ID comparison operator: eq, lt, gt, or between"),
     id_filter_end: int | None = Query(None, ge=1, description="Range end for between operator"),
     db: AsyncSession = Depends(get_db),
-    _=Depends(_read_roles),
+    current_user: User = Depends(_read_roles),
 ):
-    return await ferry_schedule_service.get_all_schedules(db, skip, limit, sort_by, sort_order, branch_filter, id_filter, id_op, id_filter_end)
+    branch_ids = await _get_scope_branch_ids(db, current_user)
+    return await ferry_schedule_service.get_all_schedules(db, skip, limit, sort_by, sort_order, branch_filter, id_filter, id_op, id_filter_end, branch_ids=branch_ids)
 
 
 @router.get(
@@ -56,9 +69,10 @@ async def count_schedules(
     id_op: str = Query("eq", description="ID comparison operator: eq, lt, gt, or between"),
     id_filter_end: int | None = Query(None, ge=1, description="Range end for between operator"),
     db: AsyncSession = Depends(get_db),
-    _=Depends(_read_roles),
+    current_user: User = Depends(_read_roles),
 ):
-    return await ferry_schedule_service.count_schedules(db, branch_filter, id_filter, id_op, id_filter_end)
+    branch_ids = await _get_scope_branch_ids(db, current_user)
+    return await ferry_schedule_service.count_schedules(db, branch_filter, id_filter, id_op, id_filter_end, branch_ids=branch_ids)
 
 
 @router.post(
@@ -99,9 +113,14 @@ async def create_schedule(
 async def get_schedule(
     schedule_id: int,
     db: AsyncSession = Depends(get_db),
-    _=Depends(_read_roles),
+    current_user: User = Depends(_read_roles),
 ):
-    return await ferry_schedule_service.get_schedule_by_id(db, schedule_id)
+    schedule = await ferry_schedule_service.get_schedule_by_id(db, schedule_id)
+    if needs_route_scope(current_user) and current_user.route_id:
+        b1, b2 = await get_route_branch_ids(db, current_user.route_id)
+        if schedule["branch_id"] not in (b1, b2):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Schedule not in your assigned route")
+    return schedule
 
 
 @router.patch(

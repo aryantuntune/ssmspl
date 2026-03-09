@@ -44,7 +44,11 @@ def _apply_filters(
     id_filter: int | None = None,
     id_op: str = "eq",
     id_filter_end: int | None = None,
+    route_ids: list[int] | None = None,
 ):
+    if route_ids is not None:
+        query = query.where(Route.id.in_(route_ids))
+
     if id_filter is not None:
         if id_op == "between" and id_filter_end is not None:
             query = query.where(Route.id >= id_filter, Route.id <= id_filter_end)
@@ -72,9 +76,10 @@ async def count_routes(
     db: AsyncSession, status_filter: str | None = None,
     branch_filter: int | None = None,
     id_filter: int | None = None, id_op: str = "eq", id_filter_end: int | None = None,
+    route_ids: list[int] | None = None,
 ) -> int:
     query = select(func.count()).select_from(Route)
-    query = _apply_filters(query, status_filter, branch_filter, id_filter, id_op, id_filter_end)
+    query = _apply_filters(query, status_filter, branch_filter, id_filter, id_op, id_filter_end, route_ids)
     result = await db.execute(query)
     return result.scalar()
 
@@ -92,6 +97,7 @@ async def get_all_routes(
     status_filter: str | None = None,
     branch_filter: int | None = None,
     id_filter: int | None = None, id_op: str = "eq", id_filter_end: int | None = None,
+    route_ids: list[int] | None = None,
 ) -> list[dict]:
     column = SORTABLE_COLUMNS.get(sort_by, Route.id)
     order = column.desc() if sort_order == "desc" else column.asc()
@@ -109,7 +115,7 @@ async def get_all_routes(
         .join(BranchOne, BranchOne.c.id == Route.branch_id_one)
         .join(BranchTwo, BranchTwo.c.id == Route.branch_id_two)
     )
-    query = _apply_filters(query, status_filter, branch_filter, id_filter, id_op, id_filter_end)
+    query = _apply_filters(query, status_filter, branch_filter, id_filter, id_op, id_filter_end, route_ids)
     result = await db.execute(query.order_by(order).offset(skip).limit(limit))
     rows = result.all()
     return [

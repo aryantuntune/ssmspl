@@ -1,9 +1,11 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.dependencies import require_roles
 from app.core.rbac import UserRole
+from app.core.route_scope import needs_route_scope, get_route_branch_ids
+from app.models.user import User
 from app.schemas.branch import BranchCreate, BranchRead, BranchUpdate
 from app.services import branch_service
 
@@ -12,6 +14,16 @@ router = APIRouter(prefix="/api/branches", tags=["Branches"])
 # Branch listing is accessible to BILLING_OPERATOR and TICKET_CHECKER too (for form dropdowns)
 _branch_read_roles = require_roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.BILLING_OPERATOR, UserRole.TICKET_CHECKER)
 _branch_roles = require_roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER)
+
+
+async def _get_scope_branch_ids(db: AsyncSession, user: User) -> list[int] | None:
+    """Return branch IDs to filter by, or None for global roles."""
+    if not needs_route_scope(user):
+        return None
+    if not user.route_id:
+        return []
+    b1, b2 = await get_route_branch_ids(db, user.route_id)
+    return [b1, b2] if b1 else []
 
 
 @router.get(
@@ -38,9 +50,10 @@ async def list_branches(
     id_filter_end: int | None = Query(None, ge=1, description="Range end for between operator"),
     status: str | None = Query(None, description="Filter by status: active, inactive, or all (default all)"),
     db: AsyncSession = Depends(get_db),
-    _=Depends(_branch_read_roles),
+    current_user: User = Depends(_branch_read_roles),
 ):
-    return await branch_service.get_all_branches(db, skip, limit, sort_by, sort_order, search, status, search_column, match_type, id_filter, id_op, id_filter_end)
+    branch_ids = await _get_scope_branch_ids(db, current_user)
+    return await branch_service.get_all_branches(db, skip, limit, sort_by, sort_order, search, status, search_column, match_type, id_filter, id_op, id_filter_end, branch_ids=branch_ids)
 
 
 @router.get(
@@ -63,9 +76,10 @@ async def count_branches(
     id_filter_end: int | None = Query(None, ge=1, description="Range end for between operator"),
     status: str | None = Query(None, description="Filter by status: active, inactive, or all (default all)"),
     db: AsyncSession = Depends(get_db),
-    _=Depends(_branch_read_roles),
+    current_user: User = Depends(_branch_read_roles),
 ):
-    return await branch_service.count_branches(db, search, status, search_column, match_type, id_filter, id_op, id_filter_end)
+    branch_ids = await _get_scope_branch_ids(db, current_user)
+    return await branch_service.count_branches(db, search, status, search_column, match_type, id_filter, id_op, id_filter_end, branch_ids=branch_ids)
 
 
 @router.get(
@@ -90,12 +104,13 @@ async def export_branches(
     id_filter_end: int | None = Query(None, ge=1, description="Range end for between operator"),
     status: str | None = Query(None, description="Filter by status: active, inactive, or all (default all)"),
     db: AsyncSession = Depends(get_db),
-    _=Depends(_branch_roles),
+    current_user: User = Depends(_branch_roles),
 ):
+    branch_ids = await _get_scope_branch_ids(db, current_user)
     return await branch_service.get_all_branches(
         db, skip=0, limit=None, sort_by=sort_by, sort_order=sort_order,
         search=search, status=status, search_column=search_column, match_type=match_type,
-        id_filter=id_filter, id_op=id_op, id_filter_end=id_filter_end,
+        id_filter=id_filter, id_op=id_op, id_filter_end=id_filter_end, branch_ids=branch_ids,
     )
 
 
@@ -135,8 +150,12 @@ async def create_branch(
 async def get_branch(
     branch_id: int,
     db: AsyncSession = Depends(get_db),
-    _=Depends(_branch_roles),
+    current_user: User = Depends(_branch_roles),
 ):
+    if needs_route_scope(current_user) and current_user.route_id:
+        b1, b2 = await get_route_branch_ids(db, current_user.route_id)
+        if branch_id not in (b1, b2):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Branch not in your assigned route")
     return await branch_service.get_branch_by_id(db, branch_id)
 
 

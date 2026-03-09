@@ -48,7 +48,11 @@ def _apply_filters(
     id_filter: int | None = None,
     id_op: str = "eq",
     id_filter_end: int | None = None,
+    branch_ids: list[int] | None = None,
 ):
+    if branch_ids is not None:
+        query = query.where(FerrySchedule.branch_id.in_(branch_ids))
+
     if id_filter is not None:
         if id_op == "between" and id_filter_end is not None:
             query = query.where(FerrySchedule.id >= id_filter, FerrySchedule.id <= id_filter_end)
@@ -69,9 +73,10 @@ async def count_schedules(
     db: AsyncSession,
     branch_filter: int | None = None,
     id_filter: int | None = None, id_op: str = "eq", id_filter_end: int | None = None,
+    branch_ids: list[int] | None = None,
 ) -> int:
     query = select(func.count()).select_from(FerrySchedule)
-    query = _apply_filters(query, branch_filter, id_filter, id_op, id_filter_end)
+    query = _apply_filters(query, branch_filter, id_filter, id_op, id_filter_end, branch_ids)
     result = await db.execute(query)
     return result.scalar()
 
@@ -87,6 +92,7 @@ async def get_all_schedules(
     db: AsyncSession, skip: int = 0, limit: int = 50, sort_by: str = "id", sort_order: str = "asc",
     branch_filter: int | None = None,
     id_filter: int | None = None, id_op: str = "eq", id_filter_end: int | None = None,
+    branch_ids: list[int] | None = None,
 ) -> list[dict]:
     column = SORTABLE_COLUMNS.get(sort_by, FerrySchedule.id)
     order = column.desc() if sort_order == "desc" else column.asc()
@@ -95,7 +101,7 @@ async def get_all_schedules(
         select(FerrySchedule, Branch.name.label("branch_name"))
         .join(Branch, Branch.id == FerrySchedule.branch_id)
     )
-    query = _apply_filters(query, branch_filter, id_filter, id_op, id_filter_end)
+    query = _apply_filters(query, branch_filter, id_filter, id_op, id_filter_end, branch_ids)
     result = await db.execute(query.order_by(order).offset(skip).limit(limit))
     rows = result.all()
     return [
