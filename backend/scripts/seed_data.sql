@@ -90,7 +90,7 @@ VALUES
 ON CONFLICT (name) DO NOTHING;
 
 -- ============================================================
--- 5. ITEMS (42)
+-- 5. ITEMS (49)
 -- ============================================================
 INSERT INTO items (id, name, short_name, online_visiblity, is_vehicle, is_active)
 VALUES

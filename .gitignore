@@ -53,6 +53,7 @@ prompts/
 backup.sql
 ssmspl_db_dev_back.sql
 data/ssmspl_db.sql
+*.sql.bak
 
 # Tests (local only, not deployed)
 backend/tests/
