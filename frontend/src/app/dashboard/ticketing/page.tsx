@@ -507,10 +507,11 @@ export default function TicketingPage() {
 
   // Add item row
   const handleAddItem = useCallback(() => {
+    const newTempId = crypto.randomUUID();
     setFormItems((prev) => [
       ...prev,
       {
-        tempId: crypto.randomUUID(),
+        tempId: newTempId,
         id: null,
         item_id: 0,
         rate: 0,
@@ -521,6 +522,9 @@ export default function TicketingPage() {
         is_cancelled: false,
       },
     ]);
+    requestAnimationFrame(() => {
+      document.getElementById(`item-id-${newTempId}`)?.focus();
+    });
   }, []);
 
   // Alt+A to add item row, Alt+D to cancel/remove focused row
@@ -533,12 +537,6 @@ export default function TicketingPage() {
         // Don't add a new row if any existing row is invalid
         if (formItemsRef.current.some((fi) => isFormRowInvalid(fi, itemsRef.current))) return;
         handleAddItem();
-        setTimeout(() => {
-          const input = modalRef.current?.querySelector<HTMLInputElement>(
-            'tbody tr:last-child td:first-child input[type="number"]'
-          );
-          input?.focus();
-        }, 50);
       }
       if (e.altKey && e.code === "KeyS") {
         e.preventDefault();
@@ -1978,6 +1976,7 @@ export default function TicketingPage() {
                             >
                               <td className="px-3 py-2">
                                 <Input
+                                  id={`item-id-${fi.tempId}`}
                                   type="number"
                                   min={1}
                                   disabled={fi.is_cancelled}

@@ -23,6 +23,7 @@ from app.schemas.report import (
     BranchItemSummaryReport,
     TicketDetailsReport,
 )
+from sqlalchemy import select
 from app.services import report_service, pdf_service
 
 router = APIRouter(prefix="/api/reports", tags=["Reports"])
@@ -91,6 +92,62 @@ async def _scope_branch_only(
             )
 
     return branch_id
+
+
+@router.get(
+    "/report-users",
+    summary="Users available for report filtering",
+    description="Returns the list of users the current user is allowed to filter by in reports, "
+                "respecting role hierarchy.",
+)
+async def report_users(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(_report_roles),
+):
+    """Return users visible to the caller based on role hierarchy.
+
+    BILLING_OPERATOR -> only themselves
+    MANAGER          -> billing operators under their route
+    ADMIN            -> managers + billing operators (not SUPER_ADMIN)
+    SUPER_ADMIN      -> all users except system accounts
+    """
+    role = current_user.role
+
+    if role == UserRole.BILLING_OPERATOR:
+        return [{"id": str(current_user.id), "full_name": current_user.full_name}]
+
+    if role == UserRole.MANAGER:
+        # Get billing operators assigned to the same route as the manager
+        q = (
+            select(User.id, User.full_name)
+            .where(User.role == UserRole.BILLING_OPERATOR)
+            .where(User.is_active == True)
+            .order_by(User.full_name)
+        )
+        if current_user.route_id:
+            q = q.where(User.route_id == current_user.route_id)
+        rows = (await db.execute(q)).all()
+        return [{"id": str(r.id), "full_name": r.full_name} for r in rows]
+
+    if role == UserRole.ADMIN:
+        # Managers + billing operators (not SUPER_ADMIN)
+        q = (
+            select(User.id, User.full_name, User.role)
+            .where(User.role.in_([UserRole.MANAGER, UserRole.BILLING_OPERATOR]))
+            .where(User.is_active == True)
+            .order_by(User.full_name)
+        )
+        rows = (await db.execute(q)).all()
+        return [{"id": str(r.id), "full_name": r.full_name} for r in rows]
+
+    # SUPER_ADMIN -> all active users
+    q = (
+        select(User.id, User.full_name, User.role)
+        .where(User.is_active == True)
+        .order_by(User.full_name)
+    )
+    rows = (await db.execute(q)).all()
+    return [{"id": str(r.id), "full_name": r.full_name} for r in rows]
 
 
 @router.get(
@@ -257,8 +314,16 @@ async def user_wise_summary_report(
     current_user: User = Depends(_report_roles),
 ):
     route_id, branch_id = await _scope_route_and_branch(db, current_user, route_id, branch_id)
+    # Role hierarchy enforcement
     if current_user.role == UserRole.BILLING_OPERATOR:
         user_id = str(current_user.id)
+    elif current_user.role == UserRole.MANAGER and user_id:
+        # Validate the requested user is a billing operator under this manager's route
+        target = await db.get(User, user_id)
+        if not target or target.role != UserRole.BILLING_OPERATOR:
+            user_id = None  # Ignore invalid filter
+        elif current_user.route_id and target.route_id != current_user.route_id:
+            user_id = None  # Not under this manager's route
     return await report_service.get_user_wise_summary(db, date, branch_id, route_id, user_id)
 
 
@@ -450,6 +515,12 @@ async def get_user_wise_summary_pdf(
     route_id, branch_id = await _scope_route_and_branch(db, current_user, route_id, branch_id)
     if current_user.role == UserRole.BILLING_OPERATOR:
         user_id = str(current_user.id)
+    elif current_user.role == UserRole.MANAGER and user_id:
+        target = await db.get(User, user_id)
+        if not target or target.role != UserRole.BILLING_OPERATOR:
+            user_id = None
+        elif current_user.route_id and target.route_id != current_user.route_id:
+            user_id = None
     data = await report_service.get_user_wise_summary(db, date, branch_id, route_id, user_id)
     pdf_buf = pdf_service.generate_user_wise_summary_pdf(data)
     return StreamingResponse(
