@@ -71,6 +71,8 @@ export default function ItemRatesPage() {
   const [statusFilter, setStatusFilter] = useState("");
   const [fromDate, setFromDate] = useState("");
 
+  const abortRef = useRef<AbortController | null>(null);
+
   // Modal state
   const [showModal, setShowModal] = useState(false);
   const [editingRate, setEditingRate] = useState<ItemRate | null>(null);
@@ -116,6 +118,10 @@ export default function ItemRatesPage() {
   }, []);
 
   const fetchItemRates = useCallback(async () => {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     setTableLoading(true);
     try {
       const skip = (page - 1) * pageSize;
@@ -137,16 +143,17 @@ export default function ItemRatesPage() {
       );
 
       const [pageResp, countResp] = await Promise.all([
-        api.get<ItemRate[]>(`/api/item-rates/?${params}`),
-        api.get<number>(`/api/item-rates/count?${countParams}`),
+        api.get<ItemRate[]>(`/api/item-rates/?${params}`, { signal: controller.signal }),
+        api.get<number>(`/api/item-rates/count?${countParams}`, { signal: controller.signal }),
       ]);
       setItemRates(pageResp.data);
       setTotalCount(countResp.data as unknown as number);
       setError("");
-    } catch {
+    } catch (err) {
+      if (controller.signal.aborted) return;
       setError("Failed to load item rates.");
     } finally {
-      setTableLoading(false);
+      if (!controller.signal.aborted) setTableLoading(false);
     }
   }, [page, pageSize, sortBy, sortOrder, itemFilter, routeFilter, statusFilter, fromDate]);
 

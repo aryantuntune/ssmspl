@@ -48,6 +48,7 @@ export default function PaymentModesPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   const [showModal, setShowModal] = useState(false);
   const [editingPaymentMode, setEditingPaymentMode] = useState<PaymentMode | null>(null);
@@ -57,6 +58,10 @@ export default function PaymentModesPage() {
   const [viewPaymentMode, setViewPaymentMode] = useState<PaymentMode | null>(null);
 
   const fetchPaymentModes = useCallback(async () => {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     setTableLoading(true);
     try {
       const skip = (page - 1) * pageSize;
@@ -80,16 +85,17 @@ export default function PaymentModesPage() {
       );
 
       const [pageResp, countResp] = await Promise.all([
-        api.get<PaymentMode[]>(`/api/payment-modes/?${params}`),
-        api.get<number>(`/api/payment-modes/count?${countParams}`),
+        api.get<PaymentMode[]>(`/api/payment-modes/?${params}`, { signal: controller.signal }),
+        api.get<number>(`/api/payment-modes/count?${countParams}`, { signal: controller.signal }),
       ]);
       setPaymentModes(pageResp.data);
       setTotalCount(countResp.data as unknown as number);
       setError("");
-    } catch {
+    } catch (err) {
+      if (controller.signal.aborted) return;
       setError("Failed to load payment modes.");
     } finally {
-      setTableLoading(false);
+      if (!controller.signal.aborted) setTableLoading(false);
     }
   }, [page, pageSize, sortBy, sortOrder, search, statusFilter]);
 
