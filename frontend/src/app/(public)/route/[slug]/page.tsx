@@ -87,6 +87,8 @@ const ROUTE_DATA: Record<string, RouteInfo> = {
       { label: "Dighi", phones: ["9156546700"] },
       { label: "Agardande", phones: ["8550999887"] },
     ],
+    timetableImage: "/images/timetables/dighi-agardande.png",
+    ratecardImage: "/images/ratecards/dighi.jpg",
   },
   "veshvi-bagmandale": {
     name: "Veshvi \u2013 Bagmandale",
@@ -104,6 +106,8 @@ const ROUTE_DATA: Record<string, RouteInfo> = {
       { label: "Veshvi Office", phones: ["02350-223300"] },
       { label: "Bagmandale", phones: ["9322819161"] },
     ],
+    timetableImage: "/images/timetables/veshvi-bagmandale.jpg",
+    ratecardImage: "/images/ratecards/veshvi.jpg",
   },
   "vasai-bhayander": {
     name: "Vasai \u2013 Bhayander",
@@ -120,6 +124,8 @@ const ROUTE_DATA: Record<string, RouteInfo> = {
       { label: "Vasai Office", phones: ["8624063900"] },
       { label: "Bhayander Office", phones: ["8600314710"] },
     ],
+    timetableImage: "/images/timetables/vasai-bhayander.jpg",
+    ratecardImage: "/images/ratecards/vasai.png",
   },
   "ambet-mahpral": {
     name: "Ambet \u2013 Mahpral",
@@ -138,6 +144,7 @@ const ROUTE_DATA: Record<string, RouteInfo> = {
       { label: "Mahpral", phones: ["8624063900"] },
       { label: "Ambet", phones: ["7709250800"] },
     ],
+    timetableImage: "/images/timetables/ambet-mahpral.jpg",
   },
   "virar-saphale": {
     name: "Virar \u2013 Saphale (Jalsar)",
@@ -155,6 +162,8 @@ const ROUTE_DATA: Record<string, RouteInfo> = {
       { label: "Virar Office", phones: ["9371002900"] },
       { label: "Saphale Office", phones: ["8459803521"] },
     ],
+    timetableImage: "/images/timetables/virar-saphale.png",
+    ratecardImage: "/images/ratecards/virar.png",
   },
 };
 

@@ -82,63 +82,6 @@ const SERVICES = [
   },
 ];
 
-const WHY_CHOOSE_US = [
-  {
-    title: "Safe & Reliable",
-    description: "All our ferries meet strict safety standards with trained crew members.",
-    icon: (
-      <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-      </svg>
-    ),
-  },
-  {
-    title: "On-Time Service",
-    description: "Reliable schedules you can count on, running 7 days a week.",
-    icon: (
-      <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-      </svg>
-    ),
-  },
-  {
-    title: "Vehicle Transport",
-    description: "RORO ferries accommodate cars, bikes, and commercial vehicles.",
-    icon: (
-      <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7h8m-8 4h4m-2 4v4m-4-4h8a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v6a2 2 0 002 2z" />
-      </svg>
-    ),
-  },
-  {
-    title: "Comfortable Journey",
-    description: "Spacious seating and scenic views of the Konkan coast.",
-    icon: (
-      <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-      </svg>
-    ),
-  },
-  {
-    title: "7 Major Routes",
-    description: "Extensive network connecting key destinations across Maharashtra.",
-    icon: (
-      <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l5.447 2.724A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
-      </svg>
-    ),
-  },
-  {
-    title: "Since 2003",
-    description: "Over 20 years of trusted service to the coastal communities.",
-    icon: (
-      <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-      </svg>
-    ),
-  },
-];
-
 export default function HomePage() {
   return (
     <div>
@@ -213,8 +156,9 @@ export default function HomePage() {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {ROUTES.map((route) => (
+          {/* First row: 3 cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-6">
+            {ROUTES.slice(0, 3).map((route) => (
               <div
                 key={route.name}
                 className="group bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 overflow-hidden border border-gray-100"
@@ -264,10 +208,63 @@ export default function HomePage() {
               </div>
             ))}
           </div>
+
+          {/* Second row: 4 cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {ROUTES.slice(3).map((route) => (
+              <div
+                key={route.name}
+                className="group bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 overflow-hidden border border-gray-100"
+              >
+                <div className="relative h-40 overflow-hidden bg-gradient-to-br from-[#0c3547] to-[#1a6b8a]">
+                  {route.image ? (
+                    <Image
+                      src={route.image}
+                      alt={route.name}
+                      fill
+                      sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 25vw"
+                      className="object-cover group-hover:scale-105 transition-transform duration-500"
+                    />
+                  ) : (
+                    <div className="flex items-center justify-center h-full">
+                      <svg className="w-12 h-12 text-white/20" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M20 21c-1.39 0-2.78-.47-4-1.32-2.44 1.71-5.56 1.71-8 0C6.78 20.53 5.39 21 4 21H2v-2h2c1.38 0 2.74-.35 4-.99 2.52 1.29 5.48 1.29 8 0 1.26.65 2.62.99 4 .99h2v2h-2zM3.95 19H4c1.6 0 3.02-.88 4-2 .98 1.12 2.4 2 4 2s3.02-.88 4-2c.98 1.12 2.4 2 4 2h.05l1.89-6.68c.08-.26.06-.54-.06-.78s-.34-.42-.6-.5L20 10.62V6c0-1.1-.9-2-2-2h-3V1H9v3H6c-1.1 0-2 .9-2 2v4.62l-1.29.42a1.007 1.007 0 00-.66 1.28L3.95 19zM6 6h12v3.97L12 8 6 9.97V6z" />
+                      </svg>
+                    </div>
+                  )}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
+                  {"status" in route && route.status === "closed" && (
+                    <span className="absolute top-3 right-3 bg-red-500 text-white text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full">
+                      Closed
+                    </span>
+                  )}
+                  <div className="absolute bottom-3 left-3">
+                    <span className="bg-gradient-to-r from-amber-500 to-orange-500 text-white text-[10px] font-bold px-2.5 py-1 rounded-full">
+                      {route.name}
+                    </span>
+                  </div>
+                </div>
+                <div className="p-4">
+                  <h3 className="text-base font-bold text-slate-900 mb-1.5">
+                    {route.name}
+                  </h3>
+                  <p className="text-gray-500 text-xs leading-relaxed mb-2 line-clamp-3">
+                    {route.description}
+                  </p>
+                  <Link
+                    href={`/route/${route.slug}`}
+                    className="text-sky-600 text-xs font-semibold hover:text-sky-800 transition-colors"
+                  >
+                    Know More &rarr;
+                  </Link>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
-      {/* Our Other Services */}
+      {/* Our Other Services — Featured layout */}
       <section className="py-16 md:py-20 bg-sky-50">
         <div className="max-w-7xl mx-auto px-4">
           <div className="text-center mb-12">
@@ -279,8 +276,44 @@ export default function HomePage() {
             </h2>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {SERVICES.map((service) => (
+          {/* Featured: Cruise Service — full-width horizontal card */}
+          <div className="bg-white rounded-2xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 mb-8">
+            <div className="grid grid-cols-1 lg:grid-cols-2">
+              <div className="relative h-64 lg:h-auto lg:min-h-[380px]">
+                <Image
+                  src={SERVICES[0].image}
+                  alt={SERVICES[0].title}
+                  fill
+                  sizes="(max-width: 1024px) 100vw, 50vw"
+                  className="object-cover"
+                />
+                <div className="absolute inset-0 bg-gradient-to-r from-black/20 to-transparent lg:bg-none" />
+              </div>
+              <div className="p-8 lg:p-10 flex flex-col justify-center">
+                <span className="inline-block text-amber-600 bg-amber-50 text-xs font-bold tracking-wider uppercase px-3 py-1 rounded-full border border-amber-200 w-fit mb-4">
+                  Featured
+                </span>
+                <h3 className="text-2xl lg:text-3xl font-bold text-slate-900 mb-2">
+                  {SERVICES[0].title}
+                </h3>
+                {SERVICES[0].subtitle && (
+                  <p className="text-amber-500 font-semibold mb-4">{SERVICES[0].subtitle}</p>
+                )}
+                <p className="text-gray-600 leading-relaxed mb-4">
+                  {SERVICES[0].description}
+                </p>
+                {SERVICES[0].extra && (
+                  <p className="text-gray-500 text-sm leading-relaxed">
+                    {SERVICES[0].extra}
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Secondary services: 2-column */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            {SERVICES.slice(1).map((service) => (
               <div
                 key={service.title}
                 className="group bg-white rounded-2xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300"
@@ -290,18 +323,15 @@ export default function HomePage() {
                     src={service.image}
                     alt={service.title}
                     fill
-                    sizes="(max-width: 768px) 100vw, 33vw"
+                    sizes="(max-width: 768px) 100vw, 50vw"
                     className="object-cover group-hover:scale-105 transition-transform duration-500"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-                  <div className="absolute bottom-0 left-0 right-0 p-4">
-                    <h3 className="text-lg font-bold text-white">{service.title}</h3>
-                    {"subtitle" in service && service.subtitle && (
-                      <p className="text-amber-300 text-sm font-semibold mt-1">{service.subtitle}</p>
-                    )}
+                  <div className="absolute bottom-0 left-0 right-0 p-5">
+                    <h3 className="text-xl font-bold text-white">{service.title}</h3>
                   </div>
                 </div>
-                <div className="p-5">
+                <div className="p-6">
                   <p className="text-gray-600 text-sm leading-relaxed">
                     {service.description}
                   </p>
@@ -317,51 +347,74 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Why Choose Us */}
+      {/* Why Choose Us — 2-column: bullet points + stats */}
       <section className="py-16 md:py-20 bg-white">
         <div className="max-w-7xl mx-auto px-4">
-          <div className="text-center mb-12">
-            <span className="inline-block text-sky-600 bg-sky-50 text-xs font-bold tracking-wider uppercase px-4 py-1.5 rounded-full mb-3">
-              Why Choose Us
-            </span>
-            <h2 className="text-3xl md:text-4xl font-bold text-slate-900 mb-4">
-              The Trusted Choice for Ferry Travel
-            </h2>
-          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16 items-center">
+            {/* Left: Text with bullet points */}
+            <div>
+              <span className="inline-block text-sky-600 bg-sky-50 text-xs font-bold tracking-wider uppercase px-4 py-1.5 rounded-full mb-4">
+                Why Choose Us
+              </span>
+              <h2 className="text-3xl md:text-4xl font-bold text-slate-900 mb-3">
+                Why Thousands Trust Us
+              </h2>
+              <p className="text-gray-500 mb-8 leading-relaxed">
+                The trusted choice for ferry travel across Maharashtra&apos;s Konkan coast.
+              </p>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {WHY_CHOOSE_US.map((item) => (
-              <div
-                key={item.title}
-                className="text-center p-6 rounded-xl border border-gray-100 hover:border-amber-300 hover:shadow-lg transition-all duration-300 group"
-              >
-                <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-amber-50 text-amber-500 mb-4 group-hover:bg-amber-500 group-hover:text-white transition-colors">
-                  {item.icon}
-                </div>
-                <h3 className="font-bold text-slate-900 mb-2">{item.title}</h3>
-                <p className="text-gray-500 text-sm leading-relaxed">
-                  {item.description}
-                </p>
-              </div>
-            ))}
-          </div>
-
-          {/* Stats bar */}
-          <div className="mt-16 bg-gradient-to-r from-[#0c3547] to-[#1a6b8a] rounded-2xl p-4 sm:p-8 text-center">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-              {[
-                { value: "20+", label: "Years of Service" },
-                { value: "7", label: "Active Routes" },
-                { value: "65+", label: "Employees" },
-                { value: "1M+", label: "Passengers Served" },
-              ].map((stat) => (
-                <div key={stat.label}>
-                  <div className="text-3xl md:text-4xl font-bold text-amber-400">
-                    {stat.value}
+              <div className="space-y-5">
+                {[
+                  {
+                    title: "Safe & Reliable",
+                    text: "All ferries meet strict safety standards with trained crew",
+                  },
+                  {
+                    title: "On-Time Service",
+                    text: "Running 7 days a week with reliable schedules",
+                  },
+                  {
+                    title: "Vehicle Transport",
+                    text: "RORO ferries for cars, bikes, and commercial vehicles",
+                  },
+                  {
+                    title: "Since 2003",
+                    text: "Over 20 years serving coastal communities",
+                  },
+                ].map((item) => (
+                  <div key={item.title} className="flex gap-4">
+                    <div className="flex-shrink-0 w-6 h-6 mt-0.5 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center">
+                      <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                      </svg>
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-slate-900">{item.title}</h3>
+                      <p className="text-gray-500 text-sm mt-0.5">{item.text}</p>
+                    </div>
                   </div>
-                  <div className="text-gray-300 text-sm mt-1">{stat.label}</div>
-                </div>
-              ))}
+                ))}
+              </div>
+            </div>
+
+            {/* Right: Stats in a 2x2 grid */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-gradient-to-br from-[#0c3547] to-[#1a6b8a] rounded-2xl p-6 md:p-8 text-center">
+                <div className="text-3xl md:text-4xl font-bold text-amber-400 mb-1">20+</div>
+                <div className="text-gray-300 text-sm">Years of Service</div>
+              </div>
+              <div className="bg-gradient-to-br from-[#0f3a50] to-[#1a5c7a] rounded-2xl p-6 md:p-8 text-center">
+                <div className="text-3xl md:text-4xl font-bold text-amber-400 mb-1">7</div>
+                <div className="text-gray-300 text-sm">Active Routes</div>
+              </div>
+              <div className="bg-gradient-to-br from-[#0f3a50] to-[#1a5c7a] rounded-2xl p-6 md:p-8 text-center">
+                <div className="text-3xl md:text-4xl font-bold text-amber-400 mb-1">65+</div>
+                <div className="text-gray-300 text-sm">Employees</div>
+              </div>
+              <div className="bg-gradient-to-br from-[#0c3547] to-[#1a6b8a] rounded-2xl p-6 md:p-8 text-center">
+                <div className="text-3xl md:text-4xl font-bold text-amber-400 mb-1">1M+</div>
+                <div className="text-gray-300 text-sm">Passengers Served</div>
+              </div>
             </div>
           </div>
         </div>
@@ -380,7 +433,7 @@ export default function HomePage() {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
-            {/* Image */}
+            {/* Image — no floating badge */}
             <div className="relative">
               <div className="relative w-full h-80 md:h-96 rounded-2xl overflow-hidden shadow-2xl ring-2 ring-white/10">
                 <Image
@@ -391,29 +444,24 @@ export default function HomePage() {
                   className="object-cover"
                 />
               </div>
-              {/* Floating stat badge */}
-              <div className="absolute -bottom-4 -right-4 md:bottom-4 md:right-4 bg-gradient-to-r from-amber-500 to-orange-500 text-white px-5 py-3 rounded-xl shadow-lg">
-                <div className="text-2xl font-bold">20+</div>
-                <div className="text-xs">Years of Service</div>
-              </div>
             </div>
 
-            {/* Content */}
+            {/* Content — slightly more compact */}
             <div>
-              <p className="text-gray-300 leading-relaxed mb-4">
+              <p className="text-gray-300 leading-relaxed mb-3">
                 Suvarnadurga Shipping &amp; Marine Services Pvt. Ltd. is a Company which is started by Dr. Mokal C.J. (Ex. MLA, Dapoli &ndash; Mandangad) with Dr. Mokal Y.C. as a Managing Director, in October 2003. We have skilled Staff of about 65 at different sites.
               </p>
-              <p className="text-gray-300 leading-relaxed mb-4">
+              <p className="text-gray-300 leading-relaxed mb-3">
                 We have approved Ticket Rates &amp; all necessary permits by Maharashtra Maritime board with Annual Inspections for requirements on Ferry Boat. Company is very particular about all life guarding apparatus on Ferry boat, for the safety of tourists &amp; public.
               </p>
-              <p className="text-gray-300 leading-relaxed mb-4">
+              <p className="text-gray-300 leading-relaxed mb-3">
                 We began by starting a Ferry-Boat Service at Dabhol-Dhopave, which was a first Ferry Boat Service in Maharashtra. After Successful Service in Dabhol; we started another service in Veshvi &ndash; Bagmandle, then Tawsal &ndash; Jaigad, and Rohini &ndash; Agardande.
               </p>
-              <p className="text-gray-300 leading-relaxed mb-6">
+              <p className="text-gray-300 leading-relaxed mb-5">
                 Suvarnadurga Shipping and Marine Services is the transportation company that serves the Nation &amp; saves most valuable fuel. We hope, you will enjoy our Safe, Quick and Refreshing Ferry Services all the time.
               </p>
 
-              <div className="flex flex-wrap gap-4 mb-6">
+              <div className="flex flex-wrap gap-4 mb-5">
                 <div className="flex items-center gap-2 bg-white/10 px-4 py-2 rounded-lg">
                   <svg className="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
