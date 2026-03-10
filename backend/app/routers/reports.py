@@ -26,7 +26,7 @@ from app.services import report_service, pdf_service, ticket_service
 
 router = APIRouter(prefix="/api/reports", tags=["Reports"])
 
-_report_roles = require_roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER)
+_report_roles = require_roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.BILLING_OPERATOR)
 
 
 async def _scope_route_and_branch(

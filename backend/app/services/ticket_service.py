@@ -86,6 +86,7 @@ async def _enrich_ticket_item(db: AsyncSession, ti: TicketItem) -> dict:
         "levy": levy,
         "quantity": quantity,
         "vehicle_no": ti.vehicle_no,
+        "vehicle_name": ti.vehicle_name,
         "is_cancelled": ti.is_cancelled,
         "amount": amount,
         "item_name": item_name,
@@ -612,6 +613,7 @@ async def create_ticket(db: AsyncSession, data: TicketCreate, user_id=None) -> d
             levy=item_data.levy,
             quantity=item_data.quantity,
             vehicle_no=item_data.vehicle_no,
+            vehicle_name=item_data.vehicle_name,
             is_cancelled=False,
         )
         db.add(ti)
@@ -706,6 +708,7 @@ async def update_ticket(db: AsyncSession, ticket_id: int, data: TicketUpdate) ->
                 ti.levy = item_update.levy
                 ti.quantity = item_update.quantity
                 ti.vehicle_no = item_update.vehicle_no
+                ti.vehicle_name = item_update.vehicle_name
                 ti.is_cancelled = item_update.is_cancelled
             else:
                 ti = TicketItem(
@@ -716,6 +719,7 @@ async def update_ticket(db: AsyncSession, ticket_id: int, data: TicketUpdate) ->
                     levy=item_update.levy,
                     quantity=item_update.quantity,
                     vehicle_no=item_update.vehicle_no,
+                    vehicle_name=item_update.vehicle_name,
                     is_cancelled=item_update.is_cancelled,
                 )
                 db.add(ti)

@@ -62,6 +62,7 @@ interface FormItem {
   rate: number;
   levy: number;
   quantity: number;
+  vehicle_name: string;
   vehicle_no: string;
   is_cancelled: boolean;
 }
@@ -235,8 +236,8 @@ export default function TicketingPage() {
   // Filters
   const [branchFilter, setBranchFilter] = useState("");
   const [routeFilter, setRouteFilter] = useState("");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+  const [dateFrom, setDateFrom] = useState(new Date().toISOString().split("T")[0]);
+  const [dateTo, setDateTo] = useState(new Date().toISOString().split("T")[0]);
   const [statusFilter, setStatusFilter] = useState("");
   const [ticketNoInput, setTicketNoInput] = useState("");
   const [ticketNoFilter, setTicketNoFilter] = useState("");
@@ -466,7 +467,7 @@ export default function TicketingPage() {
     const vehicleNo = selectedItem?.is_vehicle ? undefined : "";
     const updated = formItems.map((fi) =>
       fi.tempId === tempId
-        ? { ...fi, item_id: itemId, rate: 0, levy: 0, ...(vehicleNo !== undefined ? { vehicle_no: vehicleNo } : {}) }
+        ? { ...fi, item_id: itemId, rate: 0, levy: 0, ...(vehicleNo !== undefined ? { vehicle_name: vehicleNo, vehicle_no: vehicleNo } : {}) }
         : fi
     );
     setFormItems(updated);
@@ -499,6 +500,7 @@ export default function TicketingPage() {
         rate: 0,
         levy: 0,
         quantity: 1,
+        vehicle_name: "",
         vehicle_no: "",
         is_cancelled: false,
       },
@@ -617,6 +619,7 @@ export default function TicketingPage() {
       rate: 0,
       levy: 0,
       quantity: 1,
+      vehicle_name: "",
       vehicle_no: "",
       is_cancelled: false,
     }]);
@@ -787,6 +790,7 @@ export default function TicketingPage() {
           rate: ti.rate,
           levy: ti.levy,
           quantity: ti.quantity,
+          vehicle_name: ((ti as unknown as Record<string, unknown>).vehicle_name as string) || "",
           vehicle_no: ti.vehicle_no || "",
           is_cancelled: ti.is_cancelled,
         }))
@@ -838,6 +842,7 @@ export default function TicketingPage() {
           levy: fi.levy,
           quantity: fi.quantity,
           vehicle_no: fi.vehicle_no || null,
+          vehicle_name: fi.vehicle_name || null,
           is_cancelled: fi.is_cancelled,
         }));
         await api.patch(`/api/tickets/${editingTicket.id}`, update);
@@ -916,6 +921,7 @@ export default function TicketingPage() {
           levy: fi.levy,
           quantity: fi.quantity,
           vehicle_no: fi.vehicle_no || null,
+          vehicle_name: fi.vehicle_name || null,
         })),
         payments: paymentRows.map((pr): TicketPayementCreate => ({
           payment_mode_id: pr.payment_mode_id,
@@ -1003,8 +1009,8 @@ export default function TicketingPage() {
     if (!isRouteRestricted) {
       setRouteFilter("");
     }
-    setDateFrom("");
-    setDateTo("");
+    setDateFrom(new Date().toISOString().split("T")[0]);
+    setDateTo(new Date().toISOString().split("T")[0]);
     setStatusFilter("");
     setTicketNoInput("");
     setTicketNoFilter("");
@@ -1019,8 +1025,8 @@ export default function TicketingPage() {
   const hasActiveFilters =
     branchFilter ||
     (!isRouteRestricted && routeFilter) ||
-    dateFrom ||
-    dateTo ||
+    (dateFrom && dateFrom !== new Date().toISOString().split("T")[0]) ||
+    (dateTo && dateTo !== new Date().toISOString().split("T")[0]) ||
     statusFilter ||
     ticketNoInput ||
     idInput ||
@@ -1298,6 +1304,7 @@ export default function TicketingPage() {
                   setDateFrom(e.target.value);
                   setPage(1);
                 }}
+                disabled={user?.role === "BILLING_OPERATOR"}
                 className="w-full sm:w-[150px]"
               />
             </div>
@@ -1312,6 +1319,7 @@ export default function TicketingPage() {
                   setDateTo(e.target.value);
                   setPage(1);
                 }}
+                disabled={user?.role === "BILLING_OPERATOR"}
                 className="w-full sm:w-[150px]"
               />
             </div>
@@ -1932,6 +1940,9 @@ export default function TicketingPage() {
                           Qty
                         </th>
                         <th className="text-left px-3 py-2 font-semibold text-muted-foreground w-[140px]">
+                          Vehicle Name
+                        </th>
+                        <th className="text-left px-3 py-2 font-semibold text-muted-foreground w-[140px]">
                           Vehicle No
                         </th>
                         <th className="text-right px-3 py-2 font-semibold text-muted-foreground w-[110px]">
@@ -1941,7 +1952,6 @@ export default function TicketingPage() {
                           <Button
                             type="button"
                             size="sm"
-                            tabIndex={-1}
                             onClick={handleAddItem}
                             disabled={formItems.some((fi) => isFormRowInvalid(fi, items))}
                           >
@@ -1954,7 +1964,7 @@ export default function TicketingPage() {
                       {formItems.length === 0 ? (
                         <tr>
                           <td
-                            colSpan={8}
+                            colSpan={9}
                             className="text-center py-4 text-muted-foreground"
                           >
                             No items added. Click &quot;+ Add Item&quot; to add one.
@@ -2056,6 +2066,30 @@ export default function TicketingPage() {
                                   disabled={fi.is_cancelled || !isVehicle}
                                   readOnly={!isVehicle}
                                   tabIndex={!isVehicle ? -1 : undefined}
+                                  value={fi.vehicle_name}
+                                  onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }}
+                                  onChange={(e) =>
+                                    setFormItems((prev) =>
+                                      prev.map((item) =>
+                                        item.tempId === fi.tempId
+                                          ? {
+                                              ...item,
+                                              vehicle_name: e.target.value,
+                                            }
+                                          : item
+                                      )
+                                    )
+                                  }
+                                  placeholder={isVehicle ? "Vehicle Name" : ""}
+                                  className="h-8"
+                                />
+                              </td>
+                              <td className="px-3 py-2">
+                                <Input
+                                  type="text"
+                                  disabled={fi.is_cancelled || !isVehicle}
+                                  readOnly={!isVehicle}
+                                  tabIndex={!isVehicle ? -1 : undefined}
                                   value={fi.vehicle_no}
                                   onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }}
                                   onChange={(e) =>
@@ -2089,7 +2123,6 @@ export default function TicketingPage() {
                                     type="button"
                                     variant="ghost"
                                     size="sm"
-                                    tabIndex={-1}
                                     onClick={() => handleRestoreItem(fi.tempId)}
                                     className="text-green-600 hover:text-green-800"
                                   >
@@ -2100,7 +2133,6 @@ export default function TicketingPage() {
                                     type="button"
                                     variant="ghost"
                                     size="sm"
-                                    tabIndex={-1}
                                     onClick={() => handleCancelItem(fi.tempId)}
                                     className="text-destructive hover:text-destructive"
                                   >
@@ -2115,7 +2147,7 @@ export default function TicketingPage() {
                     </tbody>
                     <tfoot className="border-t border-border">
                       <tr>
-                        <td colSpan={6} className="px-3 py-2 text-right text-sm font-medium text-muted-foreground">
+                        <td colSpan={7} className="px-3 py-2 text-right text-sm font-medium text-muted-foreground">
                           Amount
                         </td>
                         <td className="px-3 py-2">
@@ -2130,7 +2162,7 @@ export default function TicketingPage() {
                         <td></td>
                       </tr>
                       <tr>
-                        <td colSpan={6} className="px-3 py-2 text-right text-sm font-medium text-muted-foreground">
+                        <td colSpan={7} className="px-3 py-2 text-right text-sm font-medium text-muted-foreground">
                           Discount
                         </td>
                         <td className="px-3 py-2">
@@ -2153,7 +2185,7 @@ export default function TicketingPage() {
                         <td></td>
                       </tr>
                       <tr>
-                        <td colSpan={6} className="px-3 py-2 text-right text-sm font-semibold">
+                        <td colSpan={7} className="px-3 py-2 text-right text-sm font-semibold">
                           Net Amount
                         </td>
                         <td className="px-3 py-2">
@@ -2206,7 +2238,6 @@ export default function TicketingPage() {
                   <Button
                     type="button"
                     variant="outline"
-                    tabIndex={-1}
                     onClick={closeModal}
                   >
                     Cancel
@@ -2214,7 +2245,6 @@ export default function TicketingPage() {
                   <Button
                     ref={submitRef}
                     type="submit"
-                    tabIndex={-1}
                     disabled={submitting || formItems.some((fi) => isFormRowInvalid(fi, items))}
                   >
                   {submitting

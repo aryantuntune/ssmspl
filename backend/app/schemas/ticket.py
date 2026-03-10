@@ -11,6 +11,7 @@ class TicketItemCreate(BaseModel):
     levy: float = Field(..., ge=0, description="Levy fetched from item_rate")
     quantity: int = Field(..., ge=1, description="Quantity")
     vehicle_no: str | None = Field(None, max_length=15, description="Vehicle number (optional)")
+    vehicle_name: str | None = Field(None, max_length=60, description="Vehicle name (optional)")
 
     model_config = {
         "json_schema_extra": {
@@ -26,6 +27,7 @@ class TicketItemUpdate(BaseModel):
     levy: float = Field(..., ge=0, description="Levy")
     quantity: int = Field(..., ge=1, description="Quantity")
     vehicle_no: str | None = Field(None, max_length=15, description="Vehicle number")
+    vehicle_name: str | None = Field(None, max_length=60, description="Vehicle name (optional)")
     is_cancelled: bool = Field(False, description="Set true to soft-delete this item")
 
 
@@ -37,6 +39,7 @@ class TicketItemRead(BaseModel):
     levy: float = Field(..., description="Levy")
     quantity: int = Field(..., description="Quantity")
     vehicle_no: str | None = Field(None, description="Vehicle number")
+    vehicle_name: str | None = Field(None, description="Vehicle name")
     is_cancelled: bool = Field(..., description="Whether this item is cancelled")
     amount: float = Field(..., description="Computed: rate * (quantity + levy)")
     item_name: str | None = Field(None, description="Item name for display")

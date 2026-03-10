@@ -437,12 +437,17 @@ async def get_date_wise_amount(
     branch_id: int | None = None,
     payment_mode_id: int | None = None,
 ) -> dict:
-    q = select(
-        Ticket.ticket_date,
-        func.coalesce(func.sum(
-            case((Ticket.is_cancelled == False, Ticket.net_amount), else_=0)
-        ), 0).label("amount"),
-    ).group_by(Ticket.ticket_date).order_by(Ticket.ticket_date)
+    q = (
+        select(
+            Ticket.ticket_date,
+            func.coalesce(func.sum(
+                case((Ticket.is_cancelled == False, Ticket.net_amount), else_=0)
+            ), 0).label("amount"),
+        )
+        .select_from(Ticket)
+        .group_by(Ticket.ticket_date)
+        .order_by(Ticket.ticket_date)
+    )
     q = _apply_ticket_filters(q, date_from, date_to, branch_id)
     if payment_mode_id:
         q = q.where(Ticket.payment_mode_id == payment_mode_id)
@@ -505,6 +510,7 @@ async def get_ferry_wise_item_summary(
                 case((TicketItem.is_cancelled == False, TicketItem.quantity), else_=0)
             ), 0).label("quantity"),
         )
+        .select_from(Ticket)
         .join(TicketItem, TicketItem.ticket_id == Ticket.id)
         .join(Item, Item.id == TicketItem.item_id)
         .where(Ticket.is_cancelled == False)
@@ -666,8 +672,10 @@ async def get_vehicle_wise_tickets(
             TicketItem.rate,
             TicketItem.levy,
             TicketItem.vehicle_no,
+            TicketItem.vehicle_name,
             Boat.name.label("boat_name"),
         )
+        .select_from(Ticket)
         .join(TicketItem, TicketItem.ticket_id == Ticket.id)
         .join(PaymentMode, PaymentMode.id == Ticket.payment_mode_id)
         .join(Item, Item.id == TicketItem.item_id)
@@ -694,6 +702,7 @@ async def get_vehicle_wise_tickets(
             "payment_mode": r.payment_mode,
             "amount": amount,
             "vehicle_no": r.vehicle_no,
+            "vehicle_name": r.vehicle_name,
         })
 
     branch_name = None

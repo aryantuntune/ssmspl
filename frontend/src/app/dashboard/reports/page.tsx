@@ -215,6 +215,7 @@ const REPORT_TYPES: ReportConfig[] = [
         render: (r) => formatDate(r.ticket_date as string),
       },
       { key: "ticket_no", label: "Ticket No" },
+      { key: "boat_name", label: "Boat Name" },
       { key: "departure", label: "Time" },
       { key: "payment_mode", label: "Payment Mode" },
       {
@@ -224,6 +225,7 @@ const REPORT_TYPES: ReportConfig[] = [
         render: (r) => formatCurrency(r.amount as number),
       },
       { key: "vehicle_no", label: "Vehicle No" },
+      { key: "vehicle_name", label: "Vehicle Name" },
     ],
   },
   {
@@ -525,6 +527,15 @@ export default function ReportsPage() {
                 <Printer className="h-4 w-4 mr-2" />
               )}
               {printing ? "Printing..." : "Print 80mm"}
+            </Button>
+          )}
+          {rows.length > 0 && (
+            <Button
+              onClick={() => window.print()}
+              variant="outline"
+            >
+              <Printer className="h-4 w-4 mr-2" />
+              Print
             </Button>
           )}
           <Button

@@ -65,6 +65,7 @@ ROLE_MENU_ITEMS: dict[UserRole, list[str]] = {
         "Dashboard",
         "Ticketing",
         "Multi-Ticketing",
+        "Reports",
     ],
     UserRole.TICKET_CHECKER: [
         "Dashboard",

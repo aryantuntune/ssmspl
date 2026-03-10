@@ -246,6 +246,7 @@ export interface TicketItemCreate {
   levy: number;
   quantity: number;
   vehicle_no?: string | null;
+  vehicle_name?: string | null;
 }
 
 export interface TicketItemUpdate {
@@ -255,6 +256,7 @@ export interface TicketItemUpdate {
   levy: number;
   quantity: number;
   vehicle_no?: string | null;
+  vehicle_name?: string | null;
   is_cancelled: boolean;
 }
 

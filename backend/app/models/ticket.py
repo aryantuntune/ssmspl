@@ -40,6 +40,7 @@ class TicketItem(AuditMixin, Base):
     rate: Mapped[float] = mapped_column(Numeric(9, 2), nullable=False)
     levy: Mapped[float] = mapped_column(Numeric(9, 2), nullable=False)
     vehicle_no: Mapped[str | None] = mapped_column(String(15), nullable=True)
+    vehicle_name: Mapped[str | None] = mapped_column(String(60), nullable=True)
     is_cancelled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
 

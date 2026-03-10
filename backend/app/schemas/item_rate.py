@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 class ItemRateBase(BaseModel):
     applicable_from_date: date | None = Field(None, description="Date from which this rate applies", examples=["2025-01-01"])
     levy: float | None = Field(None, ge=0, description="Levy amount", examples=[10.00])
-    rate: float | None = Field(None, gt=1, description="Rate amount (must be > 1)", examples=[150.00])
+    rate: float | None = Field(None, ge=1, description="Rate amount (must be >= 1)", examples=[150.00])
     item_id: int = Field(..., description="Item ID", examples=[1])
     route_id: int = Field(..., description="Route ID", examples=[1])
 
@@ -30,7 +30,7 @@ class ItemRateCreate(ItemRateBase):
 class ItemRateUpdate(BaseModel):
     applicable_from_date: date | None = Field(None, description="Updated applicable from date")
     levy: float | None = Field(None, ge=0, description="Updated levy amount")
-    rate: float | None = Field(None, gt=1, description="Updated rate amount (must be > 1)")
+    rate: float | None = Field(None, ge=1, description="Updated rate amount (must be >= 1)")
     item_id: int | None = Field(None, description="Updated item ID")
     route_id: int | None = Field(None, description="Updated route ID")
     is_active: bool | None = Field(None, description="Set false to soft-delete (deactivate) the item rate")
