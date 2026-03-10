@@ -249,7 +249,7 @@ export default function DashboardPage() {
       // Fetch recent tickets separately
       if (canSeeTickets) {
         api
-          .get("/api/tickets/", {
+          .get("/api/tickets", {
             params: { limit: 5, sort_by: "id", sort_order: "desc" },
           })
           .then(({ data: d }) => {

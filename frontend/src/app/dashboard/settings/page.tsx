@@ -192,7 +192,7 @@ export default function SettingsPage() {
   useEffect(() => {
     const init = async () => {
       try {
-        const { data: comp } = await api.get<Company>("/api/company/");
+        const { data: comp } = await api.get<Company>("/api/company");
         setCompany(comp);
         setForm(companyToForm(comp));
       } catch (err: unknown) {
@@ -246,7 +246,7 @@ export default function SettingsPage() {
         return;
       }
 
-      const { data: updated } = await api.patch<Company>("/api/company/", payload);
+      const { data: updated } = await api.patch<Company>("/api/company", payload);
       setCompany(updated);
       setForm(companyToForm(updated));
       setSuccess("Company settings updated successfully.");
@@ -264,7 +264,7 @@ export default function SettingsPage() {
     setThemeSubmitting(true);
     setThemeSuccess("");
     try {
-      await api.patch("/api/company/", { active_theme: theme.name });
+      await api.patch("/api/company", { active_theme: theme.name });
       setThemeSuccess("Theme saved successfully.");
       setTimeout(() => setThemeSuccess(""), 3000);
     } catch {

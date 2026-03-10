@@ -386,7 +386,7 @@ export default function TicketingPage() {
       );
 
       const [pageResp, countResp] = await Promise.all([
-        api.get<Ticket[]>(`/api/tickets/?${params}`, { signal: controller.signal }),
+        api.get<Ticket[]>(`/api/tickets?${params}`, { signal: controller.signal }),
         api.get<number>(`/api/tickets/count?${countParams}`, { signal: controller.signal }),
       ]);
       setTickets(pageResp.data);
@@ -422,11 +422,11 @@ export default function TicketingPage() {
         // Fetch dropdown data in parallel
         try {
           const [branchRes, routeRes, itemRes, pmRes, schedRes] = await Promise.all([
-            api.get<Branch[]>("/api/branches/?limit=200&status=active"),
-            api.get<Route[]>("/api/routes/?limit=200&status=active"),
-            api.get<Item[]>("/api/items/?limit=200&status=active"),
-            api.get<PaymentMode[]>("/api/payment-modes/?limit=200&status=active"),
-            api.get<FerrySchedule[]>("/api/ferry-schedules/?limit=200"),
+            api.get<Branch[]>("/api/branches?limit=200&status=active"),
+            api.get<Route[]>("/api/routes?limit=200&status=active"),
+            api.get<Item[]>("/api/items?limit=200&status=active"),
+            api.get<PaymentMode[]>("/api/payment-modes?limit=200&status=active"),
+            api.get<FerrySchedule[]>("/api/ferry-schedules?limit=200"),
           ]);
           setBranches(branchRes.data);
           setAllRoutes(routeRes.data);
@@ -659,7 +659,7 @@ export default function TicketingPage() {
     // Fetch last ticket info from API
     setLastTicketInfo(null);
     try {
-      const listRes = await api.get<Ticket[]>("/api/tickets/?limit=1&sort_by=id&sort_order=desc");
+      const listRes = await api.get<Ticket[]>("/api/tickets?limit=1&sort_by=id&sort_order=desc");
       if (listRes.data.length > 0) {
         const lastId = listRes.data[0].id;
         const detailRes = await api.get<Ticket>(`/api/tickets/${lastId}`);
@@ -944,7 +944,7 @@ export default function TicketingPage() {
           ref_no: pr.reference_id.trim() || null,
         })),
       };
-      const res = await api.post<Ticket>("/api/tickets/", create);
+      const res = await api.post<Ticket>("/api/tickets", create);
       const savedTicket = res.data;
 
       // Determine From -> To direction

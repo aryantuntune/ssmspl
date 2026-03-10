@@ -93,13 +93,13 @@ export default function ItemsPage() {
       );
 
       const [pageResp, countResp] = await Promise.all([
-        api.get<Item[]>(`/api/items/?${params}`, { signal: controller.signal }),
+        api.get<Item[]>(`/api/items?${params}`, { signal: controller.signal }),
         api.get<number>(`/api/items/count?${countParams}`, { signal: controller.signal }),
       ]);
       setItems(pageResp.data);
       setTotalCount(countResp.data as unknown as number);
       setError("");
-    } catch (err) {
+    } catch {
       if (controller.signal.aborted) return;
       setError("Failed to load items.");
     } finally {
@@ -159,7 +159,7 @@ export default function ItemsPage() {
         const create: ItemCreate = { name: form.name, short_name: form.short_name };
         if (form.online_visibility) create.online_visibility = form.online_visibility;
         if (form.is_vehicle) create.is_vehicle = form.is_vehicle;
-        await api.post("/api/items/", create);
+        await api.post("/api/items", create);
       }
       closeModal();
       await fetchItems();

@@ -84,13 +84,13 @@ export default function FerriesPage() {
       );
 
       const [pageResp, countResp] = await Promise.all([
-        api.get<Boat[]>(`/api/boats/?${params}`, { signal: controller.signal }),
+        api.get<Boat[]>(`/api/boats?${params}`, { signal: controller.signal }),
         api.get<number>(`/api/boats/count?${countParams}`, { signal: controller.signal }),
       ]);
       setBoats(pageResp.data);
       setTotalCount(countResp.data as unknown as number);
       setError("");
-    } catch (err) {
+    } catch {
       if (controller.signal.aborted) return;
       setError("Failed to load boats.");
     } finally {
@@ -138,7 +138,7 @@ export default function FerriesPage() {
         await api.patch(`/api/boats/${editingBoat.id}`, update);
       } else {
         const create: BoatCreate = { name: form.name, no: form.no };
-        await api.post("/api/boats/", create);
+        await api.post("/api/boats", create);
       }
       closeModal();
       await fetchBoats();

@@ -91,18 +91,14 @@ async def _find_route(db: AsyncSession, from_branch_id: int, to_branch_id: int) 
 
 
 async def _get_current_rate(db: AsyncSession, item_id: int, route_id: int) -> dict:
-    """Get the most recent active rate where applicable_from_date <= today."""
-    today = datetime.date.today()
+    """Get the active rate for an item on a route."""
     result = await db.execute(
         select(ItemRate)
         .where(
             ItemRate.item_id == item_id,
             ItemRate.route_id == route_id,
             ItemRate.is_active == True,
-            ItemRate.applicable_from_date.is_not(None),
-            ItemRate.applicable_from_date <= today,
         )
-        .order_by(ItemRate.applicable_from_date.desc())
         .limit(1)
     )
     ir = result.scalar_one_or_none()
@@ -293,7 +289,6 @@ async def get_online_items(
     )
     items = items_result.scalars().all()
 
-    today = datetime.date.today()
     result_items = []
     for item in items:
         rate_result = await db.execute(
@@ -302,10 +297,7 @@ async def get_online_items(
                 ItemRate.item_id == item.id,
                 ItemRate.route_id == route.id,
                 ItemRate.is_active == True,
-                ItemRate.applicable_from_date.is_not(None),
-                ItemRate.applicable_from_date <= today,
             )
-            .order_by(ItemRate.applicable_from_date.desc())
             .limit(1)
         )
         ir = rate_result.scalar_one_or_none()

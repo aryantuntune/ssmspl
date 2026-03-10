@@ -22,7 +22,7 @@ export default function DashboardShell({ children }: { children: React.ReactNode
       // 401 interceptor handles redirect to login
     });
 
-    api.get("/api/company/").then((res) => {
+    api.get("/api/company").then((res) => {
       if (res.data.active_theme) {
         setActiveTheme(res.data.active_theme);
       }

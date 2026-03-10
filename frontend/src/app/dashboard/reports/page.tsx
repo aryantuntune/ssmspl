@@ -313,12 +313,12 @@ export default function ReportsPage() {
     try {
       const [branchResp, routeResp, pmResp, meResp, usersResp] = await Promise.all([
         api.get<Branch[]>(
-          "/api/branches/?limit=200&status=active&sort_by=name&sort_order=asc"
+          "/api/branches?limit=200&status=active&sort_by=name&sort_order=asc"
         ),
-        api.get<Route[]>("/api/routes/?limit=200&status=active"),
-        api.get<PaymentMode[]>("/api/payment-modes/?limit=200&status=active"),
+        api.get<Route[]>("/api/routes?limit=200&status=active"),
+        api.get<PaymentMode[]>("/api/payment-modes?limit=200&status=active"),
         api.get<User>("/api/auth/me"),
-        api.get<User[]>("/api/users/?limit=200&status=active"),
+        api.get<User[]>("/api/users?limit=200&status=active"),
       ]);
       setBranches(branchResp.data);
       setRoutes(routeResp.data);

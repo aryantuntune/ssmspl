@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import api from "@/lib/api";
 import { Item, Route, ItemRate, ItemRateCreate, ItemRateUpdate, User } from "@/types";
 import DataTable, { Column } from "@/components/dashboard/DataTable";
@@ -19,7 +19,6 @@ import {
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -28,7 +27,6 @@ import { Switch } from "@/components/ui/switch";
 import { Plus } from "lucide-react";
 
 interface ItemRateFormData {
-  applicable_from_date: string;
   levy: string;
   rate: string;
   item_id: string;
@@ -37,7 +35,6 @@ interface ItemRateFormData {
 }
 
 const emptyForm: ItemRateFormData = {
-  applicable_from_date: "",
   levy: "",
   rate: "",
   item_id: "",
@@ -69,7 +66,6 @@ export default function ItemRatesPage() {
   const [itemFilter, setItemFilter] = useState("");
   const [routeFilter, setRouteFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
-  const [fromDate, setFromDate] = useState("");
 
   const abortRef = useRef<AbortController | null>(null);
 
@@ -81,12 +77,6 @@ export default function ItemRatesPage() {
 
   // View modal state
   const [viewRate, setViewRate] = useState<ItemRate | null>(null);
-
-  // Upcoming date modal state
-  const [showUpcomingModal, setShowUpcomingModal] = useState(false);
-  const [upcomingDate, setUpcomingDate] = useState("");
-  const [upcomingError, setUpcomingError] = useState("");
-  const [upcomingSubmitting, setUpcomingSubmitting] = useState(false);
 
   const isManager = currentUser?.role === "MANAGER";
 
@@ -101,7 +91,7 @@ export default function ItemRatesPage() {
 
   const fetchItems = useCallback(async () => {
     try {
-      const resp = await api.get<Item[]>("/api/items/?skip=0&limit=200&status=active&sort_by=name&sort_order=asc");
+      const resp = await api.get<Item[]>("/api/items?skip=0&limit=200&status=active&sort_by=name&sort_order=asc");
       setItems(resp.data);
     } catch {
       // items dropdown will be empty
@@ -110,7 +100,7 @@ export default function ItemRatesPage() {
 
   const fetchRoutes = useCallback(async () => {
     try {
-      const resp = await api.get<Route[]>("/api/routes/?skip=0&limit=200&status=active&sort_by=id&sort_order=asc");
+      const resp = await api.get<Route[]>("/api/routes?skip=0&limit=200&status=active&sort_by=id&sort_order=asc");
       setRoutes(resp.data);
     } catch {
       // routes dropdown will be empty
@@ -135,27 +125,26 @@ export default function ItemRatesPage() {
       if (itemFilter) params.set("item_filter", itemFilter);
       if (routeFilter) params.set("route_filter", routeFilter);
       if (statusFilter) params.set("status", statusFilter);
-      if (fromDate) params.set("from_date", fromDate);
 
-      const filterKeys = ["item_filter", "route_filter", "status", "from_date"];
+      const filterKeys = ["item_filter", "route_filter", "status"];
       const countParams = new URLSearchParams(
         Object.fromEntries([...params].filter(([k]) => filterKeys.includes(k)))
       );
 
       const [pageResp, countResp] = await Promise.all([
-        api.get<ItemRate[]>(`/api/item-rates/?${params}`, { signal: controller.signal }),
+        api.get<ItemRate[]>(`/api/item-rates?${params}`, { signal: controller.signal }),
         api.get<number>(`/api/item-rates/count?${countParams}`, { signal: controller.signal }),
       ]);
       setItemRates(pageResp.data);
       setTotalCount(countResp.data as unknown as number);
       setError("");
-    } catch (err) {
+    } catch {
       if (controller.signal.aborted) return;
       setError("Failed to load item rates.");
     } finally {
       if (!controller.signal.aborted) setTableLoading(false);
     }
-  }, [page, pageSize, sortBy, sortOrder, itemFilter, routeFilter, statusFilter, fromDate]);
+  }, [page, pageSize, sortBy, sortOrder, itemFilter, routeFilter, statusFilter]);
 
   useEffect(() => {
     fetchCurrentUser();
@@ -184,7 +173,6 @@ export default function ItemRatesPage() {
   const openEditModal = (ir: ItemRate) => {
     setEditingRate(ir);
     setForm({
-      applicable_from_date: ir.applicable_from_date ?? "",
       levy: ir.levy != null ? String(ir.levy) : "",
       rate: ir.rate != null ? String(ir.rate) : "",
       item_id: ir.item_id != null ? String(ir.item_id) : "",
@@ -219,23 +207,25 @@ export default function ItemRatesPage() {
         const update: ItemRateUpdate = {};
         if (itemId !== editingRate.item_id) update.item_id = itemId;
         if (routeId !== editingRate.route_id) update.route_id = routeId;
-        const newDate = form.applicable_from_date || null;
-        if (newDate !== editingRate.applicable_from_date) update.applicable_from_date = newDate;
-        const newLevy = form.levy ? parseFloat(form.levy) : null;
-        if (newLevy !== editingRate.levy) update.levy = newLevy;
-        const newRate = form.rate ? parseFloat(form.rate) : null;
-        if (newRate !== editingRate.rate) update.rate = newRate;
+        const newLevy = form.levy.trim() ? parseFloat(form.levy) : null;
+        if (newLevy !== (editingRate.levy ?? null)) update.levy = newLevy;
+        const newRate = form.rate.trim() ? parseFloat(form.rate) : null;
+        if (newRate !== (editingRate.rate ?? null)) update.rate = newRate;
         if (form.is_active !== (editingRate.is_active ?? true)) update.is_active = form.is_active;
+        if (Object.keys(update).length === 0) {
+          setFormError("No changes detected.");
+          setSubmitting(false);
+          return;
+        }
         await api.patch(`/api/item-rates/${editingRate.id}`, update);
       } else {
         const create: ItemRateCreate = {
           item_id: itemId,
           route_id: routeId,
-          applicable_from_date: form.applicable_from_date || null,
           levy: form.levy ? parseFloat(form.levy) : null,
           rate: form.rate ? parseFloat(form.rate) : null,
         };
-        await api.post("/api/item-rates/", create);
+        await api.post("/api/item-rates", create);
       }
       closeModal();
       await fetchItemRates();
@@ -246,28 +236,6 @@ export default function ItemRatesPage() {
       setFormError(msg);
     } finally {
       setSubmitting(false);
-    }
-  };
-
-  const handleUpcomingSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setUpcomingError("");
-    if (!upcomingDate) {
-      setUpcomingError("Please select a date.");
-      return;
-    }
-    setUpcomingSubmitting(true);
-    try {
-      await api.post("/api/item-rates/bulk-upcoming", { applicable_from_date: upcomingDate });
-      setShowUpcomingModal(false);
-      await fetchItemRates();
-    } catch (err: unknown) {
-      const msg =
-        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
-        "Operation failed. Please try again.";
-      setUpcomingError(msg);
-    } finally {
-      setUpcomingSubmitting(false);
     }
   };
 
@@ -286,7 +254,7 @@ export default function ItemRatesPage() {
     setPage(1);
   };
 
-  const hasActiveFilters = itemFilter || (!isManager && routeFilter) || statusFilter || fromDate;
+  const hasActiveFilters = itemFilter || (!isManager && routeFilter) || statusFilter;
 
   const columns: Column<ItemRate>[] = [
     {
@@ -326,12 +294,6 @@ export default function ItemRatesPage() {
       ),
     },
     {
-      key: "applicable_from_date",
-      label: "From Date",
-      sortable: true,
-      render: (ir) => <span>{ir.applicable_from_date ?? "\u2014"}</span>,
-    },
-    {
       key: "is_active",
       label: "Status",
       sortable: true,
@@ -368,24 +330,9 @@ export default function ItemRatesPage() {
             Manage rates and levies for items on specific routes
           </p>
         </div>
-        <div className="flex gap-3">
-          <Button onClick={openCreateModal}>
-            <Plus className="h-4 w-4 mr-2" /> Add Item Rate
-          </Button>
-          {!isManager && (
-            <Button
-              variant="outline"
-              className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"
-              onClick={() => {
-                setUpcomingDate("");
-                setUpcomingError("");
-                setShowUpcomingModal(true);
-              }}
-            >
-              <Plus className="h-4 w-4 mr-2" /> Add Item Rates for Upcoming Date
-            </Button>
-          )}
-        </div>
+        <Button onClick={openCreateModal}>
+          <Plus className="h-4 w-4 mr-2" /> Add Item Rate
+        </Button>
       </div>
 
       {error && (
@@ -462,18 +409,6 @@ export default function ItemRatesPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div>
-              <Label className="mb-1.5 block">From Date</Label>
-              <Input
-                type="date"
-                value={fromDate}
-                onChange={(e) => {
-                  setFromDate(e.target.value);
-                  setPage(1);
-                }}
-                className="w-full sm:w-[160px]"
-              />
-            </div>
             {hasActiveFilters && (
               <Button
                 variant="ghost"
@@ -482,7 +417,6 @@ export default function ItemRatesPage() {
                   setItemFilter("");
                   if (!isManager) setRouteFilter("");
                   setStatusFilter("");
-                  setFromDate("");
                   setPage(1);
                 }}
               >
@@ -524,7 +458,6 @@ export default function ItemRatesPage() {
                   ["Route", viewRate.route_name ?? viewRate.route_id],
                   ["Rate", viewRate.rate != null ? viewRate.rate.toFixed(2) : "\u2014"],
                   ["Levy", viewRate.levy != null ? viewRate.levy.toFixed(2) : "\u2014"],
-                  ["Applicable From", viewRate.applicable_from_date ?? "\u2014"],
                   [
                     "Status",
                     <Badge
@@ -548,54 +481,6 @@ export default function ItemRatesPage() {
               Close
             </Button>
           </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Upcoming Date Modal */}
-      <Dialog
-        open={showUpcomingModal}
-        onOpenChange={(open) => !open && setShowUpcomingModal(false)}
-      >
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Add Item Rates for Upcoming Date</DialogTitle>
-            <DialogDescription>
-              All active item rates will be duplicated with the new applicable date.
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleUpcomingSubmit} className="space-y-4">
-            <div>
-              <Label>New Applicable From Date *</Label>
-              <Input
-                type="date"
-                required
-                value={upcomingDate}
-                onChange={(e) => setUpcomingDate(e.target.value)}
-                className="mt-1.5"
-              />
-            </div>
-            {upcomingError && (
-              <p className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded p-2">
-                {upcomingError}
-              </p>
-            )}
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setShowUpcomingModal(false)}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                disabled={upcomingSubmitting}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white"
-              >
-                {upcomingSubmitting ? "Creating..." : "Create Rates"}
-              </Button>
-            </DialogFooter>
-          </form>
         </DialogContent>
       </Dialog>
 
@@ -675,17 +560,6 @@ export default function ItemRatesPage() {
                   className="mt-1.5"
                 />
               </div>
-            </div>
-            <div>
-              <Label>Applicable From Date</Label>
-              <Input
-                type="date"
-                value={form.applicable_from_date}
-                onChange={(e) =>
-                  setForm({ ...form, applicable_from_date: e.target.value })
-                }
-                className="mt-1.5"
-              />
             </div>
             {editingRate && (
               <div className="flex items-center justify-between py-2">

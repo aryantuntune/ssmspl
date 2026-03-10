@@ -85,13 +85,13 @@ export default function PaymentModesPage() {
       );
 
       const [pageResp, countResp] = await Promise.all([
-        api.get<PaymentMode[]>(`/api/payment-modes/?${params}`, { signal: controller.signal }),
+        api.get<PaymentMode[]>(`/api/payment-modes?${params}`, { signal: controller.signal }),
         api.get<number>(`/api/payment-modes/count?${countParams}`, { signal: controller.signal }),
       ]);
       setPaymentModes(pageResp.data);
       setTotalCount(countResp.data as unknown as number);
       setError("");
-    } catch (err) {
+    } catch {
       if (controller.signal.aborted) return;
       setError("Failed to load payment modes.");
     } finally {
@@ -141,7 +141,7 @@ export default function PaymentModesPage() {
         await api.patch(`/api/payment-modes/${editingPaymentMode.id}`, update);
       } else {
         const create: PaymentModeCreate = { description: form.description };
-        await api.post("/api/payment-modes/", create);
+        await api.post("/api/payment-modes", create);
       }
       closeModal();
       await fetchPaymentModes();

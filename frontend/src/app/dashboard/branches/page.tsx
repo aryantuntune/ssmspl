@@ -94,13 +94,13 @@ export default function BranchesPage() {
       );
 
       const [pageResp, countResp] = await Promise.all([
-        api.get<Branch[]>(`/api/branches/?${params}`, { signal: controller.signal }),
+        api.get<Branch[]>(`/api/branches?${params}`, { signal: controller.signal }),
         api.get<number>(`/api/branches/count?${countParams}`, { signal: controller.signal }),
       ]);
       setBranches(pageResp.data);
       setTotalCount(countResp.data as unknown as number);
       setError("");
-    } catch (err) {
+    } catch {
       if (controller.signal.aborted) return;
       setError("Failed to load branches.");
     } finally {
@@ -177,7 +177,7 @@ export default function BranchesPage() {
         if (form.longitude) create.longitude = parseFloat(form.longitude);
         if (form.sf_after) create.sf_after = form.sf_after;
         if (form.sf_before) create.sf_before = form.sf_before;
-        await api.post("/api/branches/", create);
+        await api.post("/api/branches", create);
       }
       closeModal();
       await fetchBranches();

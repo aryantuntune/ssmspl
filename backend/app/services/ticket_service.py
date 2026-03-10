@@ -203,22 +203,15 @@ def _cross_check_amounts(computed_amount: float, computed_net: float, submitted_
 
 
 async def get_current_rate(db: AsyncSession, item_id: int, route_id: int) -> dict:
-    today = datetime.date.today()
-
-    query = (
+    result = await db.execute(
         select(ItemRate)
         .where(
             ItemRate.item_id == item_id,
             ItemRate.route_id == route_id,
             ItemRate.is_active == True,
-            ItemRate.applicable_from_date.is_not(None),
-            ItemRate.applicable_from_date <= today,
         )
-        .order_by(ItemRate.applicable_from_date.desc())
         .limit(1)
     )
-
-    result = await db.execute(query)
     ir = result.scalar_one_or_none()
     if not ir:
         raise HTTPException(
@@ -296,38 +289,16 @@ async def get_multi_ticket_init(db: AsyncSession, user, branch_id: int | None = 
         is_off_hours = True
 
     # Get active items with their current rates for this route (batch query)
-    today = datetime.date.today()
-
-    # Use ROW_NUMBER window function to get the latest rate per item in one query
-    rate_rn = (
-        select(
-            ItemRate.item_id,
-            ItemRate.rate,
-            ItemRate.levy,
-            func.row_number().over(
-                partition_by=ItemRate.item_id,
-                order_by=ItemRate.applicable_from_date.desc(),
-            ).label("rn"),
-        )
-        .where(
-            ItemRate.route_id == user.route_id,
-            ItemRate.is_active == True,
-            ItemRate.applicable_from_date.is_not(None),
-            ItemRate.applicable_from_date <= today,
-        )
-        .subquery()
-    )
-
     items_with_rates_result = await db.execute(
         select(
             Item.id,
             Item.name,
             Item.short_name,
             Item.is_vehicle,
-            rate_rn.c.rate,
-            rate_rn.c.levy,
+            ItemRate.rate,
+            ItemRate.levy,
         )
-        .join(rate_rn, (rate_rn.c.item_id == Item.id) & (rate_rn.c.rn == 1))
+        .join(ItemRate, (ItemRate.item_id == Item.id) & (ItemRate.route_id == user.route_id) & (ItemRate.is_active == True))
         .where(Item.is_active == True)
         .order_by(Item.id)
     )
@@ -371,10 +342,7 @@ async def get_multi_ticket_init(db: AsyncSession, user, branch_id: int | None = 
                     ItemRate.item_id == sf_item_id,
                     ItemRate.route_id == user.route_id,
                     ItemRate.is_active == True,
-                    ItemRate.applicable_from_date.is_not(None),
-                    ItemRate.applicable_from_date <= today,
                 )
-                .order_by(ItemRate.applicable_from_date.desc())
                 .limit(1)
             )
             sf_ir = sf_rate_result.scalar_one_or_none()

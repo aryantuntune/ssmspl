@@ -105,7 +105,7 @@ export default function UsersPage() {
 
   const fetchRoutes = useCallback(async () => {
     try {
-      const resp = await api.get<Route[]>("/api/routes/?limit=200&status=active");
+      const resp = await api.get<Route[]>("/api/routes?limit=200&status=active");
       setRoutes(resp.data);
     } catch {
       // non-critical
@@ -141,13 +141,13 @@ export default function UsersPage() {
       );
 
       const [pageResp, countResp] = await Promise.all([
-        api.get<User[]>(`/api/users/?${params}`, { signal: controller.signal }),
+        api.get<User[]>(`/api/users?${params}`, { signal: controller.signal }),
         api.get<number>(`/api/users/count?${countParams}`, { signal: controller.signal }),
       ]);
       setUsers(pageResp.data);
       setTotalCount(countResp.data as unknown as number);
       setError("");
-    } catch (err) {
+    } catch {
       if (controller.signal.aborted) return;
       setError("Failed to load users.");
     } finally {
@@ -220,7 +220,7 @@ export default function UsersPage() {
           role: form.role as UserRole,
           route_id: form.route_id ? Number(form.route_id) : null,
         };
-        await api.post("/api/users/", create);
+        await api.post("/api/users", create);
       }
       closeModal();
       await fetchUsers();

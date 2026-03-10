@@ -136,7 +136,7 @@ export default function VerifyPage() {
   // Load branches for ticket_no mode
   useEffect(() => {
     api
-      .get("/api/branches/?limit=200")
+      .get("/api/branches?limit=200")
       .then((res) => setBranches(res.data || []))
       .catch(() => setBranches([]));
   }, []);

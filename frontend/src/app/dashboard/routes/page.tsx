@@ -68,7 +68,7 @@ export default function RoutesPage() {
     try {
       const [resp, meResp] = await Promise.all([
         api.get<Branch[]>(
-          "/api/branches/?skip=0&limit=200&status=active&sort_by=name&sort_order=asc"
+          "/api/branches?skip=0&limit=200&status=active&sort_by=name&sort_order=asc"
         ),
         api.get<User>("/api/auth/me"),
       ]);
@@ -99,7 +99,7 @@ export default function RoutesPage() {
       );
 
       const [pageResp, countResp] = await Promise.all([
-        api.get<Route[]>(`/api/routes/?${params}`),
+        api.get<Route[]>(`/api/routes?${params}`),
         api.get<number>(`/api/routes/count?${countParams}`),
       ]);
       setRoutes(pageResp.data);
@@ -168,7 +168,7 @@ export default function RoutesPage() {
         await api.patch(`/api/routes/${editingRoute.id}`, update);
       } else {
         const create: RouteCreate = { branch_id_one: b1, branch_id_two: b2 };
-        await api.post("/api/routes/", create);
+        await api.post("/api/routes", create);
       }
       closeModal();
       await fetchRoutes();

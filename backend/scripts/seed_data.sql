@@ -298,166 +298,166 @@ ON CONFLICT (id) DO NOTHING;
 -- 8. ITEM RATES — actual per-route rates from CSV rate files
 --    One rate per item per route (route-only pricing).
 -- ============================================================
--- Column: (id, applicable_from_date, levy, rate, item_id, route_id, is_active)
+-- Column: (id, levy, rate, item_id, route_id, is_active)
 
 -- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 -- ROUTE 1: DABHOL (101) <-> DHOPAVE (102) — 17 items
 -- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-INSERT INTO item_rates (id, applicable_from_date, levy, rate, item_id, route_id, is_active)
+INSERT INTO item_rates (id, levy, rate, item_id, route_id, is_active)
 VALUES
-    (1,   '2026-01-01',  2.00,   13.00,  1,  1, TRUE),  -- Bicycle
-    (2,   '2026-01-01',  7.00,   58.00,  2,  1, TRUE),  -- Motorcycle
-    (3,   '2026-01-01',  9.00,   81.00,  3,  1, TRUE),  -- Three-Wheeler Rickshaw
-    (4,   '2026-01-01', 17.00,  163.00,  7,  1, TRUE),  -- Empty Car 5 Seater
-    (5,   '2026-01-01', 19.00,  181.00,  9,  1, TRUE),  -- Passenger 8 Seater / Pickup
-    (6,   '2026-01-01', 25.00,  225.00, 18,  1, TRUE),  -- Medium Goods (709/Eicher 1095+)
-    (7,   '2026-01-01', 40.00,  360.00, 21,  1, TRUE),  -- Passenger Bus / Truck / Tanker
-    (8,   '2026-01-01', 50.00,  500.00, 32,  1, TRUE),  -- Large Goods Truck / JCB
-    (9,   '2026-01-01',  4.00,   36.00, 23,  1, TRUE),  -- Goods per Half Ton
-    (10,  '2026-01-01', 31.00,  319.00, 33,  1, TRUE),  -- Trolley-size Tractor
-    (11,  '2026-01-01',  2.00,   18.00, 11,  1, TRUE),  -- Passenger Adult
-    (12,  '2026-01-01',  1.00,    9.00, 12,  1, TRUE),  -- Passenger Child
-    (13,  '2026-01-01',  2.00,   18.00, 31,  1, TRUE),  -- Fish/Poultry/Dog/Goat/Sheep
-    (14,  '2026-01-01',  5.00,   45.00, 26,  1, TRUE),  -- Cow / Bull / Buffalo
-    (15,  '2026-01-01', 30.00,  270.00, 27,  1, TRUE),  -- Student Pass (Std 7th and below)
-    (16,  '2026-01-01', 40.00,  360.00, 28,  1, TRUE),  -- Student Pass (Std 7th and above)
-    (17,  '2026-01-01', 60.00,  640.00, 30,  1, TRUE)   -- Passenger Monthly Pass
+    (1,    2.00,   13.00,  1,  1, TRUE),  -- Bicycle
+    (2,    7.00,   58.00,  2,  1, TRUE),  -- Motorcycle
+    (3,    9.00,   81.00,  3,  1, TRUE),  -- Three-Wheeler Rickshaw
+    (4,   17.00,  163.00,  7,  1, TRUE),  -- Empty Car 5 Seater
+    (5,   19.00,  181.00,  9,  1, TRUE),  -- Passenger 8 Seater / Pickup
+    (6,   25.00,  225.00, 18,  1, TRUE),  -- Medium Goods (709/Eicher 1095+)
+    (7,   40.00,  360.00, 21,  1, TRUE),  -- Passenger Bus / Truck / Tanker
+    (8,   50.00,  500.00, 32,  1, TRUE),  -- Large Goods Truck / JCB
+    (9,    4.00,   36.00, 23,  1, TRUE),  -- Goods per Half Ton
+    (10,  31.00,  319.00, 33,  1, TRUE),  -- Trolley-size Tractor
+    (11,   2.00,   18.00, 11,  1, TRUE),  -- Passenger Adult
+    (12,   1.00,    9.00, 12,  1, TRUE),  -- Passenger Child
+    (13,   2.00,   18.00, 31,  1, TRUE),  -- Fish/Poultry/Dog/Goat/Sheep
+    (14,   5.00,   45.00, 26,  1, TRUE),  -- Cow / Bull / Buffalo
+    (15,  30.00,  270.00, 27,  1, TRUE),  -- Student Pass (Std 7th and below)
+    (16,  40.00,  360.00, 28,  1, TRUE),  -- Student Pass (Std 7th and above)
+    (17,  60.00,  640.00, 30,  1, TRUE)   -- Passenger Monthly Pass
 ON CONFLICT (id) DO NOTHING;
 
 -- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 -- ROUTE 2: VESHVI (103) <-> BAGMANDALE (104) — 17 items
 -- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-INSERT INTO item_rates (id, applicable_from_date, levy, rate, item_id, route_id, is_active)
+INSERT INTO item_rates (id, levy, rate, item_id, route_id, is_active)
 VALUES
-    (18,  '2026-01-01',  2.00,   13.00,  1,  2, TRUE),  -- Bicycle
-    (19,  '2026-01-01',  7.00,   58.00,  2,  2, TRUE),  -- Motorcycle
-    (20,  '2026-01-01',  9.00,   81.00,  3,  2, TRUE),  -- Three-Wheeler Rickshaw
-    (21,  '2026-01-01', 17.00,  163.00,  7,  2, TRUE),  -- Empty Car 5 Seater
-    (22,  '2026-01-01', 19.00,  181.00,  9,  2, TRUE),  -- Passenger 8 Seater / Pickup
-    (23,  '2026-01-01', 25.00,  225.00, 18,  2, TRUE),  -- Medium Goods (709/Eicher 1095+)
-    (24,  '2026-01-01', 40.00,  360.00, 21,  2, TRUE),  -- Passenger Bus / Truck / Tanker
-    (25,  '2026-01-01', 50.00,  500.00, 32,  2, TRUE),  -- Large Goods Truck / JCB
-    (26,  '2026-01-01',  4.00,   36.00, 23,  2, TRUE),  -- Goods per Half Ton
-    (27,  '2026-01-01', 31.00,  319.00, 33,  2, TRUE),  -- Trolley-size Tractor
-    (28,  '2026-01-01',  2.00,   18.00, 11,  2, TRUE),  -- Passenger Adult
-    (29,  '2026-01-01',  1.00,    9.00, 12,  2, TRUE),  -- Passenger Child
-    (30,  '2026-01-01',  2.00,   18.00, 31,  2, TRUE),  -- Fish/Poultry/Dog/Goat/Sheep
-    (31,  '2026-01-01',  5.00,   45.00, 26,  2, TRUE),  -- Cow / Bull / Buffalo
-    (32,  '2026-01-01', 30.00,  270.00, 27,  2, TRUE),  -- Student Pass (Std 10th and below)
-    (33,  '2026-01-01', 40.00,  360.00, 28,  2, TRUE),  -- Student Pass (Std 10th and above)
-    (34,  '2026-01-01', 60.00,  640.00, 30,  2, TRUE)   -- Passenger Monthly Pass
+    (18,   2.00,   13.00,  1,  2, TRUE),  -- Bicycle
+    (19,   7.00,   58.00,  2,  2, TRUE),  -- Motorcycle
+    (20,   9.00,   81.00,  3,  2, TRUE),  -- Three-Wheeler Rickshaw
+    (21,  17.00,  163.00,  7,  2, TRUE),  -- Empty Car 5 Seater
+    (22,  19.00,  181.00,  9,  2, TRUE),  -- Passenger 8 Seater / Pickup
+    (23,  25.00,  225.00, 18,  2, TRUE),  -- Medium Goods (709/Eicher 1095+)
+    (24,  40.00,  360.00, 21,  2, TRUE),  -- Passenger Bus / Truck / Tanker
+    (25,  50.00,  500.00, 32,  2, TRUE),  -- Large Goods Truck / JCB
+    (26,   4.00,   36.00, 23,  2, TRUE),  -- Goods per Half Ton
+    (27,  31.00,  319.00, 33,  2, TRUE),  -- Trolley-size Tractor
+    (28,   2.00,   18.00, 11,  2, TRUE),  -- Passenger Adult
+    (29,   1.00,    9.00, 12,  2, TRUE),  -- Passenger Child
+    (30,   2.00,   18.00, 31,  2, TRUE),  -- Fish/Poultry/Dog/Goat/Sheep
+    (31,   5.00,   45.00, 26,  2, TRUE),  -- Cow / Bull / Buffalo
+    (32,  30.00,  270.00, 27,  2, TRUE),  -- Student Pass (Std 10th and below)
+    (33,  40.00,  360.00, 28,  2, TRUE),  -- Student Pass (Std 10th and above)
+    (34,  60.00,  640.00, 30,  2, TRUE)   -- Passenger Monthly Pass
 ON CONFLICT (id) DO NOTHING;
 
 -- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 -- ROUTE 3: JAIGAD (105) <-> TAVSAL (106) — 15 items
 -- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-INSERT INTO item_rates (id, applicable_from_date, levy, rate, item_id, route_id, is_active)
+INSERT INTO item_rates (id, levy, rate, item_id, route_id, is_active)
 VALUES
-    (35,  '2026-01-01',  2.00,   18.00,  1,  3, TRUE),  -- Bicycle
-    (36,  '2026-01-01',  7.00,   73.00,  2,  3, TRUE),  -- Motorcycle
-    (37,  '2026-01-01', 10.00,   95.00,  3,  3, TRUE),  -- Three-Wheeler Rickshaw
-    (38,  '2026-01-01', 18.00,  182.00,  7,  3, TRUE),  -- Empty Car 5 Seater + Tata Magic
-    (39,  '2026-01-01', 20.00,  205.00,  8,  3, TRUE),  -- Luxury Car / 8 Seater / Pickup
-    (40,  '2026-01-01', 22.00,  228.00, 15,  3, TRUE),  -- Medium Goods (Tata 407)
-    (41,  '2026-01-01', 25.00,  250.00, 18,  3, TRUE),  -- Medium Goods (709/Eicher 1095)
-    (42,  '2026-01-01', 40.00,  410.00, 21,  3, TRUE),  -- Passenger Bus / Truck / Tanker
-    (43,  '2026-01-01', 50.00,  550.00, 32,  3, TRUE),  -- Large Goods Truck / JCB
-    (44,  '2026-01-01',  5.00,   45.00, 23,  3, TRUE),  -- Goods per Half Ton
-    (45,  '2026-01-01', 27.00,  273.00, 33,  3, TRUE),  -- Trolley-size Tractor
-    (46,  '2026-01-01',  3.00,   27.00, 11,  3, TRUE),  -- Passenger Adult
-    (47,  '2026-01-01',  2.00,   13.00, 12,  3, TRUE),  -- Passenger Child
-    (48,  '2026-01-01',  2.00,   23.00, 31,  3, TRUE),  -- Fish/Poultry/Dog/Goat/Sheep
-    (49,  '2026-01-01',  6.00,   64.00, 26,  3, TRUE)   -- Cow / Bull / Buffalo
+    (35,   2.00,   18.00,  1,  3, TRUE),  -- Bicycle
+    (36,   7.00,   73.00,  2,  3, TRUE),  -- Motorcycle
+    (37,  10.00,   95.00,  3,  3, TRUE),  -- Three-Wheeler Rickshaw
+    (38,  18.00,  182.00,  7,  3, TRUE),  -- Empty Car 5 Seater + Tata Magic
+    (39,  20.00,  205.00,  8,  3, TRUE),  -- Luxury Car / 8 Seater / Pickup
+    (40,  22.00,  228.00, 15,  3, TRUE),  -- Medium Goods (Tata 407)
+    (41,  25.00,  250.00, 18,  3, TRUE),  -- Medium Goods (709/Eicher 1095)
+    (42,  40.00,  410.00, 21,  3, TRUE),  -- Passenger Bus / Truck / Tanker
+    (43,  50.00,  550.00, 32,  3, TRUE),  -- Large Goods Truck / JCB
+    (44,   5.00,   45.00, 23,  3, TRUE),  -- Goods per Half Ton
+    (45,  27.00,  273.00, 33,  3, TRUE),  -- Trolley-size Tractor
+    (46,   3.00,   27.00, 11,  3, TRUE),  -- Passenger Adult
+    (47,   2.00,   13.00, 12,  3, TRUE),  -- Passenger Child
+    (48,   2.00,   23.00, 31,  3, TRUE),  -- Fish/Poultry/Dog/Goat/Sheep
+    (49,   6.00,   64.00, 26,  3, TRUE)   -- Cow / Bull / Buffalo
 ON CONFLICT (id) DO NOTHING;
 
 -- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 -- ROUTE 4: AGARDANDA (107) <-> DIGHI (108) — 15 items
 -- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-INSERT INTO item_rates (id, applicable_from_date, levy, rate, item_id, route_id, is_active)
+INSERT INTO item_rates (id, levy, rate, item_id, route_id, is_active)
 VALUES
-    (50,  '2026-01-01',  2.00,   18.00,  1,  4, TRUE),  -- Bicycle
-    (51,  '2026-01-01',  7.00,   73.00,  2,  4, TRUE),  -- Motorcycle
-    (52,  '2026-01-01', 10.00,   95.00,  3,  4, TRUE),  -- Three-Wheeler Rickshaw
-    (53,  '2026-01-01', 18.00,  182.00,  7,  4, TRUE),  -- Empty Car 5 Seater + Tata Magic
-    (54,  '2026-01-01', 20.00,  205.00,  8,  4, TRUE),  -- Luxury Car / 8 Seater / Pickup
-    (55,  '2026-01-01', 22.00,  228.00, 15,  4, TRUE),  -- Medium Goods (Tata 407)
-    (56,  '2026-01-01', 25.00,  250.00, 18,  4, TRUE),  -- Medium Goods (709/Eicher 1095)
-    (57,  '2026-01-01', 40.00,  410.00, 21,  4, TRUE),  -- Passenger Bus / Truck / Tanker
-    (58,  '2026-01-01', 50.00,  550.00, 32,  4, TRUE),  -- Large Goods Truck / JCB
-    (59,  '2026-01-01',  5.00,   45.00, 23,  4, TRUE),  -- Goods per Half Ton
-    (60,  '2026-01-01', 27.00,  273.00, 33,  4, TRUE),  -- Trolley-size Tractor
-    (61,  '2026-01-01',  3.00,   27.00, 11,  4, TRUE),  -- Passenger Adult
-    (62,  '2026-01-01',  2.00,   13.00, 12,  4, TRUE),  -- Passenger Child
-    (63,  '2026-01-01',  2.00,   23.00, 31,  4, TRUE),  -- Fish/Poultry/Dog/Goat/Sheep
-    (64,  '2026-01-01',  6.00,   64.00, 26,  4, TRUE)   -- Cow / Bull / Buffalo
+    (50,   2.00,   18.00,  1,  4, TRUE),  -- Bicycle
+    (51,   7.00,   73.00,  2,  4, TRUE),  -- Motorcycle
+    (52,  10.00,   95.00,  3,  4, TRUE),  -- Three-Wheeler Rickshaw
+    (53,  18.00,  182.00,  7,  4, TRUE),  -- Empty Car 5 Seater + Tata Magic
+    (54,  20.00,  205.00,  8,  4, TRUE),  -- Luxury Car / 8 Seater / Pickup
+    (55,  22.00,  228.00, 15,  4, TRUE),  -- Medium Goods (Tata 407)
+    (56,  25.00,  250.00, 18,  4, TRUE),  -- Medium Goods (709/Eicher 1095)
+    (57,  40.00,  410.00, 21,  4, TRUE),  -- Passenger Bus / Truck / Tanker
+    (58,  50.00,  550.00, 32,  4, TRUE),  -- Large Goods Truck / JCB
+    (59,   5.00,   45.00, 23,  4, TRUE),  -- Goods per Half Ton
+    (60,  27.00,  273.00, 33,  4, TRUE),  -- Trolley-size Tractor
+    (61,   3.00,   27.00, 11,  4, TRUE),  -- Passenger Adult
+    (62,   2.00,   13.00, 12,  4, TRUE),  -- Passenger Child
+    (63,   2.00,   23.00, 31,  4, TRUE),  -- Fish/Poultry/Dog/Goat/Sheep
+    (64,   6.00,   64.00, 26,  4, TRUE)   -- Cow / Bull / Buffalo
 ON CONFLICT (id) DO NOTHING;
 
 -- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 -- ROUTE 5: BHAYANDER (110) <-> VASAI (109) — 14 items
 -- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-INSERT INTO item_rates (id, applicable_from_date, levy, rate, item_id, route_id, is_active)
+INSERT INTO item_rates (id, levy, rate, item_id, route_id, is_active)
 VALUES
-    (65,  '2026-01-01',  1.00,    9.00,  1,  5, TRUE),  -- Bicycle
-    (66,  '2026-01-01',  6.00,   60.00,  2,  5, TRUE),  -- Motorcycle
-    (67,  '2026-01-01', 10.00,  100.00,  3,  5, TRUE),  -- Three-Wheeler Rickshaw
-    (68,  '2026-01-01', 20.00,  180.00,  8,  5, TRUE),  -- Luxury Car / 8 Seater / Pickup
-    (69,  '2026-01-01', 20.00,  200.00, 15,  5, TRUE),  -- Medium Goods (Tata 407)
-    (70,  '2026-01-01', 25.00,  250.00, 18,  5, TRUE),  -- Medium Goods (709/Eicher 1095)
-    (71,  '2026-01-01', 30.00,  300.00, 21,  5, TRUE),  -- Passenger Bus / Truck / Tractor
-    (72,  '2026-01-01', 40.00,  400.00, 32,  5, TRUE),  -- Large Goods Truck / JCB
-    (73,  '2026-01-01',  3.00,   26.00, 23,  5, TRUE),  -- Goods per Half Ton
-    (74,  '2026-01-01', 20.00,  200.00, 33,  5, TRUE),  -- Trolley-size Tractor
-    (75,  '2026-01-01',  3.00,   26.00, 11,  5, TRUE),  -- Passenger Adult
-    (76,  '2026-01-01',  2.00,   13.00, 12,  5, TRUE),  -- Passenger Child
-    (77,  '2026-01-01',  4.00,   36.00, 31,  5, TRUE),  -- Fish/Poultry/Dog/Goat/Sheep
-    (78,  '2026-01-01',  5.00,   50.00, 26,  5, TRUE)   -- Cow / Bull / Buffalo
+    (65,   1.00,    9.00,  1,  5, TRUE),  -- Bicycle
+    (66,   6.00,   60.00,  2,  5, TRUE),  -- Motorcycle
+    (67,  10.00,  100.00,  3,  5, TRUE),  -- Three-Wheeler Rickshaw
+    (68,  20.00,  180.00,  8,  5, TRUE),  -- Luxury Car / 8 Seater / Pickup
+    (69,  20.00,  200.00, 15,  5, TRUE),  -- Medium Goods (Tata 407)
+    (70,  25.00,  250.00, 18,  5, TRUE),  -- Medium Goods (709/Eicher 1095)
+    (71,  30.00,  300.00, 21,  5, TRUE),  -- Passenger Bus / Truck / Tractor
+    (72,  40.00,  400.00, 32,  5, TRUE),  -- Large Goods Truck / JCB
+    (73,   3.00,   26.00, 23,  5, TRUE),  -- Goods per Half Ton
+    (74,  20.00,  200.00, 33,  5, TRUE),  -- Trolley-size Tractor
+    (75,   3.00,   26.00, 11,  5, TRUE),  -- Passenger Adult
+    (76,   2.00,   13.00, 12,  5, TRUE),  -- Passenger Child
+    (77,   4.00,   36.00, 31,  5, TRUE),  -- Fish/Poultry/Dog/Goat/Sheep
+    (78,   5.00,   50.00, 26,  5, TRUE)   -- Cow / Bull / Buffalo
 ON CONFLICT (id) DO NOTHING;
 
 -- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 -- ROUTE 6: AMBET (111) <-> MHAPRAL (112) — 20 items
 -- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-INSERT INTO item_rates (id, applicable_from_date, levy, rate, item_id, route_id, is_active)
+INSERT INTO item_rates (id, levy, rate, item_id, route_id, is_active)
 VALUES
-    (79,  '2026-01-01',  1.00,    9.00,  1,  6, TRUE),  -- Bicycle
-    (80,  '2026-01-01',  5.00,   45.00,  2,  6, TRUE),  -- Motorcycle
-    (81,  '2026-01-01',  7.00,   68.00,  3,  6, TRUE),  -- Three-Wheeler Rickshaw / Goods Tempo
-    (82,  '2026-01-01', 14.00,  106.00,  7,  6, TRUE),  -- Empty Car 5 Seater + Tata Magic
-    (83,  '2026-01-01', 14.00,  116.00,  8,  6, TRUE),  -- Luxury Car / 8 Seater / Pickup
-    (84,  '2026-01-01', 14.00,  136.00, 15,  6, TRUE),  -- Medium Goods (Tata 407)
-    (85,  '2026-01-01', 25.00,  185.00, 18,  6, TRUE),  -- Medium Goods (709/Eicher 1095)
-    (86,  '2026-01-01', 20.00,  155.00, 33,  6, TRUE),  -- Trolley-size Tractor
-    (87,  '2026-01-01', 30.00,  220.00, 21,  6, TRUE),  -- Passenger Bus / Truck / Tanker
-    (88,  '2026-01-01', 50.00,  350.00, 32,  6, TRUE),  -- Large Goods Truck / JCB
-    (89,  '2026-01-01',  3.00,   27.00, 23,  6, TRUE),  -- Goods per Half Ton
-    (90,  '2026-01-01',  2.00,    8.00, 11,  6, TRUE),  -- Passenger Adult
-    (91,  '2026-01-01',  1.00,    4.00, 12,  6, TRUE),  -- Passenger Child
-    (92,  '2026-01-01',  0.00,    1.01, 24,  6, TRUE),  -- Passenger Luggage per kg (min rate > 1)
-    (93,  '2026-01-01',  1.00,    9.00, 31,  6, TRUE),  -- Fish/Poultry/Dog/Goat/Sheep
-    (94,  '2026-01-01',  5.00,   45.00, 26,  6, TRUE),  -- Cow / Bull / Buffalo
-    (95,  '2026-01-01', 20.00,  180.00, 27,  6, TRUE),  -- Student Pass (Std 10th and below)
-    (96,  '2026-01-01', 30.00,  270.00, 28,  6, TRUE),  -- Student Pass (Std 10th and above)
-    (97,  '2026-01-01',  2.00,   18.00, 29,  6, TRUE),  -- Tourist (one-way)
-    (98,  '2026-01-01',  0.00,  150.00, 34,  6, TRUE)   -- Extra Ferry (Night 11PM-6AM)
+    (79,   1.00,    9.00,  1,  6, TRUE),  -- Bicycle
+    (80,   5.00,   45.00,  2,  6, TRUE),  -- Motorcycle
+    (81,   7.00,   68.00,  3,  6, TRUE),  -- Three-Wheeler Rickshaw / Goods Tempo
+    (82,  14.00,  106.00,  7,  6, TRUE),  -- Empty Car 5 Seater + Tata Magic
+    (83,  14.00,  116.00,  8,  6, TRUE),  -- Luxury Car / 8 Seater / Pickup
+    (84,  14.00,  136.00, 15,  6, TRUE),  -- Medium Goods (Tata 407)
+    (85,  25.00,  185.00, 18,  6, TRUE),  -- Medium Goods (709/Eicher 1095)
+    (86,  20.00,  155.00, 33,  6, TRUE),  -- Trolley-size Tractor
+    (87,  30.00,  220.00, 21,  6, TRUE),  -- Passenger Bus / Truck / Tanker
+    (88,  50.00,  350.00, 32,  6, TRUE),  -- Large Goods Truck / JCB
+    (89,   3.00,   27.00, 23,  6, TRUE),  -- Goods per Half Ton
+    (90,   2.00,    8.00, 11,  6, TRUE),  -- Passenger Adult
+    (91,   1.00,    4.00, 12,  6, TRUE),  -- Passenger Child
+    (92,   0.00,    1.01, 24,  6, TRUE),  -- Passenger Luggage per kg (min rate > 1)
+    (93,   1.00,    9.00, 31,  6, TRUE),  -- Fish/Poultry/Dog/Goat/Sheep
+    (94,   5.00,   45.00, 26,  6, TRUE),  -- Cow / Bull / Buffalo
+    (95,  20.00,  180.00, 27,  6, TRUE),  -- Student Pass (Std 10th and below)
+    (96,  30.00,  270.00, 28,  6, TRUE),  -- Student Pass (Std 10th and above)
+    (97,   2.00,   18.00, 29,  6, TRUE),  -- Tourist (one-way)
+    (98,   0.00,  150.00, 34,  6, TRUE)   -- Extra Ferry (Night 11PM-6AM)
 ON CONFLICT (id) DO NOTHING;
 
 -- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 -- ROUTE 7: VIRAR (113) <-> SAFALE / JALSAR (114) — 13 items
 -- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-INSERT INTO item_rates (id, applicable_from_date, levy, rate, item_id, route_id, is_active)
+INSERT INTO item_rates (id, levy, rate, item_id, route_id, is_active)
 VALUES
-    (99,  '2026-01-01',  1.00,    9.00,  1,  7, TRUE),  -- Bicycle
-    (100, '2026-01-01',  6.00,   60.00,  2,  7, TRUE),  -- Motorcycle
-    (101, '2026-01-01', 10.00,  100.00,  3,  7, TRUE),  -- Three-Wheeler Rickshaw
-    (102, '2026-01-01', 20.00,  180.00,  7,  7, TRUE),  -- Empty Car 5 Seater
-    (103, '2026-01-01', 20.00,  200.00,  9,  7, TRUE),  -- Passenger 8 Seater / Pickup
-    (104, '2026-01-01', 25.00,  250.00, 18,  7, TRUE),  -- Medium Goods (709/Eicher 1095)
-    (105, '2026-01-01', 30.00,  300.00, 21,  7, TRUE),  -- Passenger Bus / Truck / Tractor
-    (106, '2026-01-01', 50.00,  400.00, 32,  7, TRUE),  -- Large Goods Truck / JCB
-    (107, '2026-01-01',  3.00,   27.00, 23,  7, TRUE),  -- Goods per Half Ton
-    (108, '2026-01-01',  4.00,   36.00, 31,  7, TRUE),  -- Fish/Poultry/Dog/Goat/Sheep
-    (109, '2026-01-01',  5.00,   50.00, 26,  7, TRUE),  -- Cow / Bull / Buffalo
-    (110, '2026-01-01',  3.00,   27.00, 11,  7, TRUE),  -- Passenger Adult
-    (111, '2026-01-01',  2.00,   13.00, 12,  7, TRUE)   -- Passenger Child
+    (99,   1.00,    9.00,  1,  7, TRUE),  -- Bicycle
+    (100,  6.00,   60.00,  2,  7, TRUE),  -- Motorcycle
+    (101, 10.00,  100.00,  3,  7, TRUE),  -- Three-Wheeler Rickshaw
+    (102, 20.00,  180.00,  7,  7, TRUE),  -- Empty Car 5 Seater
+    (103, 20.00,  200.00,  9,  7, TRUE),  -- Passenger 8 Seater / Pickup
+    (104, 25.00,  250.00, 18,  7, TRUE),  -- Medium Goods (709/Eicher 1095)
+    (105, 30.00,  300.00, 21,  7, TRUE),  -- Passenger Bus / Truck / Tractor
+    (106, 50.00,  400.00, 32,  7, TRUE),  -- Large Goods Truck / JCB
+    (107,  3.00,   27.00, 23,  7, TRUE),  -- Goods per Half Ton
+    (108,  4.00,   36.00, 31,  7, TRUE),  -- Fish/Poultry/Dog/Goat/Sheep
+    (109,  5.00,   50.00, 26,  7, TRUE),  -- Cow / Bull / Buffalo
+    (110,  3.00,   27.00, 11,  7, TRUE),  -- Passenger Adult
+    (111,  2.00,   13.00, 12,  7, TRUE)   -- Passenger Child
 ON CONFLICT (id) DO NOTHING;
 
 -- ============================================================

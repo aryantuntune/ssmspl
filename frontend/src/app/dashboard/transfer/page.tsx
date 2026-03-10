@@ -64,7 +64,7 @@ export default function TransferPage() {
   const fetchRoutes = useCallback(async () => {
     try {
       const resp = await api.get<Route[]>(
-        "/api/routes/?limit=200&status=active&sort_by=id&sort_order=asc"
+        "/api/routes?limit=200&status=active&sort_by=id&sort_order=asc"
       );
       setRoutes(resp.data);
     } catch {
@@ -91,7 +91,7 @@ export default function TransferPage() {
       );
 
       const [pageResp, countResp] = await Promise.all([
-        api.get<User[]>(`/api/users/?${params}`),
+        api.get<User[]>(`/api/users?${params}`),
         api.get<number>(`/api/users/count?${countParams}`),
       ]);
 

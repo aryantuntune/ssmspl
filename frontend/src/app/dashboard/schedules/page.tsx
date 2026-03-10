@@ -69,7 +69,7 @@ export default function SchedulesPage() {
     try {
       const [resp, meResp] = await Promise.all([
         api.get<Branch[]>(
-          "/api/branches/?skip=0&limit=200&status=active&sort_by=name&sort_order=asc"
+          "/api/branches?skip=0&limit=200&status=active&sort_by=name&sort_order=asc"
         ),
         api.get<User>("/api/auth/me"),
       ]);
@@ -99,7 +99,7 @@ export default function SchedulesPage() {
       );
 
       const [pageResp, countResp] = await Promise.all([
-        api.get<FerrySchedule[]>(`/api/ferry-schedules/?${params}`),
+        api.get<FerrySchedule[]>(`/api/ferry-schedules?${params}`),
         api.get<number>(`/api/ferry-schedules/count?${countParams}`),
       ]);
       setSchedules(pageResp.data);
@@ -172,7 +172,7 @@ export default function SchedulesPage() {
           branch_id: branchId,
           departure: form.departure,
         };
-        await api.post("/api/ferry-schedules/", create);
+        await api.post("/api/ferry-schedules", create);
       }
       closeModal();
       await fetchSchedules();

@@ -179,7 +179,6 @@ export interface FerryScheduleUpdate {
 
 export interface ItemRate {
   id: number;
-  applicable_from_date: string | null;
   levy: number | null;
   rate: number | null;
   item_id: number | null;
@@ -192,7 +191,6 @@ export interface ItemRate {
 }
 
 export interface ItemRateCreate {
-  applicable_from_date?: string | null;
   levy?: number | null;
   rate?: number | null;
   item_id: number;
@@ -200,7 +198,6 @@ export interface ItemRateCreate {
 }
 
 export interface ItemRateUpdate {
-  applicable_from_date?: string | null;
   levy?: number | null;
   rate?: number | null;
   item_id?: number;
