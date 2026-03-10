@@ -68,8 +68,12 @@ updates_to_deploys_today.md
 scrape_carferry.py
 screenshot_portal.py
 screenshot_sidebar.py
+screenshot_review2.py
+screenshot_site.py
 
 # Screenshots & reference images (local only)
 screenshots_legacy/
 screenshots_responsive/
+screenshots_review/
 data/ticket_reference.jpeg
+data/Report_format/
