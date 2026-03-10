@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Dimensions, TextStyle } from 'react-native';
 import { CameraView, useCameraPermissions, BarcodeScanningResult } from 'expo-camera';
+import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useDispatch, useSelector } from 'react-redux';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -133,10 +134,10 @@ export default function QRScannerScreen({ navigation }: Props) {
       {/* Controls */}
       <View style={styles.controls}>
         <TouchableOpacity onPress={handleClose} style={styles.controlBtn} accessibilityLabel="Close scanner" accessibilityRole="button">
-          <Text style={styles.controlIcon}>✕</Text>
+          <Ionicons name="close" size={24} color={colors.textOnPrimary} />
         </TouchableOpacity>
-        <TouchableOpacity onPress={() => setFlashOn(!flashOn)} style={styles.controlBtn} accessibilityLabel={flashOn ? 'Turn flash off' : 'Turn flash on'} accessibilityRole="button">
-          <Text style={styles.controlIcon}>{flashOn ? 'Flash ON' : 'Flash OFF'}</Text>
+        <TouchableOpacity onPress={() => setFlashOn(!flashOn)} style={[styles.controlBtn, flashOn && styles.controlBtnActive]} accessibilityLabel={flashOn ? 'Turn flash off' : 'Turn flash on'} accessibilityRole="button">
+          <Ionicons name={flashOn ? 'flash' : 'flash-off'} size={22} color={colors.textOnPrimary} />
         </TouchableOpacity>
       </View>
 
@@ -214,7 +215,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  controlIcon: { fontSize: 20, color: colors.textOnPrimary },
+  controlBtnActive: {
+    backgroundColor: 'rgba(255,200,0,0.35)',
+  },
   scanningOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.7)',

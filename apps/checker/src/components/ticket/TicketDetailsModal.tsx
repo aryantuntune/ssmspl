@@ -129,13 +129,23 @@ export default function TicketDetailsModal({
             {canVerify && (
               <Button
                 title="Verify Passenger"
+                variant="success"
                 onPress={onVerify}
                 loading={isCheckingIn}
                 icon="✓"
               />
             )}
+            {isVerified && (
+              <Button
+                title="Already Verified"
+                variant="danger"
+                onPress={() => {}}
+                disabled
+                icon="✕"
+              />
+            )}
             {(isVerified || isCancelled || isPending) && (
-              <Button title="Scan Next Ticket" onPress={onScanNext} icon="📷" />
+              <Button title="Scan Next Ticket" variant="outline" onPress={onScanNext} icon="📷" />
             )}
           </View>
         </View>

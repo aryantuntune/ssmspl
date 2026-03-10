@@ -13,7 +13,7 @@ import { colors, spacing, borderRadius, typography } from '../../theme';
 interface ButtonProps {
   title: string;
   onPress: () => void;
-  variant?: 'primary' | 'secondary' | 'outline' | 'danger';
+  variant?: 'primary' | 'secondary' | 'outline' | 'danger' | 'success';
   loading?: boolean;
   disabled?: boolean;
   icon?: string;
@@ -36,7 +36,7 @@ export default function Button({
   const isDisabled = disabled || loading;
 
   const handlePress = () => {
-    if (variant === 'primary' || variant === 'danger') {
+    if (variant === 'primary' || variant === 'danger' || variant === 'success') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
     onPress();
@@ -56,6 +56,9 @@ export default function Button({
     textStyles.push(styles.textOutline);
   } else if (variant === 'danger') {
     buttonStyles.push(styles.danger);
+    textStyles.push(styles.textPrimary);
+  } else if (variant === 'success') {
+    buttonStyles.push(styles.success);
     textStyles.push(styles.textPrimary);
   }
 
@@ -101,6 +104,7 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
   },
   danger: { backgroundColor: colors.error },
+  success: { backgroundColor: colors.success },
   disabled: { opacity: 0.5 },
   text: { ...typography.button },
   textPrimary: { color: colors.textOnPrimary },

@@ -89,11 +89,10 @@ Roles are defined in `backend/app/core/rbac.py` as a Python `str, Enum`. Menu it
 ### Database
 
 - DDL in `backend/scripts/ddl.sql`, seed data in `backend/scripts/seed_data.sql`.
-- Tables: `users` (UUID PK), `refresh_tokens` (prepared but not wired in Python yet).
+- Tables: `users` (UUID PK), `refresh_tokens` (DB-backed token rotation via `token_service`).
 - Soft deletes: user deactivation sets `is_active=False`, no hard deletes.
 - Seed credentials (dev only): `superadmin` / `admin` / `manager` / `billing_operator` / `ticket_checker`, all with password `Password@123`.
 
 ## Known Issues
 
-- **Refresh tokens stateless**: The `refresh_tokens` DB table exists but is not used by the ORM. Logout is client-side only.
 - **Most dashboard routes are stubs**: Only `/dashboard` is implemented. Routes like `/dashboard/users`, `/dashboard/ferries`, etc. are sidebar links without pages.
