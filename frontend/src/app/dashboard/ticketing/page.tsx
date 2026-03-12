@@ -266,8 +266,9 @@ export default function TicketingPage() {
   const [branches, setBranches] = useState<Branch[]>([]);
   const [allRoutes, setAllRoutes] = useState<Route[]>([]);
   const [items, setItems] = useState<Item[]>([]);
+  const [routeItems, setRouteItems] = useState<Item[]>([]);
   const itemsRef = useRef<Item[]>([]);
-  useEffect(() => { itemsRef.current = items; }, [items]);
+  useEffect(() => { itemsRef.current = routeItems.length > 0 ? routeItems : items; }, [items, routeItems]);
   const [paymentModes, setPaymentModes] = useState<PaymentMode[]>([]);
 
   // Modal
@@ -452,11 +453,29 @@ export default function TicketingPage() {
     }
   }, [isRouteRestricted, user?.route_id]);
 
+  // Fetch route-specific items (only items with rates on the selected route)
+  const fetchRouteItems = useCallback(async (routeId: number) => {
+    if (!routeId) {
+      setRouteItems([]);
+      return;
+    }
+    try {
+      const res = await api.get<{ item_id: number }[]>(
+        `/api/item-rates?route_filter=${routeId}&limit=200&status=active`
+      );
+      const rateItemIds = new Set(res.data.map((r) => r.item_id));
+      setRouteItems(items.filter((i) => rateItemIds.has(i.id)));
+    } catch {
+      setRouteItems([]);
+    }
+  }, [items]);
+
   // Route change handler for modal (unrestricted users)
   const handleRouteChange = (routeId: number) => {
     setFormRouteId(routeId);
     setFormBranchId(0);
     setFormDeparture("");
+    fetchRouteItems(routeId);
     if (routeId) {
       const route = allRoutes.find((r) => r.id === routeId);
       if (route) {
@@ -643,6 +662,7 @@ export default function TicketingPage() {
       // Restricted user: lock route and branch — prefer server-side active_branch_id
       const selectedBranchId = user?.active_branch_id || getSelectedBranchId();
       setFormRouteId(user!.route_id!);
+      fetchRouteItems(user!.route_id!);
       setFormBranchId(selectedBranchId || 0);
       setFilteredBranches([]);
       if (selectedBranchId) {
@@ -780,11 +800,13 @@ export default function TicketingPage() {
         // Restricted user: lock to assigned route and login branch — prefer server-side active_branch_id
         const selectedBranchId = user?.active_branch_id || getSelectedBranchId();
         setFormRouteId(user!.route_id!);
+        fetchRouteItems(user!.route_id!);
         setFormBranchId(selectedBranchId || t.branch_id);
         setFilteredBranches([]);
       } else {
         // Unrestricted user: pre-fill from ticket, filter branches by route
         setFormRouteId(t.route_id);
+        fetchRouteItems(t.route_id);
         setFormBranchId(t.branch_id);
         const route = allRoutes.find((r) => r.id === t.route_id);
         if (route) {
@@ -2048,7 +2070,7 @@ export default function TicketingPage() {
                               </td>
                               <td className="px-3 py-2">
                                 <ItemSearchSelect
-                                  items={items}
+                                  items={routeItems.length > 0 ? routeItems : items}
                                   selectedId={fi.item_id}
                                   disabled={fi.is_cancelled}
                                   onSelect={(id) => handleItemChange(fi.tempId, id)}
