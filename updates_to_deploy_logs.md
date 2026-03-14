@@ -303,3 +303,47 @@ sudo systemctl restart ssmspl-frontend
 * SUPER_ADMIN passwords can only be reset by another SUPER_ADMIN.
 * The admin reset password endpoint does NOT send any email notification — it is a manual admin action.
 * Login continues to use username (not email) as implemented in the previous deployment.
+
+---
+
+## Deployment Update — 2026-03-14 (hotfix)
+
+### Module
+
+Authentication / User Management
+
+### Commit ID
+
+f53100e
+
+### Changes
+
+* Fixed 500 Internal Server Error on `POST /api/users/{id}/reset-password`
+* Root cause: missing `await db.refresh(user)` after `db.commit()` in `admin_reset_password` service — SQLAlchemy expired the user instance, and accessing `user.route_id` triggered an unsupported async lazy load (`MissingGreenlet`)
+
+### Files Modified
+
+* `backend/app/services/user_service.py`
+
+### Database Migrations
+
+* None
+
+### Deployment Steps (VPS)
+
+Backend:
+```bash
+cd backend
+source .venv/bin/activate
+sudo systemctl restart ssmspl
+```
+
+Frontend:
+```bash
+# No frontend changes — skip
+```
+
+### Notes
+
+* One-line backend fix. No frontend or database changes required.
+* The 422 errors seen when submitting weak passwords are expected Pydantic validation responses — the frontend already displays these correctly.
