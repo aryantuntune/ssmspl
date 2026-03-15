@@ -399,25 +399,26 @@ Frontend:
 
 ---
 
-## Deployment Update — 2026-03-15
+## Deployment Update — 2026-03-16
 
 ### Module
 
 Ticketing / Print Receipt
 
-### Commit ID
+### Commit IDs
 
-6165157
+6165157, 045bd22
 
 ### Changes
 
 * **Ticket modal stays open after creation** — fixed Radix Dialog dismiss race condition where closing the payment confirmation modal would also close the main ticket form modal. Added `isSavingRef` guard on the main dialog's `onOpenChange` and `onCloseAutoFocus` prevention on the payment dialog to stop focus interference.
-* **Payment mode now printed on ticket receipt** — added `PAYMENT MODE: CASH` (or `CASH / UPI`, `UPI`, `CARD`, etc.) line on both header and footer sections of 80mm and 58mm thermal receipts. Supports split-payment labels (e.g. `CASH / UPI` when ticket is paid with multiple modes).
+* **Payment mode now printed on ticket receipt** — added `PAYMENT MODE: CASH` (or `CASH / UPI`, `UPI`, `CARD`, etc.) line in the header section of 80mm and 58mm thermal receipts. Supports split-payment labels (e.g. `CASH / UPI` when ticket is paid with multiple modes).
 * Receipt data for reprints derives payment mode label from the ticket's `payments` array (or falls back to `payment_mode_name`).
+* **Receipt layout cleanup** — removed duplicate CASH MEMO NO, PAYMENT MODE, and NET TOTAL from footer section. Removed footer DATE/TIME row. Moved `BY:` (created by) to the header row alongside PAYMENT MODE. Split the Marathi NOTE text with "Ferry Boatit Ticket Dakhvaa." on its own centered line. Removed unused `formatFooterDateTime` helper.
 
 ### Files Modified
 
-* `frontend/src/lib/print-receipt.ts` — added `paymentModeName` to `ReceiptData` interface; added `PAYMENT MODE:` line in receipt header and footer HTML
+* `frontend/src/lib/print-receipt.ts` — added `paymentModeName` to `ReceiptData` interface; added `PAYMENT MODE:` and `BY:` in receipt header; removed duplicate footer rows; cleaned up NOTE text; removed dead code
 * `frontend/src/app/dashboard/ticketing/page.tsx` — added `isSavingRef` to guard modal dismiss during save; added `onCloseAutoFocus` prevention on payment dialog; passes `paymentModeName` in both new-ticket and reprint receipt data
 
 ### Database Migrations
