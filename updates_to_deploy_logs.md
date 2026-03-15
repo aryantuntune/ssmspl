@@ -407,7 +407,7 @@ Ticketing / Print Receipt
 
 ### Commit IDs
 
-6165157, 045bd22
+6165157, 045bd22, c69e76b
 
 ### Changes
 
@@ -415,6 +415,7 @@ Ticketing / Print Receipt
 * **Payment mode now printed on ticket receipt** — added `PAYMENT MODE: CASH` (or `CASH / UPI`, `UPI`, `CARD`, etc.) line in the header section of 80mm and 58mm thermal receipts. Supports split-payment labels (e.g. `CASH / UPI` when ticket is paid with multiple modes).
 * Receipt data for reprints derives payment mode label from the ticket's `payments` array (or falls back to `payment_mode_name`).
 * **Receipt layout cleanup** — removed duplicate CASH MEMO NO, PAYMENT MODE, and NET TOTAL from footer section. Removed footer DATE/TIME row. Moved `BY:` (created by) to the header row alongside PAYMENT MODE. Split the Marathi NOTE text with "Ferry Boatit Ticket Dakhvaa." on its own centered line. Removed unused `formatFooterDateTime` helper.
+* **Receipt BY field uses username** — changed `BY:` on receipt from full name (e.g. "Super Administrator") to username (e.g. "superadmin") to prevent text wrapping on 80mm thermal paper.
 
 ### Files Modified
 
