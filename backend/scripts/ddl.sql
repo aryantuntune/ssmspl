@@ -462,5 +462,36 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS failed_login_attempts INTEGER NOT NUL
 ALTER TABLE users ADD COLUMN IF NOT EXISTS locked_until TIMESTAMPTZ;
 
 -- ============================================================
+-- PATCH: Increase portal_users.password column length
+-- ============================================================
+
+ALTER TABLE portal_users ALTER COLUMN password TYPE VARCHAR(255);
+
+-- ============================================================
+-- PATCH: Performance indexes for report queries
+-- Without these, reports do full table scans past ~100k rows.
+-- Composite indexes cover the most common WHERE clauses:
+--   WHERE ticket_date BETWEEN x AND y AND branch_id = z AND route_id = w
+-- ============================================================
+
+CREATE INDEX IF NOT EXISTS idx_tickets_date_branch_route
+    ON tickets (ticket_date, branch_id, route_id);
+
+CREATE INDEX IF NOT EXISTS idx_tickets_payment_mode
+    ON tickets (payment_mode_id);
+
+CREATE INDEX IF NOT EXISTS idx_bookings_date_branch_route
+    ON bookings (travel_date, branch_id, route_id);
+
+CREATE INDEX IF NOT EXISTS idx_bookings_portal_user
+    ON bookings (portal_user_id);
+
+CREATE INDEX IF NOT EXISTS idx_ticket_payement_ticket_id
+    ON ticket_payement (ticket_id);
+
+CREATE INDEX IF NOT EXISTS idx_booking_items_booking_id
+    ON booking_items (booking_id);
+
+-- ============================================================
 -- END OF DDL
 -- ============================================================

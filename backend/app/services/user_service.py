@@ -213,11 +213,11 @@ async def get_all_users(
 
 
 async def create_user(db: AsyncSession, user_in: UserCreate, current_user: User | None = None) -> dict:
-    # Only SUPER_ADMIN can create SUPER_ADMIN users
-    if user_in.role == UserRole.SUPER_ADMIN and (not current_user or current_user.role != UserRole.SUPER_ADMIN):
+    # Role escalation check: only SUPER_ADMIN can create ADMIN or SUPER_ADMIN accounts
+    if user_in.role in (UserRole.ADMIN, UserRole.SUPER_ADMIN) and (not current_user or current_user.role != UserRole.SUPER_ADMIN):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied. Insufficient permissions.",
+            detail="Only Super Admin can create Admin or Super Admin accounts.",
         )
 
     # Check uniqueness

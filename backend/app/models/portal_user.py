@@ -15,7 +15,7 @@ class PortalUser(Base):
     first_name: Mapped[str] = mapped_column(String(60), nullable=False)
     last_name: Mapped[str] = mapped_column(String(60), nullable=False)
     email: Mapped[str] = mapped_column(String(90), unique=True, nullable=False, index=True)
-    password: Mapped[str] = mapped_column(String(60), nullable=False)
+    password: Mapped[str] = mapped_column(String(255), nullable=False)
     mobile: Mapped[str] = mapped_column(String(60), nullable=False)
     google_id: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True, index=True)
     is_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

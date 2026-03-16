@@ -4,15 +4,12 @@ import json
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, Request
+from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.config import settings
-from app.database import engine, get_db
+from app.database import engine
 from app.middleware.rate_limit import limiter, rate_limit_exceeded_handler, RateLimitExceeded, SLOWAPI_AVAILABLE
 from app.middleware.security import SecurityHeadersMiddleware
 from app.routers import auth, users, boats, branches, routes, items, item_rates, ferry_schedules, payment_modes, tickets, portal_auth, company, booking, portal_bookings, reports, verification, contact, dashboard, portal_payment, portal_theme, settings as settings_router, rate_change_logs
@@ -60,7 +57,7 @@ app = FastAPI(
         "- JWT-based authentication with access & refresh tokens\n"
         "- Role-Based Access Control (RBAC) with 4 roles: Admin, Manager, Billing Operator, Ticket Checker\n"
         "- User management (CRUD) restricted to admin roles\n"
-        "- Online payment integration (upcoming)\n\n"
+        "- Online payment integration via CCAvenue\n\n"
         "### Authentication\n"
         "1. Call `POST /api/auth/login` with username & password to get tokens\n"
         "2. Include the access token as `Authorization: Bearer <token>` header\n"
@@ -249,16 +246,5 @@ app.include_router(rate_change_logs.router)
 
 
 @app.get("/health", tags=["Health"])
-async def health(db: AsyncSession = Depends(get_db)):
-    result = {"status": "ok", "app": settings.APP_NAME}
-    if settings.DEBUG:
-        result["env"] = settings.APP_ENV
-    try:
-        await db.execute(text("SELECT 1"))
-        result["db"] = "connected"
-    except Exception:
-        return JSONResponse(
-            status_code=503,
-            content={"status": "unhealthy", "app": settings.APP_NAME, "db": "disconnected"},
-        )
-    return result
+async def health():
+    return {"status": "ok"}
