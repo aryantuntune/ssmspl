@@ -446,3 +446,452 @@ sudo systemctl restart ssmspl-frontend
 * Payment mode on receipt is derived from the ticket's payment rows — if a ticket has multiple payment modes (e.g. CASH + UPI), the receipt shows `PAYMENT MODE: CASH / UPI`.
 * The modal-stays-open fix addresses a Radix UI Dialog interaction where sibling dialog dismiss events could cascade. The `isSavingRef` ref prevents the main modal from closing during the save-and-reset flow.
 * Operators can now create consecutive tickets without re-opening the modal — form resets, cursor focuses first item input, and branch/route/date context is preserved.
+
+---
+
+## Deployment Update — 2026-03-16
+
+### Module
+
+System Audit — Code Quality / Reports / User Management / Boats / DDL
+
+### Commit ID
+
+b0f7b7c
+
+### Changes
+
+* **Shared password validator (DRY fix)** — Extracted `validate_password_complexity()` from 3 duplicated copies (schemas/user.py, schemas/auth.py, schemas/portal_user.py) into a single shared module at `backend/app/core/validators.py`
+* **Frontend password complexity validation** — Added client-side password validation matching backend rules (uppercase, lowercase, digit, special char) to: user create form, admin reset password form, and change-password page. Created shared `frontend/src/lib/password-validation.ts` utility
+* **Report payment breakdowns show all modes** — Fixed itemwise-levy, branch-item-summary, and payment-mode reports to show ALL active payment modes (Cash, UPI, Card, Online) even when a mode has zero transactions in the selected period. Previously only modes with transactions appeared
+* **DDL synced with migrations** — Added missing `active_branch_id`, `active_session_id`, and `session_last_active` columns to the `users` table definition in `backend/scripts/ddl.sql`
+* **Removed dead boat branch_id** — Removed unused `branch_id` column from boat model (`backend/app/models/boat.py`) and boat schemas (`BoatCreate`, `BoatUpdate`, `BoatRead`). The column was defined but never used in any service, router, or UI
+* **Payment issues audit log** — Created `analysis_issues/payment_issues.md` documenting all payment-related audit findings
+
+### Files Modified
+
+* `backend/app/core/validators.py` (new — shared password complexity validator)
+* `frontend/src/lib/password-validation.ts` (new — frontend password validation utility)
+* `backend/app/schemas/user.py` (import shared validator, remove local copy)
+* `backend/app/schemas/auth.py` (import shared validator, remove local copy)
+* `backend/app/schemas/portal_user.py` (import shared validator, remove local copy)
+* `backend/app/models/boat.py` (remove branch_id column)
+* `backend/app/schemas/boat.py` (remove branch_id from all schemas)
+* `backend/app/services/report_service.py` (payment breakdown — load all active modes)
+* `backend/scripts/ddl.sql` (add 3 missing user columns)
+* `frontend/src/app/dashboard/users/page.tsx` (password validation on create + reset)
+* `frontend/src/app/dashboard/change-password/page.tsx` (password complexity validation)
+
+### Database Migrations
+
+* None — DDL script updated for fresh deployments only. Existing databases already have these columns via Alembic migrations.
+
+### Deployment Steps (VPS)
+
+Backend:
+```bash
+cd backend
+source .venv/bin/activate
+sudo systemctl restart ssmspl
+```
+
+Frontend:
+```bash
+cd frontend
+npm run build
+sudo systemctl restart ssmspl-frontend
+```
+
+### Notes
+
+* Both backend and frontend need restart for the password validation and report fixes to take effect.
+* No database migration needed — existing production databases already have all columns via Alembic. The DDL update only affects fresh database setups.
+* The `boats.branch_id` column removal is a model/schema-only change. If the column exists in the production database, it will be ignored by SQLAlchemy (no migration needed to drop it). If you want to clean it up, run: `ALTER TABLE boats DROP COLUMN IF EXISTS branch_id;`
+* Report payment breakdowns will now always show all 4 payment modes (Cash, UPI, Card, Online) in itemwise-levy, branch-item-summary, and payment-mode reports, even for periods with zero transactions in some modes.
+* Frontend password inputs now show placeholder text indicating requirements: "Min 8 chars, upper, lower, digit, special"
+
+---
+
+## Deployment Update — 2026-03-16
+
+### Module
+
+Reports / Ticketing — Payment Mode Fix
+
+### Commit ID
+
+dae56e3
+
+### Changes
+
+* **Root cause fix: `tickets.payment_mode_id` was always CASH** — The frontend ticketing page set the header `payment_mode_id` to `paymentModes[0]` (CASH) when opening the create modal, then never updated it when the user selected a different mode (UPI, Card, etc.) in the payment confirmation modal. The `ticket_payement` rows stored the correct mode, but `tickets.payment_mode_id` was always CASH. All 12 report queries correctly grouped by the header field — the data was wrong, not the queries.
+* **Frontend fix** — `handleSaveAndPrint()` now derives the header `payment_mode_id` from the payment row with the largest amount, instead of using the stale `formPaymentModeId` state
+* **Backend defensive fix** — `create_ticket()` in `ticket_service.py` now overrides `payment_mode_id` from the primary payment row (largest amount) when `payments` are provided, ensuring correctness even if the client sends a stale value
+* **Data migration** — Alembic migration `f9a5b3c72d16` updates all existing tickets' `payment_mode_id` from their `ticket_payement` rows (using `DISTINCT ON` to pick the payment row with the largest amount per ticket)
+
+### Files Modified
+
+* `frontend/src/app/dashboard/ticketing/page.tsx` — derive `payment_mode_id` from payment rows before API call
+* `backend/app/services/ticket_service.py` — defensive `effective_payment_mode_id` derivation from payments
+* `backend/alembic/versions/f9a5b3c72d16_fix_ticket_payment_mode_from_payments.py` (new — data migration)
+
+### Database Migrations
+
+* `f9a5b3c72d16_fix_ticket_payment_mode_from_payments.py` — Updates `tickets.payment_mode_id` for all tickets that have `ticket_payement` rows where the payment mode differs from the header. Uses `DISTINCT ON (ticket_id) ORDER BY amount DESC` to pick the primary payment mode.
+
+### Deployment Steps (VPS)
+
+Backend:
+```bash
+cd backend
+source .venv/bin/activate
+alembic upgrade head
+sudo systemctl restart ssmspl
+```
+
+Frontend:
+```bash
+cd frontend
+npm run build
+sudo systemctl restart ssmspl-frontend
+```
+
+### Post-Deployment Verification
+
+```sql
+-- Verify payment modes are now distributed (not all CASH)
+SELECT pm.description, COUNT(*)
+FROM tickets t
+JOIN payment_modes pm ON pm.id = t.payment_mode_id
+GROUP BY pm.description
+ORDER BY COUNT(*) DESC;
+
+-- Verify no tickets have mismatched header vs payment rows
+SELECT t.id, t.payment_mode_id AS header_mode, tp.payment_mode_id AS payment_mode, tp.amount
+FROM tickets t
+JOIN ticket_payement tp ON tp.ticket_id = t.id
+WHERE t.payment_mode_id != tp.payment_mode_id
+  AND NOT EXISTS (
+    SELECT 1 FROM ticket_payement tp2
+    WHERE tp2.ticket_id = t.id AND tp2.amount > tp.amount
+  )
+LIMIT 10;
+```
+
+### Notes
+
+* **Migration must run before backend restart** — `alembic upgrade head` fixes all historical tickets. Without it, existing reports will still show incorrect payment mode data.
+* Both backend and frontend must be deployed together. The frontend fix prevents future tickets from having wrong `payment_mode_id`. The backend defensive fix is belt-and-suspenders.
+* The multiticketing page (`/dashboard/multiticketing`) was NOT affected — it already correctly set `payment_mode_id: t.paymentModeId` from the user's selection.
+* Tickets without `ticket_payement` rows (if any exist from very early data) will not be modified by the migration — their `payment_mode_id` stays as-is.
+* The migration is not reversible — the original incorrect CASH values are not preserved anywhere.
+
+---
+
+## Update — 2026-03-16
+
+### Module
+
+Infrastructure / Documentation (non-deployment)
+
+### Commit ID
+
+6032e81
+
+### Changes
+
+* **Production readiness audit** — Completed full system audit covering backend, frontend, checker app, customer app, and infrastructure. Documented 8 CRITICAL, 15 HIGH, and 22 MEDIUM issues across security, data integrity, performance, and operational readiness for 12-branch / 2k-3k daily user production deployment.
+* **Audit documentation** — Created local-only `analysis_issues/` folder (gitignored) containing:
+  - `production_audit.md` — Full issue catalog (C-01 through C-08, H-01 through H-15, M-01 through M-22) with file references, impact, and fix guidance. Organized by severity with a phased remediation roadmap.
+  - `payment_issues.md` — Payment-specific findings (AUDIT-PAY-01 through AUDIT-PAY-08) plus ongoing payment issue tracking from separate work.
+* **`.gitignore` updated** — Added `analysis_issues/` to ensure audit docs are never committed to the repository.
+
+### Key Findings (Summary)
+
+**Critical (must fix before go-live):**
+- C-01: Ticket ID race condition (missing advisory lock)
+- C-02: Ferry overbooking (no capacity locking)
+- C-03: Branch counter race condition (duplicate ticket numbers)
+- C-04: Session tokens valid 30 min after logout (no revocation)
+- C-05: ADMIN can create unlimited ADMIN accounts
+- C-06: Admin password reset without user notification
+- C-07: No automated database backups
+- C-08: Duplicate check-ins possible in checker app (no idempotency)
+
+**High (fix within first month):**
+- Missing DB indexes for reports (will degrade after ~730k rows)
+- Missing foreign keys on `ticket_payement.ticket_id` and `booking_items.item_id`
+- No brute force protection (only 10/min IP-level rate limit)
+- In-memory rate limiting (resets on restart, no sharing across instances)
+- DB connection pool undersized (30 max for 2-3k users)
+- No request body size limits (DoS vector)
+- Mobile apps fall back to insecure token storage silently
+- Single server architecture with no failover
+- No monitoring or error tracking (Sentry DSN blank)
+- Frontend CSP allows `unsafe-inline` and `unsafe-eval`
+
+### Files Modified
+
+* `.gitignore` — added `analysis_issues/` exclusion
+
+### Database Migrations
+
+* None
+
+### Deployment Steps (VPS)
+
+```bash
+# No deployment needed — .gitignore is a repo-level change only.
+# Audit docs are local-only and not deployed.
+```
+
+### Notes
+
+* This is a documentation-only change. No backend/frontend restart needed.
+* The `analysis_issues/` folder exists only on the developer's machine and is excluded from git. It will not appear in production deployments.
+* Full audit details are in `analysis_issues/production_audit.md` (non-payment) and `analysis_issues/payment_issues.md` (payment-specific). Review these files locally for remediation planning.
+
+---
+
+## Deployment Update — 2026-03-16
+
+### Module
+
+Full-System Security Hardening (24 fixes)
+
+### Commit ID
+
+dc5ed99
+
+### Changes
+
+**Backend — Race Conditions & Data Integrity:**
+* Added `pg_advisory_xact_lock` to ticket ID, ticket item ID, and ticket payment ID generation in `ticket_service.py` (4 locations) — prevents duplicate IDs under concurrent requests
+* Added `capacity` column to `ferry_schedules` model and DDL (INTEGER NOT NULL DEFAULT 0) — enables overbooking prevention
+* Added `payment_transactions` table definition to DDL (was only in Alembic, missing from canonical DDL)
+* Added `UNIQUE` constraint on `verification_code` columns in tickets and bookings tables — prevents QR code collision
+* Added `CHECK` constraints on `status` fields: tickets (CONFIRMED/CANCELLED/VERIFIED), bookings (PENDING/CONFIRMED/CANCELLED/VERIFIED), payment_transactions (INITIATED/SUCCESS/FAILED/ABORTED)
+* Wired `_check_capacity()` call into `create_booking()` flow — function existed but was never called
+
+**Backend — Auth & Authorization:**
+* Added rate limiting to all 5 verification endpoints (30/min for lookups, 15/min for check-in)
+* Added rate limiting to tickets listing (30/min), all 21 report endpoints (10/min), and rate-change-logs endpoints
+* Added route-scope check to `admin_reset_password` — non-SUPER_ADMIN admins can no longer reset passwords for users on a different route (IDOR fix)
+* Added account lockout: 5 failed login attempts triggers 15-minute lockout. Lockout counters committed immediately to persist across the HTTP exception rollback
+* Added `SECRET_KEY` length >= 32 validation on startup via Pydantic field_validator
+
+**Backend — Security Headers & Infrastructure:**
+* Added `X-XSS-Protection: 0` and `X-Permitted-Cross-Domain-Policies: none` response headers
+* Made gunicorn `forwarded_allow_ips` configurable via `FORWARDED_ALLOW_IPS` env var (documented rationale for Docker topology)
+* Added security guardrail comments above `UserRead` and `PortalUserRead` schemas
+
+**Frontend:**
+* Removed `'unsafe-eval'` from CSP `script-src` directive in `next.config.ts` — not needed in production
+* Removed `console.error()` calls from production dashboard page (lines 189, 219)
+* Added redirect param support to admin and customer login pages — validates path starts with `/` and rejects protocol-relative URLs (`//`)
+
+**Mobile (Checker App):**
+* Removed insecure AsyncStorage token fallback from `storageService.ts` — SecureStore failure now returns null (forces re-login) instead of falling back to plaintext storage
+* Added QR payload validation (rejects payloads > 500 chars) in `QRScannerScreen.tsx`
+* Added manual entry upper bound (max 999999) in `HomeScreen.tsx`
+* Removed unnecessary `android.permission.RECORD_AUDIO` from `app.json`
+
+**Infrastructure / Docker:**
+* Added Redis authentication (`--requirepass`) in production Docker compose + updated `RATE_LIMIT_STORAGE_URI` with password
+* Pinned Docker image versions: `postgres:16.6-alpine`, `redis:7.4-alpine`, `nginx:1.27-alpine`, `node:20.18-alpine`, `python:3.12.8-slim`
+* Added `FORWARDED_ALLOW_IPS` env var to backend service in production compose
+
+### Files Modified
+
+* `backend/app/services/ticket_service.py` — advisory locks + multi-ticket atomicity comment
+* `backend/app/services/auth_service.py` — account lockout rewrite of authenticate_user
+* `backend/app/services/booking_service.py` — _check_capacity call
+* `backend/app/services/user_service.py` — route-scope check on admin_reset_password
+* `backend/app/models/ferry_schedule.py` — capacity column
+* `backend/app/models/ticket.py` — verification_code unique=True
+* `backend/app/models/booking.py` — verification_code unique=True
+* `backend/app/models/user.py` — failed_login_attempts + locked_until columns
+* `backend/app/routers/verification.py` — rate limiting on all endpoints
+* `backend/app/routers/reports.py` — rate limiting on all endpoints
+* `backend/app/routers/tickets.py` — rate limiting on list endpoint
+* `backend/app/routers/rate_change_logs.py` — rate limiting on all endpoints
+* `backend/app/middleware/security.py` — X-XSS-Protection + X-Permitted-Cross-Domain-Policies
+* `backend/app/config.py` — SECRET_KEY field_validator
+* `backend/app/schemas/user.py` — security comment on UserRead
+* `backend/app/schemas/portal_user.py` — security comment on PortalUserRead
+* `backend/gunicorn.conf.py` — configurable forwarded_allow_ips
+* `backend/scripts/ddl.sql` — capacity column, payment_transactions table, unique indexes, CHECK constraints, lockout columns
+* `backend/Dockerfile` — pinned python:3.12.8-slim
+* `frontend/next.config.ts` — removed unsafe-eval from CSP
+* `frontend/src/app/dashboard/page.tsx` — removed console.error
+* `frontend/src/app/login/page.tsx` — redirect param with validation
+* `frontend/src/app/customer/login/page.tsx` — redirect param with validation
+* `frontend/Dockerfile` — pinned node:20.18-alpine
+* `apps/checker/src/services/storageService.ts` — removed AsyncStorage token fallback
+* `apps/checker/src/screens/QRScannerScreen.tsx` — QR payload validation
+* `apps/checker/src/screens/HomeScreen.tsx` — manual entry upper bound
+* `apps/checker/app.json` — removed RECORD_AUDIO permission
+* `docker-compose.prod.yml` — Redis auth, FORWARDED_ALLOW_IPS, pinned images
+* `docker-compose.yml` — pinned postgres image
+
+### Database Migrations
+
+* **Required:** Run `alembic revision --autogenerate -m "security hardening"` then `alembic upgrade head` to apply:
+  - `ferry_schedules.capacity` column (INTEGER NOT NULL DEFAULT 0)
+  - `tickets.verification_code` UNIQUE constraint
+  - `bookings.verification_code` UNIQUE constraint
+  - `users.failed_login_attempts` column (if not already present)
+  - `users.locked_until` column (if not already present)
+* The DDL patches at the bottom of `ddl.sql` handle existing databases via `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` and `ADD CONSTRAINT` statements. These are idempotent and can also be run directly.
+
+### Deployment Steps (VPS)
+
+Backend:
+```bash
+cd backend
+source .venv/bin/activate
+alembic revision --autogenerate -m "security hardening"
+alembic upgrade head
+sudo systemctl restart ssmspl
+```
+
+Frontend:
+```bash
+cd frontend
+npm run build
+sudo systemctl restart ssmspl-frontend
+```
+
+Docker (if using Docker deployment):
+```bash
+docker compose -f docker-compose.prod.yml up --build -d
+```
+
+### Notes
+
+* **Account lockout:** After 5 failed login attempts, the account is locked for 15 minutes. The lockout counter resets on successful login. The generic "Incorrect username or password" error message does not reveal whether the account is locked (prevents enumeration).
+* **Rate limiting:** All verification endpoints now have rate limits (30/min for lookups, 15/min for check-in). All report endpoints are limited to 10/min. Ticket listing is 30/min. These are per-IP limits via slowapi + Redis.
+* **Redis password:** Production Redis now requires authentication. The password defaults to `ssmspl_redis_prod` but can be overridden via `REDIS_PASSWORD` env var. The `RATE_LIMIT_STORAGE_URI` is updated to include the password.
+* **Docker image pins:** Images are pinned to specific patch versions. Update these periodically for security patches.
+* **Mobile app:** The checker app changes require a new build and deployment via Expo/EAS. The RECORD_AUDIO permission removal is a breaking change for app store metadata — update the store listing if needed.
+* **Capacity check:** The `_check_capacity()` function treats capacity=0 as unlimited. Set capacity values on ferry schedules via the admin API to enable overbooking prevention.
+* **Payment queries:** Additional payment gateway security queries (auth on /initiate, /simulate, TOCTOU on amounts, stale transactions) are logged in `analysis_issues/payment_issues.md` for future work. Payment simulation mode is left enabled per project decision.
+
+---
+
+## Deployment Update — 2026-03-16
+
+### Module
+
+Ticketing — Audit Integrity Fix + Receipt Label Rename
+
+### Commit ID
+
+937beb5
+
+### Changes
+
+* **Fixed ticket audit integrity — BY field no longer changes with logged-in user** — The receipt `BY:` field was sourced from the currently logged-in user (`user?.username`) instead of the original ticket creator. When a Superadmin logged in and reprinted a ticket originally created by a billing operator, the receipt would incorrectly show `BY: superadmin`. The `created_by` UUID was already correctly stored in the tickets table via `AuditMixin` at creation time — the bug was purely in the display layer.
+* **Backend: added `created_by_username` to ticket API response** — New `_get_username()` helper in `ticket_service.py` resolves `tickets.created_by` UUID → `users.username`. The `_enrich_ticket()` function now includes `created_by_username` in every ticket response. Added `created_by_username` field to `TicketRead` Pydantic schema.
+* **Frontend: receipt BY field now uses ticket creator, not current user** — Both print paths (new ticket creation and reprint) now use `ticket.created_by_username` with fallback to `user?.username` only if null.
+* **Renamed "CASH MEMO NO" to "TICKET MEMO NO"** on thermal receipts (58mm and 80mm).
+
+### Security Validation
+
+* `created_by` is **immutable by design** — `TicketUpdate` schema has no `created_by` or `created_by_username` field
+* `update_ticket()` only touches: departure, route_id, payment_mode_id, discount, amount, net_amount, is_cancelled, items
+* No API endpoint allows modification of audit fields
+
+### Files Modified
+
+* `backend/app/services/ticket_service.py` — added `User` import, `_get_username()` helper, `created_by_username` in `_enrich_ticket()` (included in prior commit dae56e3)
+* `backend/app/schemas/ticket.py` — added `created_by_username: str | None` to `TicketRead`
+* `frontend/src/app/dashboard/ticketing/page.tsx` — changed `createdBy` from `user?.username` to `ticket.created_by_username || user?.username` in both new-ticket and reprint paths (included in prior commit dae56e3)
+* `frontend/src/types/index.ts` — added `created_by_username` to `Ticket` interface
+* `frontend/src/lib/print-receipt.ts` — renamed `CASH MEMO NO` to `TICKET MEMO NO`
+
+### Database Migrations
+
+* None — `created_by` UUID column already exists on tickets table via `AuditMixin`. No schema change needed.
+
+### Deployment Steps (VPS)
+
+Backend:
+```bash
+cd backend
+source .venv/bin/activate
+sudo systemctl restart ssmspl
+```
+
+Frontend:
+```bash
+cd frontend
+npm run build
+sudo systemctl restart ssmspl-frontend
+```
+
+### Notes
+
+* Both backend and frontend must be deployed together. The backend now returns `created_by_username` in ticket responses; the frontend expects it for receipt printing.
+* No database migration needed — the `created_by` UUID was already stored correctly for all existing tickets. The fix only changes how it is resolved and displayed.
+* The multi-ticketing page (`/dashboard/multiticketing`) print view does not display a `BY:` field and is unaffected.
+* Fallback to `user?.username` only applies if `created_by_username` is null (e.g., very old tickets with no `created_by` set). All tickets created after the system's auth integration will have the correct value.
+
+---
+
+## Deployment Update — 2026-03-16
+
+### Module
+
+Rate Change Logs — 500 Error Fix
+
+### Commit ID
+
+ecf0df5
+
+### Changes
+
+* **Root cause: N+1 query pattern causing 500 under load** — The list endpoint executed 3 separate DB queries per row (item name via `Item`, route display name via `Route`+`Branch`×2, user full name via `User`) inside a Python loop. With the default 50-row page limit, each request triggered 150+ individual queries, causing timeouts and connection exhaustion under production load.
+* **Service: replaced N+1 loop with single LEFT JOIN query** — `get_rate_change_logs()` now uses `outerjoin(Item)`, `outerjoin(Route)`, `outerjoin(BranchOne)`, `outerjoin(BranchTwo)`, `outerjoin(UpdatedByUser)` in a single SELECT. Removed the `_get_route_display_name()` helper (no longer needed).
+* **Service: extracted shared filter helpers** — `_apply_role_filter()` (async, handles MANAGER/ADMIN/SUPER_ADMIN visibility) and `_apply_optional_filters()` (date_from, date_to, route_id, item_id) are now shared between `get_rate_change_logs()` and `count_rate_change_logs()`, eliminating duplicated filter logic.
+* **Service: defensive null guard on count** — `result.scalar() or 0` prevents potential None return.
+* **Schema: removed fragile alias pattern** — Replaced `change_date: DateType = Field(..., alias="date")` / `change_time: TimeType = Field(..., alias="time")` with direct field names `date` and `time`. Removed unnecessary `populate_by_name` config. This was the only schema in the project using aliases.
+* **Contributing factor: missing DB columns** — The User model includes `failed_login_attempts` and `locked_until` columns (added in security hardening commit dc5ed99) but the corresponding `ALTER TABLE` statements from `ddl.sql` were never applied to the database. This causes `select(User)` to fail with `UndefinedColumnError`, breaking ALL authenticated endpoints including rate change logs.
+
+### Files Modified
+
+* `backend/app/services/rate_change_log_service.py` — N+1 → single JOIN query, shared filter helpers
+* `backend/app/schemas/rate_change_log.py` — simplified field names, removed aliases
+
+### Database Migrations
+
+* **Required (from prior commit dc5ed99, never applied):**
+```sql
+ALTER TABLE users ADD COLUMN IF NOT EXISTS failed_login_attempts INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS locked_until TIMESTAMPTZ;
+```
+
+### Deployment Steps (VPS)
+
+Backend:
+```bash
+cd backend
+source .venv/bin/activate
+
+# Apply missing user columns (required — fixes 500 on ALL authenticated endpoints)
+psql -U postgres -d ssmspl_db -c "ALTER TABLE users ADD COLUMN IF NOT EXISTS failed_login_attempts INTEGER NOT NULL DEFAULT 0;"
+psql -U postgres -d ssmspl_db -c "ALTER TABLE users ADD COLUMN IF NOT EXISTS locked_until TIMESTAMPTZ;"
+
+sudo systemctl restart ssmspl
+```
+
+Frontend:
+```bash
+# No frontend changes — skip
+```
+
+### Notes
+
+* **The missing `failed_login_attempts` / `locked_until` columns affect ALL authenticated endpoints, not just rate change logs.** These were added to the User model in commit dc5ed99 (security hardening) but the DDL was never run on the database. The `ALTER TABLE ... IF NOT EXISTS` statements are idempotent and safe to run multiple times.
+* Backend-only change. No frontend rebuild needed — the frontend already expects `date`, `time`, `item_name`, `route_name`, `updated_by_name` fields which are unchanged.
+* The query optimization reduces rate change log list queries from ~150 per request to 1 (single JOIN). This eliminates the timeout/connection exhaustion under load.
