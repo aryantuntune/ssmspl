@@ -895,3 +895,69 @@ Frontend:
 * **The missing `failed_login_attempts` / `locked_until` columns affect ALL authenticated endpoints, not just rate change logs.** These were added to the User model in commit dc5ed99 (security hardening) but the DDL was never run on the database. The `ALTER TABLE ... IF NOT EXISTS` statements are idempotent and safe to run multiple times.
 * Backend-only change. No frontend rebuild needed — the frontend already expects `date`, `time`, `item_name`, `route_name`, `updated_by_name` fields which are unchanged.
 * The query optimization reduces rate change log list queries from ~150 per request to 1 (single JOIN). This eliminates the timeout/connection exhaustion under load.
+
+---
+
+## Deployment Update — 2026-03-16
+
+### Module
+
+Security Hardening — Second Pass (6 additional fixes)
+
+### Commit ID
+
+d6435e3
+
+### Changes
+
+* **Email case-sensitivity fix** — All 8 portal email lookup entry points in `portal_auth_service.py` now normalize emails to lowercase with `email = email.lower()` before DB queries. Prevents `TEST@example.com` and `test@example.com` being treated as different accounts. Also normalizes email on registration so new accounts are always stored lowercase.
+* **Payment transaction expiry** — INITIATED payment transactions older than 30 minutes are now automatically rejected. The `initiate_checkout` and `simulate_checkout` endpoints add a `created_at >= now() - 30min` filter to INITIATED transaction queries. Stale transactions get "Invalid or expired payment link" response.
+* **Booking amount locking (TOCTOU fix)** — `create_order` now locks the booking row with `SELECT ... FOR UPDATE` before reading the amount and creating a PaymentTransaction. Prevents race condition where booking amount changes between order creation and payment callback.
+* **Duplicate transaction prevention** — `create_order` checks for an existing non-expired INITIATED transaction for the same booking before creating a new one. Reuses the existing transaction if found, preventing duplicate payment entries.
+* **Session idle timeout** — Added 30-minute inactivity auto-logout to both admin portal (`DashboardShell.tsx`) and customer portal (`CustomerLayout.tsx`). Monitors mousedown, keydown, touchstart, and scroll events. Redirects to `/login?reason=idle_timeout` or `/customer/login?reason=idle_timeout` on timeout.
+* **Disabled production source maps** — Added `productionBrowserSourceMaps: false` to `next.config.ts` to prevent source code exposure in production builds.
+
+### Files Modified
+
+* `backend/app/services/portal_auth_service.py` — email normalization with `.lower()` in all 8 functions
+* `backend/app/routers/portal_auth.py` — email normalization in Google OAuth callback
+* `backend/app/routers/portal_payment.py` — payment expiry filter, booking row lock, duplicate transaction check
+* `frontend/src/components/dashboard/DashboardShell.tsx` — idle timeout useEffect
+* `frontend/src/components/customer/CustomerLayout.tsx` — idle timeout useEffect
+* `frontend/next.config.ts` — productionBrowserSourceMaps: false
+
+### Database Migrations
+
+* None — all changes are application-level logic. No schema changes required.
+
+### Deployment Steps (VPS)
+
+Backend:
+```bash
+cd backend
+source .venv/bin/activate
+sudo systemctl restart ssmspl
+```
+
+Frontend:
+```bash
+cd frontend
+npm run build
+sudo systemctl restart ssmspl-frontend
+```
+
+### Remaining Items (Documented, Not Code-Fixable)
+
+These items require external services or dependencies and are documented in `analysis_issues/remaining_hardening_items.md`:
+* **RH-01**: No CAPTCHA on customer registration (needs reCAPTCHA API key)
+* **RH-02**: No explicit CSRF tokens (mitigated by SameSite + CORS + Bearer tokens)
+* **RH-03**: Offline queue stored in plaintext AsyncStorage (needs expo-crypto dep, SecureStore has 2KB limit)
+* **RH-04**: No monitoring/error tracking (needs Sentry account + SDK)
+* **RH-05**: No email notification on admin password reset (needs SMTP configured)
+
+### Notes
+
+* Both backend and frontend must be restarted for all changes to take effect.
+* The email normalization is backward-compatible — existing lowercase emails in the database will match as before. If any existing portal users registered with uppercase emails, they can now log in with any case variation.
+* The 30-minute idle timeout applies to both admin and customer portals. The timer resets on any user interaction (mouse, keyboard, touch, scroll). Browser tab visibility changes do NOT reset the timer.
+* Payment transaction expiry does NOT cancel the associated booking — it only rejects the stale payment link. The booking remains in PENDING status and the user can initiate a new payment.
