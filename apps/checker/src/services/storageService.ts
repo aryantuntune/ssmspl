@@ -27,8 +27,8 @@ export async function getAccessToken(): Promise<string | null> {
   try {
     return await SecureStore.getItemAsync(KEYS.ACCESS_TOKEN);
   } catch {
-    logger.warn('SecureStore read failed, trying AsyncStorage fallback');
-    return AsyncStorage.getItem(KEYS.ACCESS_TOKEN);
+    logger.error('SecureStore read failed — tokens inaccessible');
+    return null;
   }
 }
 
@@ -36,7 +36,8 @@ export async function getRefreshToken(): Promise<string | null> {
   try {
     return await SecureStore.getItemAsync(KEYS.REFRESH_TOKEN);
   } catch {
-    return AsyncStorage.getItem(KEYS.REFRESH_TOKEN);
+    logger.error('SecureStore read failed — tokens inaccessible');
+    return null;
   }
 }
 
@@ -44,10 +45,9 @@ export async function setTokens(access: string, refresh: string): Promise<void> 
   try {
     await SecureStore.setItemAsync(KEYS.ACCESS_TOKEN, access);
     await SecureStore.setItemAsync(KEYS.REFRESH_TOKEN, refresh);
-  } catch {
-    logger.warn('SecureStore write failed, using AsyncStorage fallback');
-    await AsyncStorage.setItem(KEYS.ACCESS_TOKEN, access);
-    await AsyncStorage.setItem(KEYS.REFRESH_TOKEN, refresh);
+  } catch (e) {
+    logger.error('SecureStore write failed — cannot store tokens securely');
+    throw e;
   }
 }
 
@@ -56,8 +56,9 @@ export async function clearTokens(): Promise<void> {
     await SecureStore.deleteItemAsync(KEYS.ACCESS_TOKEN);
     await SecureStore.deleteItemAsync(KEYS.REFRESH_TOKEN);
   } catch {
-    // ignore
+    // Best-effort cleanup
   }
+  // Also clean up any legacy AsyncStorage tokens from older versions
   await AsyncStorage.removeItem(KEYS.ACCESS_TOKEN);
   await AsyncStorage.removeItem(KEYS.REFRESH_TOKEN);
 }

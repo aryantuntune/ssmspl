@@ -1,5 +1,6 @@
 import os
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
 
@@ -48,9 +49,16 @@ class Settings(BaseSettings):
     CCAVENUE_WORKING_KEY: str = ""
     CCAVENUE_BASE_URL: str = "https://test.ccavenue.com"
 
-    # Payment simulation — allows testing the payment flow without real CCAvenue credentials.
-    # Set to true in any environment (including production) to enable simulated payments.
-    # Automatically disabled when CCAvenue credentials are configured.
+    @field_validator("SECRET_KEY")
+    @classmethod
+    def secret_key_must_be_strong(cls, v: str) -> str:
+        if len(v) < 32:
+            raise ValueError("SECRET_KEY must be at least 32 characters")
+        return v
+
+    # Payment simulation — hard override toggle.
+    # When true, ALL payments use the simulator regardless of CCAvenue credentials.
+    # Use as a fallback if CCAvenue is down. Set back to false to resume real payments.
     PAYMENT_SIMULATION: bool = False
 
     # Email (SMTP)

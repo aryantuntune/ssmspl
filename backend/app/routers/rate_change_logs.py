@@ -1,6 +1,8 @@
+import logging
 from datetime import date
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -9,6 +11,8 @@ from app.core.rbac import UserRole
 from app.models.user import User
 from app.schemas.rate_change_log import RateChangeLogRead
 from app.services import rate_change_log_service
+
+logger = logging.getLogger("ssmspl")
 
 router = APIRouter(prefix="/api/rate-change-logs", tags=["Rate Change Logs"])
 
@@ -22,6 +26,7 @@ _allowed_roles = require_roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MA
     description="Paginated list of rate change logs. Managers see only their own. Admins see managers + own. Superadmins see all.",
     responses={
         200: {"description": "List of rate change logs"},
+        400: {"description": "Invalid filter parameters"},
         401: {"description": "Not authenticated"},
         403: {"description": "Insufficient role permissions"},
     },
@@ -36,9 +41,16 @@ async def list_rate_change_logs(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(_allowed_roles),
 ):
-    return await rate_change_log_service.get_rate_change_logs(
-        db, current_user, skip, limit, date_from, date_to, route_id, item_id,
-    )
+    if date_from and date_to and date_from > date_to:
+        raise HTTPException(status_code=400, detail="date_from must not be after date_to")
+
+    try:
+        return await rate_change_log_service.get_rate_change_logs(
+            db, current_user, skip, limit, date_from, date_to, route_id, item_id,
+        )
+    except SQLAlchemyError:
+        logger.exception("Database error fetching rate change logs")
+        raise HTTPException(status_code=500, detail="Failed to fetch rate change logs")
 
 
 @router.get(
@@ -48,6 +60,7 @@ async def list_rate_change_logs(
     description="Total count of rate change logs with role-based filtering.",
     responses={
         200: {"description": "Total count"},
+        400: {"description": "Invalid filter parameters"},
         401: {"description": "Not authenticated"},
         403: {"description": "Insufficient role permissions"},
     },
@@ -60,6 +73,13 @@ async def count_rate_change_logs(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(_allowed_roles),
 ):
-    return await rate_change_log_service.count_rate_change_logs(
-        db, current_user, date_from, date_to, route_id, item_id,
-    )
+    if date_from and date_to and date_from > date_to:
+        raise HTTPException(status_code=400, detail="date_from must not be after date_to")
+
+    try:
+        return await rate_change_log_service.count_rate_change_logs(
+            db, current_user, date_from, date_to, route_id, item_id,
+        )
+    except SQLAlchemyError:
+        logger.exception("Database error counting rate change logs")
+        raise HTTPException(status_code=500, detail="Failed to count rate change logs")

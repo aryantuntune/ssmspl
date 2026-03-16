@@ -1,4 +1,5 @@
 import multiprocessing
+import os
 
 # Worker class for async FastAPI
 worker_class = "uvicorn.workers.UvicornWorker"
@@ -28,5 +29,9 @@ loglevel = "info"
 # Preload app for faster worker startup
 preload_app = True
 
-# Forward proxy headers
-forwarded_allow_ips = "*"
+# Trust proxy headers only from known reverse proxies.
+# In Docker: nginx is the only service forwarding to gunicorn on the 'internal' network.
+# The Docker internal network is isolated (not exposed to the host), so trusting all
+# IPs within it is acceptable. If deploying outside Docker, set FORWARDED_ALLOW_IPS
+# to the specific nginx IP address(es).
+forwarded_allow_ips = os.environ.get("FORWARDED_ALLOW_IPS", "*")

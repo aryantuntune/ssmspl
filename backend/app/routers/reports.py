@@ -1,6 +1,6 @@
 import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -8,6 +8,7 @@ from app.database import get_db
 from app.dependencies import require_roles
 from app.core.rbac import UserRole
 from app.core.route_scope import get_route_branch_ids, needs_route_scope
+from app.middleware.rate_limit import limiter
 from app.models.user import User
 from app.schemas.report import (
     RevenueReport,
@@ -121,6 +122,7 @@ async def _scope_branch_only(
     return branch_id
 
 
+@limiter.limit("10/minute")
 @router.get(
     "/report-users",
     summary="Users available for report filtering",
@@ -128,6 +130,7 @@ async def _scope_branch_only(
                 "respecting role hierarchy.",
 )
 async def report_users(
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(_report_roles),
 ):
@@ -177,6 +180,7 @@ async def report_users(
     return [{"id": str(r.id), "full_name": r.full_name} for r in rows]
 
 
+@limiter.limit("10/minute")
 @router.get(
     "/revenue",
     response_model=RevenueReport,
@@ -184,6 +188,7 @@ async def report_users(
     description="Revenue summary (tickets + bookings) grouped by day, week, or month.",
 )
 async def revenue_report(
+    request: Request,
     date_from: datetime.date = Query(...),
     date_to: datetime.date = Query(...),
     branch_id: int | None = Query(None),
@@ -196,6 +201,7 @@ async def revenue_report(
     return await report_service.get_revenue_report(db, date_from, date_to, branch_id, route_id, grouping)
 
 
+@limiter.limit("10/minute")
 @router.get(
     "/ticket-count",
     response_model=TicketCountReport,
@@ -203,6 +209,7 @@ async def revenue_report(
     description="Count of tickets and bookings by status, grouped by branch, route, or date.",
 )
 async def ticket_count_report(
+    request: Request,
     date_from: datetime.date = Query(...),
     date_to: datetime.date = Query(...),
     branch_id: int | None = Query(None),
@@ -215,6 +222,7 @@ async def ticket_count_report(
     return await report_service.get_ticket_count_report(db, date_from, date_to, branch_id, route_id, group_by)
 
 
+@limiter.limit("10/minute")
 @router.get(
     "/item-breakdown",
     response_model=ItemBreakdownReport,
@@ -222,6 +230,7 @@ async def ticket_count_report(
     description="Revenue and quantity per item across tickets and bookings.",
 )
 async def item_breakdown_report(
+    request: Request,
     date_from: datetime.date = Query(...),
     date_to: datetime.date = Query(...),
     branch_id: int | None = Query(None),
@@ -233,6 +242,7 @@ async def item_breakdown_report(
     return await report_service.get_item_breakdown_report(db, date_from, date_to, branch_id, route_id)
 
 
+@limiter.limit("10/minute")
 @router.get(
     "/branch-summary",
     response_model=BranchSummaryReport,
@@ -240,6 +250,7 @@ async def item_breakdown_report(
     description="Revenue and count per branch across tickets and bookings.",
 )
 async def branch_summary_report(
+    request: Request,
     date_from: datetime.date = Query(...),
     date_to: datetime.date = Query(...),
     db: AsyncSession = Depends(get_db),
@@ -253,6 +264,7 @@ async def branch_summary_report(
     return await report_service.get_branch_summary_report(db, date_from, date_to, branch_ids=branch_ids)
 
 
+@limiter.limit("10/minute")
 @router.get(
     "/payment-mode",
     response_model=PaymentModeReport,
@@ -260,6 +272,7 @@ async def branch_summary_report(
     description="Revenue by payment mode across tickets and bookings.",
 )
 async def payment_mode_report(
+    request: Request,
     date_from: datetime.date = Query(...),
     date_to: datetime.date = Query(...),
     branch_id: int | None = Query(None),
@@ -271,6 +284,7 @@ async def payment_mode_report(
     return await report_service.get_payment_mode_report(db, date_from, date_to, branch_id, route_id)
 
 
+@limiter.limit("10/minute")
 @router.get(
     "/date-wise-amount",
     response_model=DateWiseAmountReport,
@@ -278,6 +292,7 @@ async def payment_mode_report(
     description="Daily ticket revenue totals over a date range.",
 )
 async def date_wise_amount_report(
+    request: Request,
     date_from: datetime.date = Query(...),
     date_to: datetime.date = Query(...),
     branch_id: int | None = Query(None),
@@ -290,6 +305,7 @@ async def date_wise_amount_report(
     return await report_service.get_date_wise_amount(db, date_from, date_to, branch_id, payment_mode_id=payment_mode_id, route_id=route_id)
 
 
+@limiter.limit("10/minute")
 @router.get(
     "/ferry-wise-item",
     response_model=FerryWiseItemReport,
@@ -297,6 +313,7 @@ async def date_wise_amount_report(
     description="Item quantities grouped by departure time for a single date.",
 )
 async def ferry_wise_item_report(
+    request: Request,
     date: datetime.date = Query(...),
     branch_id: int | None = Query(None),
     route_id: int | None = Query(None),
@@ -308,6 +325,7 @@ async def ferry_wise_item_report(
     return await report_service.get_ferry_wise_item_summary(db, date, branch_id, payment_mode_id=payment_mode_id, route_id=route_id)
 
 
+@limiter.limit("10/minute")
 @router.get(
     "/itemwise-levy",
     response_model=ItemWiseSummaryReport,
@@ -315,6 +333,7 @@ async def ferry_wise_item_report(
     description="Item wise summary with rate and payment mode breakdown.",
 )
 async def itemwise_levy_report(
+    request: Request,
     date_from: datetime.date = Query(...),
     date_to: datetime.date = Query(...),
     branch_id: int | None = Query(None),
@@ -327,6 +346,7 @@ async def itemwise_levy_report(
     return await report_service.get_item_wise_summary(db, date_from, date_to, branch_id, route_id, payment_mode_id)
 
 
+@limiter.limit("10/minute")
 @router.get(
     "/user-wise-summary",
     response_model=UserWiseSummaryReport,
@@ -334,6 +354,7 @@ async def itemwise_levy_report(
     description="Revenue per user (ticket creator) for a single date.",
 )
 async def user_wise_summary_report(
+    request: Request,
     date: datetime.date = Query(...),
     branch_id: int | None = Query(None),
     route_id: int | None = Query(None),
@@ -356,6 +377,7 @@ async def user_wise_summary_report(
     return await report_service.get_user_wise_summary(db, date, branch_id, route_id, user_id, payment_mode_id)
 
 
+@limiter.limit("10/minute")
 @router.get(
     "/vehicle-wise-tickets",
     response_model=VehicleWiseTicketReport,
@@ -363,6 +385,7 @@ async def user_wise_summary_report(
     description="Vehicle ticket details for a single date.",
 )
 async def vehicle_wise_ticket_report(
+    request: Request,
     date: datetime.date = Query(...),
     branch_id: int | None = Query(None),
     route_id: int | None = Query(None),
@@ -374,6 +397,7 @@ async def vehicle_wise_ticket_report(
     return await report_service.get_vehicle_wise_tickets(db, date, branch_id, route_id, payment_mode_id)
 
 
+@limiter.limit("10/minute")
 @router.get(
     "/branch-item-summary",
     response_model=BranchItemSummaryReport,
@@ -381,6 +405,7 @@ async def vehicle_wise_ticket_report(
     description="Item-wise billing summary for a branch over a date range with payment mode breakdown.",
 )
 async def branch_item_summary_report(
+    request: Request,
     date_from: datetime.date = Query(...),
     date_to: datetime.date = Query(...),
     branch_id: int | None = Query(None),
@@ -398,12 +423,14 @@ async def branch_item_summary_report(
 # ---------------------------------------------------------------------------
 
 
+@limiter.limit("10/minute")
 @router.get(
     "/date-wise-amount/pdf",
     summary="Date wise amount summary PDF",
     description="Download the Date Wise Amount Summary report as a PDF file.",
 )
 async def get_date_wise_amount_pdf(
+    request: Request,
     date_from: datetime.date = Query(...),
     date_to: datetime.date = Query(...),
     branch_id: int | None = Query(None),
@@ -422,12 +449,14 @@ async def get_date_wise_amount_pdf(
     )
 
 
+@limiter.limit("10/minute")
 @router.get(
     "/ferry-wise-item/pdf",
     summary="Ferry wise item summary PDF",
     description="Download the Ferry Wise Item Summary report as a PDF file.",
 )
 async def get_ferry_wise_item_pdf(
+    request: Request,
     date: datetime.date = Query(...),
     branch_id: int | None = Query(None),
     route_id: int | None = Query(None),
@@ -445,12 +474,14 @@ async def get_ferry_wise_item_pdf(
     )
 
 
+@limiter.limit("10/minute")
 @router.get(
     "/itemwise-levy/pdf",
     summary="Itemwise levy summary PDF",
     description="Download the Itemwise Levy Summary report as a PDF file.",
 )
 async def get_itemwise_levy_pdf(
+    request: Request,
     date_from: datetime.date = Query(...),
     date_to: datetime.date = Query(...),
     branch_id: int | None = Query(None),
@@ -469,12 +500,14 @@ async def get_itemwise_levy_pdf(
     )
 
 
+@limiter.limit("10/minute")
 @router.get(
     "/payment-mode/pdf",
     summary="Payment mode summary PDF",
     description="Download the Payment Mode Wise Summary report as a PDF file.",
 )
 async def get_payment_mode_pdf(
+    request: Request,
     date_from: datetime.date = Query(...),
     date_to: datetime.date = Query(...),
     branch_id: int | None = Query(None),
@@ -492,6 +525,7 @@ async def get_payment_mode_pdf(
     )
 
 
+@limiter.limit("10/minute")
 @router.get(
     "/ticket-details",
     response_model=TicketDetailsReport,
@@ -499,6 +533,7 @@ async def get_payment_mode_pdf(
     description="Detailed ticket list for a single date with boat name and payment mode.",
 )
 async def ticket_details_report(
+    request: Request,
     date: datetime.date = Query(...),
     branch_id: int | None = Query(None),
     route_id: int | None = Query(None),
@@ -511,12 +546,14 @@ async def ticket_details_report(
     return await report_service.get_ticket_details_report(db, date, branch_id, route_id, payment_mode_id, boat_id)
 
 
+@limiter.limit("10/minute")
 @router.get(
     "/ticket-details/pdf",
     summary="Ticket details PDF",
     description="Download the Ticket Details report as a PDF file.",
 )
 async def get_ticket_details_pdf(
+    request: Request,
     date: datetime.date = Query(...),
     branch_id: int | None = Query(None),
     route_id: int | None = Query(None),
@@ -535,12 +572,14 @@ async def get_ticket_details_pdf(
     )
 
 
+@limiter.limit("10/minute")
 @router.get(
     "/user-wise-summary/pdf",
     summary="User wise daily summary PDF",
     description="Download the User Wise Daily Cash Summary report as a PDF file.",
 )
 async def get_user_wise_summary_pdf(
+    request: Request,
     date: datetime.date = Query(...),
     branch_id: int | None = Query(None),
     route_id: int | None = Query(None),
@@ -567,12 +606,14 @@ async def get_user_wise_summary_pdf(
     )
 
 
+@limiter.limit("10/minute")
 @router.get(
     "/vehicle-wise-tickets/pdf",
     summary="Vehicle wise ticket details PDF",
     description="Download the Vehicle Wise Ticket Details report as a PDF file.",
 )
 async def get_vehicle_wise_tickets_pdf(
+    request: Request,
     date: datetime.date = Query(...),
     branch_id: int | None = Query(None),
     route_id: int | None = Query(None),
@@ -590,12 +631,14 @@ async def get_vehicle_wise_tickets_pdf(
     )
 
 
+@limiter.limit("10/minute")
 @router.get(
     "/branch-summary/pdf",
     summary="Branch summary PDF",
     description="Download the Branch Summary report as a PDF file.",
 )
 async def get_branch_summary_pdf(
+    request: Request,
     date_from: datetime.date = Query(...),
     date_to: datetime.date = Query(...),
     db: AsyncSession = Depends(get_db),
@@ -614,12 +657,14 @@ async def get_branch_summary_pdf(
     )
 
 
+@limiter.limit("10/minute")
 @router.get(
     "/branch-item-summary/pdf",
     summary="Branch item summary PDF",
     description="Download the Branch Item Summary report as a PDF file.",
 )
 async def get_branch_item_summary_pdf(
+    request: Request,
     date_from: datetime.date = Query(...),
     date_to: datetime.date = Query(...),
     branch_id: int | None = Query(None),

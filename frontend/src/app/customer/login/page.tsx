@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import api from "@/lib/api";
@@ -17,6 +17,7 @@ import {
 
 export default function CustomerLoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [form, setForm] = useState({ email: "", password: "" });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -37,7 +38,11 @@ export default function CustomerLoginPage() {
     setLoading(true);
     try {
       await api.post("/api/portal/auth/login", form);
-      router.push("/customer/dashboard");
+      const redirect = searchParams.get("redirect");
+      const safePath = redirect && redirect.startsWith("/") && !redirect.startsWith("//")
+        ? redirect
+        : "/customer/dashboard";
+      router.push(safePath);
     } catch (err: unknown) {
       const resp = (err as { response?: { status?: number; data?: { detail?: unknown } } })?.response;
       const detail = resp?.data?.detail;

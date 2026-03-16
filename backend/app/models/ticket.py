@@ -24,7 +24,7 @@ class Ticket(AuditMixin, Base):
     net_amount: Mapped[float] = mapped_column(Numeric(9, 2), nullable=False)
     status: Mapped[str] = mapped_column(String(20), default="CONFIRMED", nullable=False)
     checked_in_at: Mapped[object | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    verification_code: Mapped[uuid_mod.UUID | None] = mapped_column(UUID(as_uuid=True), default=uuid_mod.uuid4, nullable=True)
+    verification_code: Mapped[uuid_mod.UUID | None] = mapped_column(UUID(as_uuid=True), default=uuid_mod.uuid4, nullable=True, unique=True)
     boat_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("boats.id"), nullable=True)
 
     def __repr__(self) -> str:

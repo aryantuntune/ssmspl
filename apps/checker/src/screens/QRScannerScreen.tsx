@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Dimensions, TextStyle } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Dimensions, TextStyle, Alert } from 'react-native';
 import { CameraView, useCameraPermissions, BarcodeScanningResult } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -46,6 +46,12 @@ export default function QRScannerScreen({ navigation }: Props) {
 
     lastScannedRef.current = data;
     lastScannedTimeRef.current = now;
+
+    // Validate QR payload format and length
+    if (!data || data.length > 500) {
+      Alert.alert('Invalid QR', 'QR code data is invalid or too large.');
+      return;
+    }
 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 

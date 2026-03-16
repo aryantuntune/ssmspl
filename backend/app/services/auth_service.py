@@ -10,11 +10,35 @@ from app.core.rbac import ROLE_MENU_ITEMS
 from app.models.user import User
 from app.services import token_service
 
+MAX_FAILED_ATTEMPTS = 5
+LOCKOUT_DURATION_MINUTES = 15
+
 async def authenticate_user(db: AsyncSession, username: str, password: str) -> User | None:
-    result = await db.execute(select(User).where(User.username == username, User.is_active == True))
+    # Look up user (include inactive for lockout tracking — login will reject inactive)
+    result = await db.execute(select(User).where(User.username == username))
     user = result.scalar_one_or_none()
-    if not user or not verify_password(password, user.hashed_password):
+    if not user:
         return None
+
+    # Check lockout
+    if user.locked_until and user.locked_until > datetime.now(timezone.utc):
+        return None  # login() will raise generic error — don't reveal lockout to caller
+
+    if not user.is_active:
+        return None
+
+    if not verify_password(password, user.hashed_password):
+        # Increment failed attempts — commit immediately so the counter persists
+        # even when login() raises HTTPException (which would rollback a flush)
+        user.failed_login_attempts = (user.failed_login_attempts or 0) + 1
+        if user.failed_login_attempts >= MAX_FAILED_ATTEMPTS:
+            user.locked_until = datetime.now(timezone.utc) + timedelta(minutes=LOCKOUT_DURATION_MINUTES)
+        await db.commit()
+        return None
+
+    # Successful auth — reset lockout counters
+    user.failed_login_attempts = 0
+    user.locked_until = None
     return user
 
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import api from "@/lib/api";
@@ -10,6 +10,7 @@ import { LoginRequest, User, RouteBranch } from "@/types";
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [form, setForm] = useState<LoginRequest>({
     username: "",
     password: "",
@@ -47,7 +48,11 @@ export default function LoginPage() {
         return;
       }
 
-      router.push("/dashboard");
+      const redirect = searchParams.get("redirect");
+      const safePath = redirect && redirect.startsWith("/") && !redirect.startsWith("//")
+        ? redirect
+        : "/dashboard";
+      router.push(safePath);
     } catch (err: unknown) {
       const detail =
         (err as { response?: { data?: { detail?: unknown } } })?.response?.data
@@ -76,7 +81,11 @@ export default function LoginPage() {
       // Non-critical: server will still use route scoping
     }
     setSelectedBranch(branch.branch_id, branch.branch_name);
-    router.push("/dashboard");
+    const redirect = searchParams.get("redirect");
+    const safePath = redirect && redirect.startsWith("/") && !redirect.startsWith("//")
+      ? redirect
+      : "/dashboard";
+    router.push(safePath);
   };
 
   return (

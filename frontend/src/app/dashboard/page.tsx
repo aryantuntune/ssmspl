@@ -185,8 +185,8 @@ export default function DashboardPage() {
             )
           );
         }
-      } catch (err) {
-        console.error("Dashboard data fetch error:", err);
+      } catch {
+        // error already handled by Promise.allSettled per-request
       } finally {
         setSectionsLoading(false);
       }
@@ -215,8 +215,8 @@ export default function DashboardPage() {
         .then(({ data }) => {
           setRevenueData(data.rows || []);
         })
-        .catch((err) => {
-          console.error("Revenue fetch error:", err);
+        .catch(() => {
+          // non-fatal — chart will retain previous data
         });
     },
     []

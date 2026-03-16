@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -8,6 +8,7 @@ from app.dependencies import require_roles
 from app.core.rbac import UserRole
 from app.models.user import User
 from app.schemas.verification import VerificationResult, CheckInRequest, CheckInResponse
+from app.middleware.rate_limit import limiter
 from app.services import verification_service
 from app.services.qr_service import verify_qr_payload
 
@@ -18,6 +19,7 @@ _verification_roles = require_roles(
 )
 
 
+@limiter.limit("30/minute")
 @router.get(
     "/booking",
     response_model=VerificationResult,
@@ -26,6 +28,7 @@ _verification_roles = require_roles(
     responses={404: {"description": "Booking not found"}},
 )
 async def lookup_booking(
+    request: Request,
     code: uuid.UUID = Query(..., description="Booking verification code (UUID from QR)"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(_verification_roles),
@@ -33,6 +36,7 @@ async def lookup_booking(
     return await verification_service.lookup_booking_by_code(db, code, current_user)
 
 
+@limiter.limit("30/minute")
 @router.get(
     "/scan",
     response_model=VerificationResult,
@@ -45,6 +49,7 @@ async def lookup_booking(
     },
 )
 async def scan_qr(
+    request: Request,
     payload: str = Query(..., description="Full QR payload string (code.signature)"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(_verification_roles),
@@ -65,6 +70,7 @@ async def scan_qr(
     return await verification_service.lookup_by_code(db, code_uuid, current_user)
 
 
+@limiter.limit("15/minute")
 @router.post(
     "/check-in",
     response_model=CheckInResponse,
@@ -80,6 +86,7 @@ async def scan_qr(
     },
 )
 async def check_in(
+    request: Request,
     body: CheckInRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(_verification_roles),
@@ -87,6 +94,7 @@ async def check_in(
     return await verification_service.verify(db, body.verification_code, current_user)
 
 
+@limiter.limit("30/minute")
 @router.get(
     "/booking-number",
     response_model=VerificationResult,
@@ -95,6 +103,7 @@ async def check_in(
     responses={404: {"description": "Booking not found"}},
 )
 async def lookup_booking_by_number(
+    request: Request,
     booking_no: int = Query(..., description="Booking number (e.g. 1, 2, 3...)"),
     branch_id: int | None = Query(None, description="Branch ID (optional)"),
     db: AsyncSession = Depends(get_db),
@@ -103,6 +112,7 @@ async def lookup_booking_by_number(
     return await verification_service.lookup_booking_by_number(db, booking_no, current_user, branch_id)
 
 
+@limiter.limit("30/minute")
 @router.get(
     "/ticket",
     response_model=VerificationResult,
@@ -111,6 +121,7 @@ async def lookup_booking_by_number(
     responses={404: {"description": "Ticket not found"}},
 )
 async def lookup_ticket(
+    request: Request,
     ticket_no: int = Query(..., description="Ticket number"),
     branch_id: int = Query(..., description="Branch ID"),
     db: AsyncSession = Depends(get_db),

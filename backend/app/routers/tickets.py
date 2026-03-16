@@ -1,6 +1,6 @@
 from datetime import date
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -8,6 +8,7 @@ from app.database import get_db
 from app.dependencies import require_roles
 from app.core.rbac import UserRole
 from app.core.route_scope import needs_route_scope, get_route_branch_ids
+from app.middleware.rate_limit import limiter
 from app.models.user import User
 from app.schemas.ticket import (
     TicketCreate, TicketRead, TicketUpdate, RateLookupResponse,
@@ -24,6 +25,7 @@ _ticket_roles = require_roles(
 )
 
 
+@limiter.limit("30/minute")
 @router.get(
     "",
     response_model=list[TicketRead],
@@ -36,6 +38,7 @@ _ticket_roles = require_roles(
     },
 )
 async def list_tickets(
+    request: Request,
     skip: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(5, ge=1, le=5000, description="Maximum number of records to return"),
     sort_by: str = Query("id", description="Column to sort by (id, ticket_no, ticket_date, branch_id, route_id, amount, net_amount, is_cancelled)"),

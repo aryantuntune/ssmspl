@@ -101,6 +101,10 @@ export default function HomeScreen({ navigation }: Props) {
       Alert.alert('Invalid', 'Please enter a valid number.');
       return;
     }
+    if (num > 999999) {
+      Alert.alert('Invalid', 'Number is too large. Please enter a valid number.');
+      return;
+    }
     setManualModalVisible(false);
     dispatch(lookupManual({ type: manualType, number: num, branchId: undefined }));
     setShowDetails(true);

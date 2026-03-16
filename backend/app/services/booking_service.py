@@ -421,6 +421,9 @@ async def create_booking(
             detail=f"Departure time {data.departure} is not a valid schedule for this branch",
         )
 
+    # 5. Check capacity before creating booking
+    await _check_capacity(db, data.from_branch_id, data.travel_date, departure_time)
+
     # 6 & 7. Validate items, get rates, compute line amounts
     item_details = []  # list of (item_data, rate, levy, line_amount, item_obj)
     for item_data in data.items:

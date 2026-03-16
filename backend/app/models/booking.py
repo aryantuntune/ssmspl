@@ -26,7 +26,7 @@ class Booking(AuditMixin, Base):
     travel_date: Mapped[object | None] = mapped_column(Date, nullable=True)
     checked_in_at: Mapped[object | None] = mapped_column(DateTime(timezone=True), nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="PENDING", nullable=False)
-    verification_code: Mapped[uuid_mod.UUID | None] = mapped_column(UUID(as_uuid=True), default=uuid_mod.uuid4, nullable=True)
+    verification_code: Mapped[uuid_mod.UUID | None] = mapped_column(UUID(as_uuid=True), default=uuid_mod.uuid4, nullable=True, unique=True)
 
     def __repr__(self) -> str:
         return f"<Booking id={self.id} booking_no={self.booking_no} branch_id={self.branch_id}>"

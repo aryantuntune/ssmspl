@@ -23,6 +23,8 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         )
         response.headers["X-Request-ID"] = request_id
         response.headers["Server"] = ""
+        response.headers["X-XSS-Protection"] = "0"
+        response.headers["X-Permitted-Cross-Domain-Policies"] = "none"
 
         # HSTS only in non-development environments
         if settings.APP_ENV != "development":

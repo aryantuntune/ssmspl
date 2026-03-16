@@ -2,7 +2,7 @@ version: "3.9"
 
 services:
   db:
-    image: postgres:16-alpine
+    image: postgres:16.6-alpine
     restart: always
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-ssmspl_user}
@@ -35,11 +35,11 @@ services:
           memory: 1G
 
   redis:
-    image: redis:7-alpine
+    image: redis:7.4-alpine
     restart: always
-    command: redis-server --maxmemory 64mb --maxmemory-policy allkeys-lru --tcp-keepalive 60 --timeout 300
+    command: redis-server --maxmemory 64mb --maxmemory-policy allkeys-lru --tcp-keepalive 60 --timeout 300 --requirepass ${REDIS_PASSWORD:-ssmspl_redis_prod}
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-ssmspl_redis_prod}", "ping"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -60,7 +60,8 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-ssmspl_user}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ssmspl_prod_pass}
       POSTGRES_DB: ${POSTGRES_DB:-ssmspl_db_prod}
-      RATE_LIMIT_STORAGE_URI: redis://redis:6379/1
+      RATE_LIMIT_STORAGE_URI: redis://:${REDIS_PASSWORD:-ssmspl_redis_prod}@redis:6379/1
+      FORWARDED_ALLOW_IPS: "*"  # Docker internal network only — nginx is the sole proxy
     env_file: ./backend/.env.production
     depends_on:
       db:
@@ -110,7 +111,7 @@ services:
           memory: 512M
 
   nginx:
-    image: nginx:alpine
+    image: nginx:1.27-alpine
     restart: always
     ports:
       - "80:80"

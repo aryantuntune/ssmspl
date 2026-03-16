@@ -320,6 +320,14 @@ async def admin_reset_password(
     if user.role == UserRole.SUPER_ADMIN and admin_user.role != UserRole.SUPER_ADMIN:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied. Insufficient permissions.")
 
+    # Non-SUPER_ADMIN admins can only reset passwords for users on their assigned route
+    if admin_user.role != UserRole.SUPER_ADMIN:
+        if admin_user.route_id and user.route_id and admin_user.route_id != user.route_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied. Cannot reset password for users on a different route.",
+            )
+
     user.hashed_password = get_password_hash(new_password)
     await db.commit()
     await db.refresh(user)
