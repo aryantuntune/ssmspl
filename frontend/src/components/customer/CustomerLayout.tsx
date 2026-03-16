@@ -51,6 +51,28 @@ export default function CustomerLayout({
       });
   }, [router]);
 
+  // Idle timeout: auto-logout after 30 minutes of inactivity
+  useEffect(() => {
+    let timeoutId: ReturnType<typeof setTimeout>;
+    const IDLE_TIMEOUT = 30 * 60 * 1000; // 30 minutes
+
+    const resetTimer = () => {
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        window.location.href = "/customer/login?reason=idle_timeout";
+      }, IDLE_TIMEOUT);
+    };
+
+    const events = ["mousedown", "keydown", "touchstart", "scroll"];
+    events.forEach((event) => window.addEventListener(event, resetTimer));
+    resetTimer();
+
+    return () => {
+      clearTimeout(timeoutId);
+      events.forEach((event) => window.removeEventListener(event, resetTimer));
+    };
+  }, []);
+
   // Close profile dropdown on outside click
   useEffect(() => {
     if (!isProfileOpen) return;

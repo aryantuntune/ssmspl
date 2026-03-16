@@ -13,6 +13,7 @@ from app.services import otp_service
 
 
 async def authenticate_portal_user(db: AsyncSession, email: str, password: str) -> PortalUser | None:
+    email = email.lower()
     result = await db.execute(select(PortalUser).where(PortalUser.email == email))
     user = result.scalar_one_or_none()
     if not user or not verify_password(password, user.password):
@@ -21,6 +22,7 @@ async def authenticate_portal_user(db: AsyncSession, email: str, password: str) 
 
 
 async def login(db: AsyncSession, email: str, password: str) -> dict:
+    email = email.lower()
     user = await authenticate_portal_user(db, email, password)
     if not user:
         raise HTTPException(
@@ -48,8 +50,10 @@ async def login(db: AsyncSession, email: str, password: str) -> dict:
 
 async def register(db: AsyncSession, data: PortalUserRegister) -> tuple[PortalUser, str]:
     """Register a new portal user. Returns (user, raw_otp) — caller sends the email."""
+    email = data.email.lower()
+
     # Check if email already exists
-    result = await db.execute(select(PortalUser).where(PortalUser.email == data.email))
+    result = await db.execute(select(PortalUser).where(PortalUser.email == email))
     existing = result.scalar_one_or_none()
     if existing:
         raise HTTPException(
@@ -60,7 +64,7 @@ async def register(db: AsyncSession, data: PortalUserRegister) -> tuple[PortalUs
     portal_user = PortalUser(
         first_name=data.first_name,
         last_name=data.last_name,
-        email=data.email,
+        email=email,
         password=get_password_hash(data.password),
         mobile=data.mobile,
         is_verified=False,
@@ -69,7 +73,7 @@ async def register(db: AsyncSession, data: PortalUserRegister) -> tuple[PortalUs
     await db.flush()
 
     # Generate OTP
-    raw_otp = await otp_service.create_otp(db, data.email, "registration")
+    raw_otp = await otp_service.create_otp(db, email, "registration")
     await db.commit()
     await db.refresh(portal_user)
 
@@ -78,6 +82,7 @@ async def register(db: AsyncSession, data: PortalUserRegister) -> tuple[PortalUs
 
 async def verify_registration_otp(db: AsyncSession, email: str, otp: str) -> None:
     """Verify the registration OTP and mark the user as verified."""
+    email = email.lower()
     await otp_service.verify_otp(db, email, "registration", otp)
 
     result = await db.execute(select(PortalUser).where(PortalUser.email == email))
@@ -94,6 +99,7 @@ async def verify_registration_otp(db: AsyncSession, email: str, otp: str) -> Non
 
 async def resend_otp(db: AsyncSession, email: str, purpose: str) -> tuple[str, str, str] | None:
     """Generate a new OTP. Returns (email, otp, first_name) or None if user not found."""
+    email = email.lower()
     result = await db.execute(select(PortalUser).where(PortalUser.email == email))
     user = result.scalar_one_or_none()
     if not user:
@@ -153,6 +159,7 @@ async def logout(db: AsyncSession, refresh_token: str | None) -> None:
 
 async def forgot_password(db: AsyncSession, email: str) -> tuple[str, str, str] | None:
     """Generate an OTP for password reset. Returns (email, otp, first_name) or None if user not found."""
+    email = email.lower()
     result = await db.execute(select(PortalUser).where(PortalUser.email == email))
     user = result.scalar_one_or_none()
     if not user:
@@ -166,6 +173,7 @@ async def forgot_password(db: AsyncSession, email: str) -> tuple[str, str, str] 
 
 async def reset_password(db: AsyncSession, email: str, otp: str, new_password: str) -> None:
     """Verify OTP and update the portal user's password."""
+    email = email.lower()
     await otp_service.verify_otp(db, email, "password_reset", otp)
 
     result = await db.execute(select(PortalUser).where(PortalUser.email == email))
@@ -223,6 +231,7 @@ async def google_signin(
     last_name: str,
 ) -> dict:
     """Handle Google Sign-In. Creates account if new, logs in if existing."""
+    email = email.lower()
     result = await db.execute(
         select(PortalUser).where(PortalUser.google_id == google_id)
     )

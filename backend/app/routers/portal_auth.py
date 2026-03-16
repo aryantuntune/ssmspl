@@ -230,7 +230,7 @@ async def mobile_login(
         background_tasks.add_task(cleanup_expired_background)
 
     result = await db.execute(
-        select(PortalUser).where(PortalUser.email == body.email)
+        select(PortalUser).where(PortalUser.email == body.email.lower())
     )
     user = result.scalar_one()
 

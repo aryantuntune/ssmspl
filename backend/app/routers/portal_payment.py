@@ -1,5 +1,6 @@
 import html as html_mod
 import logging
+from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
@@ -20,6 +21,8 @@ from app.services.email_service import send_booking_confirmation
 from app.services.ccavenue_service import is_payment_successful
 
 logger = logging.getLogger(__name__)
+
+PAYMENT_EXPIRY_MINUTES = 30
 
 router = APIRouter(prefix="/api/portal/payment", tags=["Portal Payment"])
 
@@ -63,16 +66,23 @@ def _redirect_to_frontend(
 
 
 def _simulation_allowed() -> bool:
-    """Simulation is allowed when CCAvenue is NOT configured AND either DEBUG or PAYMENT_SIMULATION is on."""
-    return not ccavenue_service.is_configured() and (settings.DEBUG or settings.PAYMENT_SIMULATION)
+    """Simulation is allowed when:
+    - PAYMENT_SIMULATION=true (hard override — works even with CCAvenue configured), OR
+    - CCAvenue is NOT configured AND DEBUG=true (dev convenience)
+    """
+    if settings.PAYMENT_SIMULATION:
+        return True
+    return not ccavenue_service.is_configured() and settings.DEBUG
 
 
 @router.get("/config", summary="Get payment gateway config")
 async def payment_config():
+    sim = _simulation_allowed()
     return {
         "gateway": "ccavenue",
         "configured": ccavenue_service.is_configured(),
-        "simulation": _simulation_allowed(),
+        "simulation": sim,
+        "mode": "simulation" if sim else "live",
     }
 
 
@@ -87,9 +97,10 @@ async def create_order(
     current_user: PortalUser = Depends(get_current_portal_user),
 ):
     is_configured = ccavenue_service.is_configured()
+    use_simulation = _simulation_allowed()
 
     # Block if not configured AND simulation not allowed
-    if not is_configured and not _simulation_allowed():
+    if not is_configured and not use_simulation:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Payment gateway is not configured",
@@ -105,20 +116,39 @@ async def create_order(
             detail="Booking is not in PENDING status",
         )
 
-    order_id = ccavenue_service.generate_order_id(body.booking_id)
-
-    txn = PaymentTransaction(
-        booking_id=body.booking_id,
-        client_txn_id=order_id,
-        amount=booking_data["net_amount"],
-        status="INITIATED",
-        platform=body.platform,
+    # Lock the booking row to prevent amount changes during payment flow (TOCTOU)
+    await db.execute(
+        select(Booking).where(Booking.id == body.booking_id).with_for_update()
     )
-    db.add(txn)
-    await db.flush()
 
-    # Simulation mode: CCAvenue not configured but DEBUG=true
-    if not is_configured:
+    # Check for an existing non-expired INITIATED transaction for this booking
+    expiry_cutoff = datetime.now(timezone.utc) - timedelta(minutes=PAYMENT_EXPIRY_MINUTES)
+    existing_result = await db.execute(
+        select(PaymentTransaction).where(
+            PaymentTransaction.booking_id == body.booking_id,
+            PaymentTransaction.status == "INITIATED",
+            PaymentTransaction.created_at >= expiry_cutoff,
+        )
+    )
+    existing_txn = existing_result.scalar_one_or_none()
+
+    if existing_txn:
+        order_id = existing_txn.client_txn_id
+        txn = existing_txn
+    else:
+        order_id = ccavenue_service.generate_order_id(body.booking_id)
+        txn = PaymentTransaction(
+            booking_id=body.booking_id,
+            client_txn_id=order_id,
+            amount=booking_data["net_amount"],
+            status="INITIATED",
+            platform=body.platform,
+        )
+        db.add(txn)
+        await db.flush()
+
+    # Simulation mode: PAYMENT_SIMULATION=true override, or CCAvenue not configured
+    if use_simulation:
         backend_base = settings.BACKEND_URL.rstrip("/")
         simulate_url = f"{backend_base}/api/portal/payment/simulate/{order_id}"
         logger.info(
@@ -175,10 +205,12 @@ async def initiate_checkout(
     URL via Linking.openURL to POST the encrypted payment data to CCAvenue
     without needing a WebView or native SDK.
     """
+    expiry_cutoff = datetime.now(timezone.utc) - timedelta(minutes=PAYMENT_EXPIRY_MINUTES)
     txn_result = await db.execute(
         select(PaymentTransaction).where(
             PaymentTransaction.client_txn_id == order_id,
             PaymentTransaction.status == "INITIATED",
+            PaymentTransaction.created_at >= expiry_cutoff,
         )
     )
     txn = txn_result.scalar_one_or_none()
@@ -186,7 +218,7 @@ async def initiate_checkout(
         return HTMLResponse("<h1>Invalid or expired payment link</h1>", status_code=404)
 
     # Simulation mode — redirect to mock checkout page
-    if not ccavenue_service.is_configured() and _simulation_allowed():
+    if _simulation_allowed():
         backend_base = settings.BACKEND_URL.rstrip("/")
         sim_url = f"{backend_base}/api/portal/payment/simulate/{order_id}"
         return RedirectResponse(url=sim_url, status_code=302)
@@ -262,10 +294,12 @@ async def simulate_checkout(
     if not _simulation_allowed():
         return HTMLResponse("<h1>Not available — simulation mode is off</h1>", status_code=403)
 
+    expiry_cutoff = datetime.now(timezone.utc) - timedelta(minutes=PAYMENT_EXPIRY_MINUTES)
     txn_result = await db.execute(
         select(PaymentTransaction).where(
             PaymentTransaction.client_txn_id == order_id,
             PaymentTransaction.status == "INITIATED",
+            PaymentTransaction.created_at >= expiry_cutoff,
         )
     )
     txn = txn_result.scalar_one_or_none()
