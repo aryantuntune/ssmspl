@@ -1,8 +1,10 @@
+import logging
 import uuid
 from datetime import date, time, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
+from sqlalchemy.orm import aliased
 
 from app.models.rate_change_log import RateChangeLog
 from app.models.item import Item
@@ -11,24 +13,35 @@ from app.models.branch import Branch
 from app.models.user import User
 from app.core.rbac import UserRole
 
+logger = logging.getLogger("ssmspl")
 
-async def _get_route_display_name(db: AsyncSession, route_id: int) -> str | None:
-    BranchOne = Branch.__table__.alias("b1")
-    BranchTwo = Branch.__table__.alias("b2")
-    result = await db.execute(
-        select(
-            BranchOne.c.name.label("branch_one_name"),
-            BranchTwo.c.name.label("branch_two_name"),
+
+async def _apply_role_filter(db: AsyncSession, query, current_user: User):
+    """Apply role-based visibility filter to a query."""
+    if current_user.role == UserRole.MANAGER:
+        query = query.where(RateChangeLog.updated_by_user == current_user.id)
+    elif current_user.role == UserRole.ADMIN:
+        manager_ids_result = await db.execute(
+            select(User.id).where(User.role == UserRole.MANAGER)
         )
-        .select_from(Route.__table__)
-        .join(BranchOne, BranchOne.c.id == Route.branch_id_one)
-        .join(BranchTwo, BranchTwo.c.id == Route.branch_id_two)
-        .where(Route.id == route_id)
-    )
-    row = result.one_or_none()
-    if not row:
-        return None
-    return f"{row.branch_one_name} - {row.branch_two_name}"
+        manager_ids = [row[0] for row in manager_ids_result.all()]
+        allowed_ids = manager_ids + [current_user.id]
+        query = query.where(RateChangeLog.updated_by_user.in_(allowed_ids))
+    # SUPER_ADMIN: no filter, sees all
+    return query
+
+
+def _apply_optional_filters(query, date_from, date_to, route_filter, item_filter):
+    """Apply optional date, route, and item filters."""
+    if date_from:
+        query = query.where(RateChangeLog.date >= date_from)
+    if date_to:
+        query = query.where(RateChangeLog.date <= date_to)
+    if route_filter:
+        query = query.where(RateChangeLog.route_id == route_filter)
+    if item_filter:
+        query = query.where(RateChangeLog.item_id == item_filter)
+    return query
 
 
 async def insert_rate_change_log(
@@ -63,71 +76,62 @@ async def get_rate_change_logs(
     route_filter: int | None = None,
     item_filter: int | None = None,
 ) -> list[dict]:
-    """Fetch rate change logs with role-based filtering."""
-    query = select(RateChangeLog)
+    """Fetch rate change logs with JOINs for related names."""
+    BranchOne = aliased(Branch)
+    BranchTwo = aliased(Branch)
+    UpdatedByUser = aliased(User)
 
-    # Role-based filtering
-    if current_user.role == UserRole.MANAGER:
-        # Manager: can only view their own actions
-        query = query.where(RateChangeLog.updated_by_user == current_user.id)
-    elif current_user.role == UserRole.ADMIN:
-        # Admin: can view logs of managers and their own
-        manager_ids_result = await db.execute(
-            select(User.id).where(User.role == UserRole.MANAGER)
+    query = (
+        select(
+            RateChangeLog.id,
+            RateChangeLog.date,
+            RateChangeLog.time,
+            RateChangeLog.route_id,
+            RateChangeLog.item_id,
+            RateChangeLog.old_rate,
+            RateChangeLog.new_rate,
+            RateChangeLog.updated_by_user,
+            RateChangeLog.created_at,
+            Item.name.label("item_name"),
+            BranchOne.name.label("branch_one_name"),
+            BranchTwo.name.label("branch_two_name"),
+            UpdatedByUser.full_name.label("updated_by_name"),
         )
-        manager_ids = [row[0] for row in manager_ids_result.all()]
-        allowed_ids = manager_ids + [current_user.id]
-        query = query.where(RateChangeLog.updated_by_user.in_(allowed_ids))
-    # SUPER_ADMIN: no filter, sees all
+        .outerjoin(Item, Item.id == RateChangeLog.item_id)
+        .outerjoin(Route, Route.id == RateChangeLog.route_id)
+        .outerjoin(BranchOne, BranchOne.id == Route.branch_id_one)
+        .outerjoin(BranchTwo, BranchTwo.id == Route.branch_id_two)
+        .outerjoin(UpdatedByUser, UpdatedByUser.id == RateChangeLog.updated_by_user)
+    )
 
-    # Optional filters
-    if date_from:
-        query = query.where(RateChangeLog.date >= date_from)
-    if date_to:
-        query = query.where(RateChangeLog.date <= date_to)
-    if route_filter:
-        query = query.where(RateChangeLog.route_id == route_filter)
-    if item_filter:
-        query = query.where(RateChangeLog.item_id == item_filter)
-
+    query = await _apply_role_filter(db, query, current_user)
+    query = _apply_optional_filters(query, date_from, date_to, route_filter, item_filter)
     query = query.order_by(RateChangeLog.id.desc()).offset(skip).limit(limit)
+
     result = await db.execute(query)
-    rows = result.scalars().all()
+    rows = result.all()
 
-    enriched = []
-    for log in rows:
-        # Get item name
-        item_name = None
-        if log.item_id:
-            res = await db.execute(select(Item.name).where(Item.id == log.item_id))
-            item_name = res.scalar_one_or_none()
-
-        # Get route name
-        route_name = None
-        if log.route_id:
-            route_name = await _get_route_display_name(db, log.route_id)
-
-        # Get user name
-        updated_by_name = None
-        if log.updated_by_user:
-            res = await db.execute(select(User.full_name).where(User.id == log.updated_by_user))
-            updated_by_name = res.scalar_one_or_none()
-
-        enriched.append({
-            "id": log.id,
-            "date": log.date,
-            "time": log.time,
-            "route_id": log.route_id,
-            "item_id": log.item_id,
-            "old_rate": float(log.old_rate) if log.old_rate is not None else None,
-            "new_rate": float(log.new_rate) if log.new_rate is not None else None,
-            "updated_by_user": str(log.updated_by_user),
-            "updated_by_name": updated_by_name,
-            "item_name": item_name,
-            "route_name": route_name,
-            "created_at": log.created_at,
-        })
-    return enriched
+    return [
+        {
+            "id": row.id,
+            "date": row.date,
+            "time": row.time,
+            "route_id": row.route_id,
+            "item_id": row.item_id,
+            "old_rate": float(row.old_rate) if row.old_rate is not None else None,
+            "new_rate": float(row.new_rate) if row.new_rate is not None else None,
+            "updated_by_user": str(row.updated_by_user),
+            "updated_by_name": row.updated_by_name,
+            "item_name": row.item_name,
+            "route_name": (
+                f"{row.branch_one_name} - {row.branch_two_name}"
+                if row.branch_one_name and row.branch_two_name
+                else None
+            ),
+            "created_at": row.created_at,
+        }
+        for row in rows
+    ]
 
 
 async def count_rate_change_logs(
@@ -141,24 +145,8 @@ async def count_rate_change_logs(
     """Count rate change logs with role-based filtering."""
     query = select(func.count()).select_from(RateChangeLog)
 
-    if current_user.role == UserRole.MANAGER:
-        query = query.where(RateChangeLog.updated_by_user == current_user.id)
-    elif current_user.role == UserRole.ADMIN:
-        manager_ids_result = await db.execute(
-            select(User.id).where(User.role == UserRole.MANAGER)
-        )
-        manager_ids = [row[0] for row in manager_ids_result.all()]
-        allowed_ids = manager_ids + [current_user.id]
-        query = query.where(RateChangeLog.updated_by_user.in_(allowed_ids))
-
-    if date_from:
-        query = query.where(RateChangeLog.date >= date_from)
-    if date_to:
-        query = query.where(RateChangeLog.date <= date_to)
-    if route_filter:
-        query = query.where(RateChangeLog.route_id == route_filter)
-    if item_filter:
-        query = query.where(RateChangeLog.item_id == item_filter)
+    query = await _apply_role_filter(db, query, current_user)
+    query = _apply_optional_filters(query, date_from, date_to, route_filter, item_filter)
 
     result = await db.execute(query)
-    return result.scalar()
+    return result.scalar() or 0

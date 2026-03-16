@@ -5,8 +5,8 @@ from pydantic import BaseModel, Field
 
 class RateChangeLogRead(BaseModel):
     id: int = Field(..., description="Log entry ID")
-    change_date: DateType = Field(..., alias="date", description="Date of the rate change")
-    change_time: TimeType = Field(..., alias="time", description="Time of the rate change")
+    date: DateType = Field(..., description="Date of the rate change")
+    time: TimeType = Field(..., description="Time of the rate change")
     route_id: int = Field(..., description="Route ID")
     item_id: int = Field(..., description="Item ID")
     old_rate: float | None = Field(None, description="Previous rate value")
@@ -17,4 +17,4 @@ class RateChangeLogRead(BaseModel):
     route_name: str | None = Field(None, description="Display name of the route")
     created_at: datetime | None = Field(None, description="Record creation timestamp")
 
-    model_config = {"from_attributes": True, "populate_by_name": True}
+    model_config = {"from_attributes": True}
