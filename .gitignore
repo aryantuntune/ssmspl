@@ -78,3 +78,6 @@ screenshots_responsive/
 screenshots_review/
 data/ticket_reference.jpeg
 data/Report_format/
+
+# Analysis & audit (local only, never commit)
+analysis_issues/
