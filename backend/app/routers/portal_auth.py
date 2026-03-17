@@ -169,7 +169,8 @@ async def logout(request: Request, body: RefreshRequest | None = None, db: Async
     refresh_token = request.cookies.get("ssmspl_portal_refresh_token")
     if not refresh_token and body:
         refresh_token = body.refresh_token
-    await portal_auth_service.logout(db, refresh_token)
+    access_token = request.cookies.get("ssmspl_portal_access_token")
+    await portal_auth_service.logout(db, refresh_token, access_token=access_token)
     response = JSONResponse(content={"message": "Logged out successfully"})
     clear_auth_cookies(response, cookie_prefix="ssmspl_portal", refresh_path="/api/portal/auth/refresh")
     return response

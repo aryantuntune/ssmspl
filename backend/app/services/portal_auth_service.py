@@ -150,10 +150,24 @@ async def refresh_access_token(db: AsyncSession, refresh_token: str) -> dict:
     return {"access_token": new_access, "refresh_token": new_refresh}
 
 
-async def logout(db: AsyncSession, refresh_token: str | None) -> None:
-    """Revoke the refresh token if provided. Graceful no-op if None."""
+async def logout(db: AsyncSession, refresh_token: str | None, access_token: str | None = None) -> None:
+    """Revoke the refresh token if provided and blacklist the access token. Graceful no-op if None."""
     if refresh_token:
         await token_service.revoke_token(db, refresh_token)
+
+    # Blacklist the access token for its remaining lifetime
+    if access_token:
+        try:
+            payload = decode_token(access_token)
+            jti = payload.get("jti")
+            exp = payload.get("exp")
+            if jti and exp:
+                from app.services.token_blacklist import blacklist_token
+                await blacklist_token(jti, exp)
+        except Exception:
+            pass  # Best-effort -- token may already be expired/invalid
+
+    if refresh_token:
         await db.commit()
 
 

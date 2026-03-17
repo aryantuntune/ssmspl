@@ -22,6 +22,9 @@ async def lifespan(app: FastAPI):
     # --- Startup ---
     from app.services.booking_expiry_service import expiry_loop
     from app.services.daily_report_service import daily_report_loop
+    from app.services.token_blacklist import init_blacklist, close_blacklist
+
+    await init_blacklist()
 
     task = asyncio.create_task(expiry_loop())
     report_task = asyncio.create_task(daily_report_loop())
@@ -41,6 +44,7 @@ async def lifespan(app: FastAPI):
         await report_task
     except asyncio.CancelledError:
         pass
+    await close_blacklist()
     await engine.dispose()
     logger.info("Database connections disposed")
 

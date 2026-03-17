@@ -33,6 +33,9 @@ class Settings(BaseSettings):
     def allowed_origins_list(self) -> list[str]:
         return [o.strip() for o in self.ALLOWED_ORIGINS.split(",")]
 
+    # Redis (token blacklist — DB 0; rate limiting uses DB 1 separately)
+    REDIS_URL: str = ""  # Empty = blacklist disabled (dev without Redis)
+
     # Rate limiting
     TRUSTED_PROXY_HEADERS: str = "CF-Connecting-IP,X-Forwarded-For"
     RATE_LIMIT_STORAGE_URI: str = "memory://"

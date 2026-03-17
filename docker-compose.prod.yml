@@ -60,6 +60,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-ssmspl_user}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ssmspl_prod_pass}
       POSTGRES_DB: ${POSTGRES_DB:-ssmspl_db_prod}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-ssmspl_redis_prod}@redis:6379/0
       RATE_LIMIT_STORAGE_URI: redis://:${REDIS_PASSWORD:-ssmspl_redis_prod}@redis:6379/1
       FORWARDED_ALLOW_IPS: "*"  # Docker internal network only — nginx is the sole proxy
     env_file: ./backend/.env.production
@@ -131,6 +132,41 @@ services:
         limits:
           memory: 256M
 
+  db-backup:
+    image: postgres:16.6-alpine
+    restart: always
+    entrypoint: >
+      /bin/sh -c '
+      echo "Backup scheduler started — running daily at 2:00 AM";
+      while true; do
+        NEXT=$(date -d "tomorrow 02:00" +%s 2>/dev/null || date -v+1d -v2H -v0M -v0S +%s);
+        NOW=$(date +%s);
+        SLEEP=$((NEXT - NOW));
+        if [ $$SLEEP -lt 0 ]; then SLEEP=86400; fi;
+        echo "[$(date)] Next backup in $$SLEEP seconds";
+        sleep $$SLEEP;
+        /scripts/backup_db.sh;
+      done'
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ssmspl_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ssmspl_prod_pass}
+      POSTGRES_DB: ${POSTGRES_DB:-ssmspl_db_prod}
+      PGHOST: db
+      BACKUP_DIR: /backups
+      RETENTION_DAYS: "7"
+    volumes:
+      - ./backend/scripts/backup_db.sh:/scripts/backup_db.sh:ro
+      - db-backups:/backups
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - internal
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
   # Run once to get initial certs, then set up cron for renewal
   certbot:
     image: certbot/certbot
@@ -143,6 +179,7 @@ services:
 
 volumes:
   pg_data:
+  db-backups:
 
 networks:
   internal:

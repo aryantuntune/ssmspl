@@ -221,11 +221,11 @@ async def me(current_user: User = Depends(get_current_user), db: AsyncSession = 
 async def logout(request: Request, body: RefreshRequest | None = None, db: AsyncSession = Depends(get_db)):
     # Best-effort: resolve user to clear active session
     user = None
+    access_token = request.cookies.get("ssmspl_access_token")
     try:
         from app.core.security import decode_token as _dt
-        token = request.cookies.get("ssmspl_access_token")
-        if token:
-            payload = _dt(token)
+        if access_token:
+            payload = _dt(access_token)
             uid = payload.get("sub")
             if uid:
                 result = await db.execute(select(User).where(User.id == uid))
@@ -236,7 +236,7 @@ async def logout(request: Request, body: RefreshRequest | None = None, db: Async
     refresh_token = request.cookies.get("ssmspl_refresh_token")
     if not refresh_token and body:
         refresh_token = body.refresh_token
-    await auth_service.logout(db, refresh_token, user=user)
+    await auth_service.logout(db, refresh_token, user=user, access_token=access_token)
     response = JSONResponse(content={"message": "Logged out successfully"})
     clear_auth_cookies(response)
     return response

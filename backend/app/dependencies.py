@@ -12,6 +12,7 @@ from app.core.rbac import UserRole
 from app.database import get_db
 from app.models.user import User
 from app.models.portal_user import PortalUser
+from app.services.token_blacklist import is_blacklisted
 
 # auto_error=False so requests with cookies (no Bearer header) don't get 403
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -56,6 +57,11 @@ async def get_current_user(
     except JWTError:
         raise credentials_exception
 
+    # Check if token is blacklisted (instant logout enforcement)
+    jti = payload.get("jti")
+    if jti and await is_blacklisted(jti):
+        raise credentials_exception
+
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if user is None or not user.is_active:
@@ -98,6 +104,11 @@ async def get_current_portal_user(
         if payload.get("role") != "PORTAL_USER":
             raise credentials_exception
     except JWTError:
+        raise credentials_exception
+
+    # Check if token is blacklisted (instant logout enforcement)
+    jti = payload.get("jti")
+    if jti and await is_blacklisted(jti):
         raise credentials_exception
 
     result = await db.execute(select(PortalUser).where(PortalUser.id == int(user_id)))
