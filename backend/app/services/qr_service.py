@@ -6,7 +6,7 @@ from pathlib import Path
 import qrcode
 from qrcode.image.styledpil import StyledPilImage
 from qrcode.image.styles.moduledrawers.pil import StyledPilQRModuleDrawer
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image, ImageDraw, ImageEnhance, ImageFilter
 
 from app.config import settings
 
@@ -104,7 +104,7 @@ def generate_qr_png(verification_code: str) -> bytes:
         version=None,
         error_correction=qrcode.constants.ERROR_CORRECT_H,
         box_size=12,
-        border=4,
+        border=2,
     )
     qr.add_data(data)
     qr.make(fit=True)
@@ -118,7 +118,7 @@ def generate_qr_png(verification_code: str) -> bytes:
     if _LOGO_PATH.exists():
         logo = Image.open(_LOGO_PATH).convert("RGBA")
         qr_w, qr_h = qr_img.size
-        logo_size = int(qr_w * 0.26)
+        logo_size = int(qr_w * 0.45)
 
         # Resize preserving aspect ratio
         ratio = logo.width / logo.height
@@ -127,6 +127,10 @@ def generate_qr_png(verification_code: str) -> bytes:
         else:
             new_h, new_w = logo_size, int(logo_size * ratio)
         logo = logo.resize((new_w, new_h), Image.LANCZOS)
+
+        # Darken the logo so it prints bold on thermal paper
+        logo = ImageEnhance.Contrast(logo).enhance(1.8)
+        logo = ImageEnhance.Brightness(logo).enhance(0.7)
 
         # Build a white backing that follows the logo's shape (not a rectangle)
         # so transparent areas of the logo let QR modules show through

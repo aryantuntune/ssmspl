@@ -70,13 +70,14 @@ async def _get_payment_mode_name(db: AsyncSession, pm_id: int) -> str | None:
     return result.scalar_one_or_none()
 
 
-async def _get_item_name(db: AsyncSession, item_id: int) -> str | None:
-    result = await db.execute(select(Item.name).where(Item.id == item_id))
-    return result.scalar_one_or_none()
+async def _get_item_names(db: AsyncSession, item_id: int) -> tuple[str | None, str | None]:
+    result = await db.execute(select(Item.name, Item.short_name).where(Item.id == item_id))
+    row = result.one_or_none()
+    return (row[0], row[1]) if row else (None, None)
 
 
 async def _enrich_ticket_item(db: AsyncSession, ti: TicketItem) -> dict:
-    item_name = await _get_item_name(db, ti.item_id)
+    item_name, item_short_name = await _get_item_names(db, ti.item_id)
     rate = float(ti.rate) if ti.rate is not None else 0
     levy = float(ti.levy) if ti.levy is not None else 0
     quantity = ti.quantity or 0
@@ -93,6 +94,7 @@ async def _enrich_ticket_item(db: AsyncSession, ti: TicketItem) -> dict:
         "is_cancelled": ti.is_cancelled,
         "amount": amount,
         "item_name": item_name,
+        "item_short_name": item_short_name,
     }
 
 

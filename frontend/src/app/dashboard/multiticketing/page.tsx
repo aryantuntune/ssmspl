@@ -18,7 +18,6 @@ import {
   printReceipt,
   ReceiptData,
   getReceiptPaperWidth,
-  preloadLogo,
 } from "@/lib/print-receipt";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -329,8 +328,6 @@ export default function MultiTicketingPage() {
     }).catch(() => { /* ignore */ });
   }, [initData?.branch_id]);
 
-  /* ── Preload logo for receipt printing ── */
-  useEffect(() => { preloadLogo(); }, []);
 
   /* ── Cancel ticket (SUPER_ADMIN only) ── */
   const [cancellingId, setCancellingId] = useState<number | null>(null);
@@ -395,7 +392,7 @@ export default function MultiTicketingPage() {
         items: (t.items || [])
           .filter((ti) => !ti.is_cancelled)
           .map((ti) => ({
-            name: ti.item_name || `Item #${ti.item_id}`,
+            name: ti.item_short_name || ti.item_name || `Item #${ti.item_id}`,
             quantity: ti.quantity,
             rate: ti.rate,
             levy: ti.levy,
@@ -889,7 +886,7 @@ export default function MultiTicketingPage() {
           items: (ticket.items || [])
             .filter((ti) => !ti.is_cancelled)
             .map((ti) => ({
-              name: ti.item_name || initData.items.find((i) => i.id === ti.item_id)?.name || `Item #${ti.item_id}`,
+              name: ti.item_short_name || initData.items.find((i) => i.id === ti.item_id)?.short_name || ti.item_name || `Item #${ti.item_id}`,
               quantity: ti.quantity,
               rate: ti.rate,
               levy: ti.levy,

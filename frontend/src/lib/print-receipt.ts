@@ -42,33 +42,6 @@ export function setReceiptPaperWidth(width: PaperWidth): void {
   sessionStorage.setItem(PAPER_WIDTH_KEY, width);
 }
 
-// ── Logo preloading ──
-
-let cachedLogoBase64: string | null = null;
-
-export async function preloadLogo(): Promise<string | null> {
-  if (cachedLogoBase64) return cachedLogoBase64;
-  try {
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    await new Promise<void>((resolve, reject) => {
-      img.onload = () => resolve();
-      img.onerror = () => reject(new Error("Logo load failed"));
-      img.src = "/images/logos/logo.png";
-    });
-    const canvas = document.createElement("canvas");
-    canvas.width = img.naturalWidth;
-    canvas.height = img.naturalHeight;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return null;
-    ctx.drawImage(img, 0, 0);
-    cachedLogoBase64 = canvas.toDataURL("image/png");
-    return cachedLogoBase64;
-  } catch {
-    return null;
-  }
-}
-
 // ── QR code fetching ──
 
 export async function fetchQrBase64(ticketId: number): Promise<string | null> {
@@ -117,16 +90,31 @@ function fmtNum(n: number): string {
   return n.toFixed(2);
 }
 
+// ── Receipt style config (shared by both print paths) ──
+
+const NUM_COLS = 4; // Qty, Rate, Levy, Amt
+const NUM_COL_PCT = Math.floor(64 / NUM_COLS); // each numeric column %
+const DESC_COL_PCT = 100 - NUM_COL_PCT * NUM_COLS; // description column %
+
+function getStyleConfig(paperWidth: PaperWidth) {
+  const is58 = paperWidth === "58mm";
+  return {
+    fontSize:  is58 ? "11px" : "12px",
+    tblFont:   is58 ? "8px"  : "9px",
+    noteSize:  is58 ? "7px"  : "8px",
+    coNameSz:  is58 ? "7px"  : "9px",
+    apprSz:    is58 ? "7px"  : "8px",
+    padSide:   is58 ? "3mm"  : "5mm",
+  };
+}
+
 // ── Receipt parts builders ──
 // buildReceiptBodyHtml   — inner body content, shared by both paths
 // buildQzReceiptHtml     — full HTML document for QZ Tray (body-scoped styles)
 // buildReceiptStyles     — scoped CSS for the main-window fallback path
 
 function buildReceiptStyles(widthMm: number, paperWidth: PaperWidth): string {
-  const fontSize = paperWidth === "58mm" ? "11px" : "12px";
-  const numColW  = paperWidth === "58mm" ? "38px" : "46px";
-  const amtColW  = paperWidth === "58mm" ? "46px" : "56px";
-  const noteSize = paperWidth === "58mm" ? "9px"  : "11px";
+  const { fontSize, tblFont, noteSize, coNameSz, apprSz, padSide } = getStyleConfig(paperWidth);
 
   return `
 @page { size: ${widthMm}mm auto; margin: 0; }
@@ -135,29 +123,36 @@ function buildReceiptStyles(widthMm: number, paperWidth: PaperWidth): string {
   font-size: ${fontSize};
   font-weight: 700;
   width: ${widthMm}mm;
-  padding: 2mm 2mm;
-  line-height: 1.2;
+  padding: 2mm ${padSide};
+  line-height: 1.25;
   color: #000;
-  overflow: hidden;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
   -webkit-print-color-adjust: exact;
   print-color-adjust: exact;
 }
 [data-ssmspl-receipt] * { margin: 0; padding: 0; box-sizing: border-box; }
 [data-ssmspl-receipt] .center { text-align: center; }
 [data-ssmspl-receipt] .bold   { font-weight: 900; }
-[data-ssmspl-receipt] .dash   { border-top: 2px solid #000; margin: 2px 0; }
-[data-ssmspl-receipt] table   { width: 100%; border-collapse: collapse; table-layout: fixed; }
-[data-ssmspl-receipt] col.desc { width: auto; }
-[data-ssmspl-receipt] col.num  { width: ${numColW}; }
-[data-ssmspl-receipt] col.amt  { width: ${amtColW}; }
-[data-ssmspl-receipt] td      { padding: 0 1px; vertical-align: top; overflow: hidden; }
-[data-ssmspl-receipt] td.r    { text-align: right; }
+[data-ssmspl-receipt] .dash   { border-top: 2px solid #000; margin: 3px 0; }
+[data-ssmspl-receipt] .co-name { font-family: Arial, Helvetica, sans-serif; font-size: ${coNameSz}; font-weight: 900; text-align: center; white-space: nowrap; letter-spacing: -0.2px; }
+[data-ssmspl-receipt] .approval { font-family: Arial, Helvetica, sans-serif; font-size: ${apprSz}; font-weight: 700; text-align: center; }
+[data-ssmspl-receipt] table   { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: ${tblFont}; }
+[data-ssmspl-receipt] col.desc { width: ${DESC_COL_PCT}%; }
+[data-ssmspl-receipt] col.num  { width: ${NUM_COL_PCT}%; }
+[data-ssmspl-receipt] td      { padding: 1px 2px; vertical-align: top; }
+[data-ssmspl-receipt] td:first-child { white-space: normal; word-break: break-word; }
+[data-ssmspl-receipt] td.r    { text-align: right; white-space: nowrap; }
 [data-ssmspl-receipt] .r      { text-align: right; }
-[data-ssmspl-receipt] .header-line { display: flex; justify-content: space-between; }
-[data-ssmspl-receipt] .note   { font-size: ${noteSize}; font-weight: 900; line-height: 1.2; }
+[data-ssmspl-receipt] .info-row { display: flex; justify-content: space-between; align-items: baseline; gap: 4px; }
+[data-ssmspl-receipt] .info-row span { white-space: nowrap; }
+[data-ssmspl-receipt] .info-row span:first-child { overflow: hidden; text-overflow: ellipsis; min-width: 0; flex-shrink: 1; }
+[data-ssmspl-receipt] .note   { font-family: Arial, Helvetica, sans-serif; font-size: ${noteSize}; font-weight: 700; line-height: 1.2; }
+[data-ssmspl-receipt] .total-line { display: flex; justify-content: space-between; align-items: baseline; }
+[data-ssmspl-receipt] .qr-wrap { text-align: center; padding: 2px 0; }
 @media print {
   body > *:not([data-ssmspl-receipt]) { display: none !important; }
-  [data-ssmspl-receipt] { display: block !important; margin: 0; padding: 2mm 2mm; transform: scale(0.90); transform-origin: top left; }
+  [data-ssmspl-receipt] { display: block !important; margin: 0; padding: 2mm ${padSide}; }
 }
 @media screen {
   [data-ssmspl-receipt] { display: none !important; }
@@ -167,15 +162,11 @@ function buildReceiptStyles(widthMm: number, paperWidth: PaperWidth): string {
 /** Full HTML document for QZ Tray — uses body-level (unscoped) styles. */
 function buildQzReceiptHtml(
   data: ReceiptData,
-  logoBase64: string | null,
   qrBase64: string | null,
 ): string {
-  const widthMm  = data.paperWidth === "58mm" ? 58 : 80;
-  const fontSize = data.paperWidth === "58mm" ? "11px" : "12px";
-  const numColW  = data.paperWidth === "58mm" ? "38px" : "46px";
-  const amtColW  = data.paperWidth === "58mm" ? "46px" : "56px";
-  const noteSize = data.paperWidth === "58mm" ? "9px"  : "11px";
-  const body = buildReceiptBodyHtml(data, logoBase64, qrBase64);
+  const widthMm = data.paperWidth === "58mm" ? 58 : 80;
+  const { fontSize, tblFont, noteSize, coNameSz, apprSz, padSide } = getStyleConfig(data.paperWidth);
+  const body = buildReceiptBodyHtml(data, qrBase64);
 
   return `<!DOCTYPE html>
 <html>
@@ -189,25 +180,32 @@ body {
   font-size: ${fontSize};
   font-weight: 700;
   width: ${widthMm}mm;
-  padding: 2mm 2mm;
-  line-height: 1.2;
+  padding: 2mm ${padSide};
+  line-height: 1.25;
   color: #000;
-  overflow: hidden;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
   -webkit-print-color-adjust: exact;
   print-color-adjust: exact;
 }
 .center { text-align: center; }
 .bold   { font-weight: 900; }
-.dash   { border-top: 2px solid #000; margin: 2px 0; }
-table   { width: 100%; border-collapse: collapse; table-layout: fixed; }
-col.desc { width: auto; }
-col.num  { width: ${numColW}; }
-col.amt  { width: ${amtColW}; }
-td      { padding: 0 1px; vertical-align: top; overflow: hidden; }
-td.r    { text-align: right; }
+.dash   { border-top: 2px solid #000; margin: 3px 0; }
+.co-name { font-family: Arial, Helvetica, sans-serif; font-size: ${coNameSz}; font-weight: 900; text-align: center; white-space: nowrap; letter-spacing: -0.2px; }
+.approval { font-family: Arial, Helvetica, sans-serif; font-size: ${apprSz}; font-weight: 700; text-align: center; }
+table   { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: ${tblFont}; }
+col.desc { width: ${DESC_COL_PCT}%; }
+col.num  { width: ${NUM_COL_PCT}%; }
+td      { padding: 1px 2px; vertical-align: top; }
+td:first-child { white-space: normal; word-break: break-word; }
+td.r    { text-align: right; white-space: nowrap; }
 .r      { text-align: right; }
-.header-line { display: flex; justify-content: space-between; }
-.note   { font-size: ${noteSize}; font-weight: 900; line-height: 1.2; }
+.info-row { display: flex; justify-content: space-between; align-items: baseline; gap: 4px; }
+.info-row span { white-space: nowrap; }
+.info-row span:first-child { overflow: hidden; text-overflow: ellipsis; min-width: 0; flex-shrink: 1; }
+.note   { font-family: Arial, Helvetica, sans-serif; font-size: ${noteSize}; font-weight: 700; line-height: 1.2; }
+.total-line { display: flex; justify-content: space-between; align-items: baseline; }
+.qr-wrap { text-align: center; padding: 2px 0; }
 </style>
 </head>
 <body>${body}</body>
@@ -216,7 +214,6 @@ td.r    { text-align: right; }
 
 function buildReceiptBodyHtml(
   data: ReceiptData,
-  logoBase64: string | null,
   qrBase64: string | null,
 ): string {
   const {
@@ -255,42 +252,31 @@ function buildReceiptBodyHtml(
     return rows.join("");
   }).join("");
 
-  const logoHtml = logoBase64
-    ? `<img src="${logoBase64}" style="width:80px;height:auto;margin:0 auto 4px;display:block;" />`
-    : "";
-
+  const qrSize = widthMm === 58 ? 130 : 170;
   const qrHtml = qrBase64
-    ? `<img src="${qrBase64}" style="width:${widthMm === 58 ? 100 : 140}px;height:auto;margin:0 auto;display:block;" />`
+    ? `<div class="qr-wrap"><img src="${qrBase64}" style="width:${qrSize}px;height:auto;" /></div>`
     : "";
 
   return `
-${logoHtml}
-<div class="center bold">SUVARNADURGA SHIPPING &amp;</div>
-<div class="center bold">MARINE SERVICES PVT.LTD.</div>
+<div class="co-name">SUVARNADURGA SHIPPING &amp; MARINE SERVICES PVT. LTD.</div>
 <div class="center bold">${escHtml(branchName.toUpperCase())}</div>
-<div class="center">MAHARASHTRA MARITIME BOARD APPROVAL</div>
+<div class="approval">MAHARASHTRA MARITIME BOARD APPROVAL</div>
 <div class="center bold">${escHtml(fromTo)}</div>
-<div class="header-line"><span>Ph: ${escHtml(displayPhone)}</span><span>TIME: ${time}</span></div>
-<div class="header-line"><span>TICKET MEMO NO: ${ticketNo}</span><span>DATE: ${dateStr}</span></div>
-<div class="header-line"><span>PAYMENT MODE: ${escHtml(paymentModeName)}</span><span>BY: ${escHtml(createdBy)}</span></div>
+<div class="info-row"><span>Ph: ${escHtml(displayPhone)}</span><span>TIME: ${time}</span></div>
+<div class="info-row"><span>Memo No: ${ticketNo}</span><span>DATE: ${dateStr}</span></div>
+<div class="info-row"><span>Pay: ${escHtml(paymentModeName)}</span><span>BY: ${escHtml(createdBy)}</span></div>
 <div class="dash"></div>
 <table>
-<colgroup><col class="desc"/><col class="num"/><col class="num"/><col class="num"/><col class="amt"/></colgroup>
-<tr class="bold"><td>Description</td><td class="r">Qty</td><td class="r">Rate</td><td class="r">Levy</td><td class="r">Amount</td></tr>
+<colgroup><col class="desc"/><col class="num"/><col class="num"/><col class="num"/><col class="num"/></colgroup>
+<tr class="bold"><td>Description</td><td class="r">Qty</td><td class="r">Rate</td><td class="r">Levy</td><td class="r">Amt</td></tr>
 <tr><td colspan="5"><div class="dash"></div></td></tr>
 ${itemRows}
 </table>
 <div class="dash"></div>
-<div class="header-line"><span class="bold">NET TOTAL WITH GOVT.TAX. :</span><span class="bold">${fmtNum(netAmount)}</span></div>
+<div class="total-line"><span class="bold">NET TOTAL INCL.TAX:</span><span class="bold">${fmtNum(netAmount)}</span></div>
 <div class="dash"></div>
-<div class="note">NOTE: Tantrik Durustimule Velevar na sutlyas va ushira pohochlyas company jababdar rahanar nahi.</div>
-<div class="center note">Ferry Boatit Ticket Dakhvaa.</div>
-<div class="center note">HAPPY JOURNEY - www.carferry.online</div>
-<div class="dash"></div>
-<div class="header-line"><span>DATE: ${dateStr} ${time}</span><span>BY: ${escHtml(createdBy)}</span></div>
-<div>TICKET MEMO NO: ${ticketNo}</div>
-<div>PAYMENT MODE: ${escHtml(paymentModeName)}</div>
-<div class="header-line"><span>NET TOTAL WITH GOVT.TAX. :</span><span class="bold">${fmtNum(netAmount)}</span></div>
+<div class="note">NOTE: Tantrik Durustimule Velevar na sutlyas va ushira pohochlyas company jababdar rahanar nahi. Ferry Boatit Ticket Dakhvaa.</div>
+<div class="center note" style="margin-top:1px;">HAPPY JOURNEY - www.carferry.online</div>
 <div class="dash"></div>
 ${qrHtml}`.trim();
 }
@@ -309,10 +295,7 @@ ${qrHtml}`.trim();
  *   (e.g. QZ Tray failed AND the DOM injection failed).
  */
 export async function printReceipt(data: ReceiptData): Promise<boolean> {
-  const [logoBase64, qrBase64] = await Promise.all([
-    preloadLogo(),
-    fetchQrBase64(data.ticketId),
-  ]);
+  const qrBase64 = await fetchQrBase64(data.ticketId);
 
   const widthMm = data.paperWidth === "58mm" ? 58 : 80;
 
@@ -325,7 +308,7 @@ export async function printReceipt(data: ReceiptData): Promise<boolean> {
     try {
       await qzConnect();
       qzConnected = true;
-      const html = buildQzReceiptHtml(data, logoBase64, qrBase64);
+      const html = buildQzReceiptHtml(data, qrBase64);
       await qzPrint(printerName, html, widthMm);
       return true; // print job spooled successfully
     } catch {
@@ -338,7 +321,7 @@ export async function printReceipt(data: ReceiptData): Promise<boolean> {
 
   // ── Path 2: main-window window.print() (respects --kiosk-printing) ──
   const stylesCss = buildReceiptStyles(widthMm, data.paperWidth);
-  const bodyHtml  = buildReceiptBodyHtml(data, logoBase64, qrBase64);
+  const bodyHtml  = buildReceiptBodyHtml(data, qrBase64);
 
   // Inject a hidden receipt container + scoped print styles into the main
   // document, then call window.print() on the top-level window.

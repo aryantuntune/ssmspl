@@ -862,7 +862,7 @@ export default function TicketingPage() {
         items: (t.items || [])
           .filter((ti) => !ti.is_cancelled)
           .map((ti) => ({
-            name: ti.item_name || items.find((i) => i.id === ti.item_id)?.name || `Item #${ti.item_id}`,
+            name: ti.item_short_name || items.find((i) => i.id === ti.item_id)?.short_name || ti.item_name || `Item #${ti.item_id}`,
             quantity: ti.quantity,
             rate: ti.rate,
             levy: ti.levy,
@@ -1098,14 +1098,17 @@ export default function TicketingPage() {
         ticketDate: formTicketDate,
         createdAt: savedTicket.created_at || null,
         departure: effectiveDeparture,
-        items: activeItems.map((fi) => ({
-          name: items.find((i) => i.id === fi.item_id)?.name || `Item #${fi.item_id}`,
-          quantity: fi.quantity,
-          rate: fi.rate,
-          levy: fi.levy,
-          amount: Math.round(fi.quantity * (fi.rate + fi.levy) * 100) / 100,
-          vehicleNo: fi.vehicle_no || null,
-        })),
+        items: activeItems.map((fi) => {
+          const item = items.find((i) => i.id === fi.item_id);
+          return {
+            name: item?.short_name || item?.name || `Item #${fi.item_id}`,
+            quantity: fi.quantity,
+            rate: fi.rate,
+            levy: fi.levy,
+            amount: Math.round(fi.quantity * (fi.rate + fi.levy) * 100) / 100,
+            vehicleNo: fi.vehicle_no || null,
+          };
+        }),
         netAmount: savedTicket.net_amount,
         createdBy: savedTicket.created_by_username || user?.username || "",
         paperWidth,

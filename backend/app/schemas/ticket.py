@@ -43,6 +43,7 @@ class TicketItemRead(BaseModel):
     is_cancelled: bool = Field(..., description="Whether this item is cancelled")
     amount: float = Field(..., description="Computed: quantity * (rate + levy)")
     item_name: str | None = Field(None, description="Item name for display")
+    item_short_name: str | None = Field(None, description="Item short name for receipt printing")
 
     model_config = {"from_attributes": True}
 

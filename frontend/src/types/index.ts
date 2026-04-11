@@ -245,6 +245,7 @@ export interface TicketItem {
   is_cancelled: boolean;
   amount: number;
   item_name: string | null;
+  item_short_name: string | null;
 }
 
 export interface TicketItemCreate {
