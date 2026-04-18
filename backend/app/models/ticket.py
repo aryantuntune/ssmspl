@@ -48,6 +48,9 @@ class TicketItem(AuditMixin, Base):
     vehicle_name: Mapped[str | None] = mapped_column(String(60), nullable=True)
     is_cancelled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    last_adjustment_id: Mapped[uuid_mod.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("admin_adjustments_log.id"), nullable=True
+    )
 
     def __repr__(self) -> str:
         return f"<TicketItem id={self.id} ticket_id={self.ticket_id} item_id={self.item_id}>"
