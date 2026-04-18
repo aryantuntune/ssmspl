@@ -184,7 +184,9 @@ def _apply_rule_to_items(
 
         # Apply delta to rate first, then levy
         rate_delta = min(delta, item["rate"] * item["quantity"])
-        levy_delta = delta - rate_delta
+        max_levy_available = item["levy"] * item["quantity"]
+        levy_delta = min(delta - rate_delta, max_levy_available)
+        actual_delta = rate_delta + levy_delta
         new_rate = (item["rate"] - rate_delta / item["quantity"]).quantize(
             Decimal("0.01"), rounding=ROUND_DOWN
         )
@@ -201,10 +203,10 @@ def _apply_rule_to_items(
             "new_levy": float(new_levy),
             "rate_delta": float(rate_delta),
             "levy_delta": float(levy_delta),
-            "total_delta": float(delta),
+            "total_delta": float(actual_delta),
         })
-        rule_spent += delta
-        ticket_spent[item["ticket_id"]] = ticket_spent.get(item["ticket_id"], Decimal("0")) + delta
+        rule_spent += actual_delta
+        ticket_spent[item["ticket_id"]] = ticket_spent.get(item["ticket_id"], Decimal("0")) + actual_delta
 
     remaining -= rule_spent
     return changes, remaining
