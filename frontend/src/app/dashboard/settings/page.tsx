@@ -4,22 +4,38 @@ import { useEffect, useState } from "react";
 import api from "@/lib/api";
 import { useDashboardUser } from "@/components/dashboard/DashboardUserContext";
 import { Company, User } from "@/types";
-import { Settings, Palette, Mail, HardDrive, Clock } from "lucide-react";
+import { Settings, Palette, Mail, HardDrive, Clock, Shield, Users } from "lucide-react";
 import GeneralTab from "./components/general-tab";
 import AppearanceTab from "./components/appearance-tab";
 import NotificationsTab from "./components/notifications-tab";
 import BackupsTab from "./components/backups-tab";
 import OperationsTab from "./components/operations-tab";
+import ScreenAccessTab from "./components/screen-access-tab";
+import UserAccessTab from "./components/user-access-tab";
 
-const TABS = [
+const isAdminPortal = process.env.NEXT_PUBLIC_ADMIN_PORTAL === "true";
+
+type TabId = "general" | "operations" | "appearance" | "notifications" | "backups" | "screen-access" | "user-access";
+
+interface TabDef {
+  id: TabId;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+}
+
+const TABS: TabDef[] = [
   { id: "general", label: "General", icon: Settings },
   { id: "operations", label: "Operations", icon: Clock },
   { id: "appearance", label: "Appearance", icon: Palette },
   { id: "notifications", label: "Notifications", icon: Mail },
   { id: "backups", label: "Backups", icon: HardDrive },
-] as const;
-
-type TabId = (typeof TABS)[number]["id"];
+  ...(isAdminPortal
+    ? [
+        { id: "screen-access" as const, label: "Screen Access", icon: Shield },
+        { id: "user-access" as const, label: "User Access", icon: Users },
+      ]
+    : []),
+];
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<TabId>("general");
@@ -42,9 +58,10 @@ export default function SettingsPage() {
     );
   }
 
-  // Filter tabs — Operations and Backups visible only to SUPER_ADMIN
+  // Filter tabs — Operations, Backups, Screen Access, and User Access visible only to SUPER_ADMIN
   const visibleTabs = TABS.filter((tab) => {
-    if (tab.id === "operations" || tab.id === "backups") return user?.role === "SUPER_ADMIN";
+    if (tab.id === "operations" || tab.id === "backups" || tab.id === "screen-access" || tab.id === "user-access")
+      return user?.role === "SUPER_ADMIN";
     return true;
   });
 
@@ -96,6 +113,8 @@ export default function SettingsPage() {
           {activeTab === "appearance" && <AppearanceTab />}
           {activeTab === "notifications" && <NotificationsTab />}
           {activeTab === "backups" && <BackupsTab />}
+          {activeTab === "screen-access" && <ScreenAccessTab />}
+          {activeTab === "user-access" && <UserAccessTab />}
         </div>
       </div>
     </div>
