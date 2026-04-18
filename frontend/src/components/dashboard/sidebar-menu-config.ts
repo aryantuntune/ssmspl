@@ -2,7 +2,7 @@ import {
   LayoutDashboard, Ticket, TicketCheck, BarChart3,
   Ship, MapPin, Route as RouteIcon, Clock, Package, DollarSign,
   CreditCard, Users, ArrowLeftRight, Settings, Shield, FileText,
-  Monitor,
+  Monitor, Database, SlidersHorizontal,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -23,6 +23,13 @@ export interface SidebarSection {
 }
 
 export const SIDEBAR_CONFIG: SidebarSection[] = [
+  {
+    sectionLabel: "RECONCILIATION",
+    entries: [
+      { label: "D Drive", icon: Database, href: "/dashboard/d-drive" },
+      { label: "Parameter Master", icon: SlidersHorizontal, href: "/dashboard/parameter-master" },
+    ],
+  },
   {
     entries: [
       { label: "Dashboard", icon: LayoutDashboard, href: "/dashboard" },
