@@ -6,6 +6,33 @@ import BranchSummaryCards from "./components/BranchSummaryCards";
 import TicketTable from "./components/TicketTable";
 import AdjustmentModal from "./components/AdjustmentModal";
 
+interface BranchSummary {
+  branch_id: number;
+  branch_name: string;
+  ticket_count: number;
+  total: number;
+  cash: number;
+  upi: number;
+  online: number;
+}
+
+interface Ticket {
+  id: number;
+  ticket_date: string;
+  branch_name: string;
+  payment_mode: string;
+  net_amount: number;
+  operator_name: string;
+  item_summary: string;
+}
+
+interface TicketPageData {
+  tickets: Ticket[];
+  total: number;
+  page: number;
+  total_pages: number;
+}
+
 export default function DDrivePage() {
   const today = new Date().toISOString().slice(0, 10);
   const [filters, setFilters] = useState<Filters>({
@@ -13,8 +40,8 @@ export default function DDrivePage() {
   });
   const [branches, setBranches] = useState<{ id: number; name: string }[]>([]);
   const [items, setItems] = useState<{ id: number; name: string }[]>([]);
-  const [summaries, setSummaries] = useState<any[]>([]);
-  const [ticketData, setTicketData] = useState<any>({
+  const [summaries, setSummaries] = useState<BranchSummary[]>([]);
+  const [ticketData, setTicketData] = useState<TicketPageData>({
     tickets: [], total: 0, page: 1, total_pages: 1,
   });
   const [summaryLoading, setSummaryLoading] = useState(false);
@@ -53,7 +80,7 @@ export default function DDrivePage() {
 
   const handleApply = (f: Filters) => { setFilters(f); loadData(f); };
 
-  useEffect(() => { loadData(filters); }, []);
+  useEffect(() => { loadData(filters); }, [loadData]);
 
   return (
     <div className="space-y-6">

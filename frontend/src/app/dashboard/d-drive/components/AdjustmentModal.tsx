@@ -7,6 +7,8 @@ import { Label } from "@/components/ui/label";
 import api from "@/lib/api";
 import DryRunPreview from "./DryRunPreview";
 
+type DryRunResult = { batch_id: string; summary: { cash_total_before: number; total_adjustment_applied: number; cash_total_after: number; tickets_affected: number; items_affected: number; amount_not_applied: number } };
+
 interface Props {
   open: boolean;
   branchId: number;
@@ -22,7 +24,7 @@ export default function AdjustmentModal({
   open, branchId, branchName, cashTotal, dateStart, dateEnd, onClose, onCommitted,
 }: Props) {
   const [amount, setAmount] = useState("");
-  const [dryRunResult, setDryRunResult] = useState<any>(null);
+  const [dryRunResult, setDryRunResult] = useState<DryRunResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -40,8 +42,9 @@ export default function AdjustmentModal({
         adjustment_amount: amt,
       });
       setDryRunResult(res.data);
-    } catch (e: any) {
-      setError(e?.response?.data?.detail ?? "Dry-run failed");
+    } catch (e) {
+      const err = e as { response?: { data?: { detail?: string } } };
+      setError(err?.response?.data?.detail ?? "Dry-run failed");
     } finally {
       setLoading(false);
     }

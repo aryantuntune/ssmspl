@@ -31,8 +31,9 @@ export default function DryRunPreview({ result, onCancel, onCommitted }: Props) 
     try {
       await api.post("/api/admin/d-drive/adjustment/commit", { batch_id });
       onCommitted();
-    } catch (e: any) {
-      setError(e?.response?.data?.detail ?? "Commit failed");
+    } catch (e) {
+      const err = e as { response?: { data?: { detail?: string } } };
+      setError(err?.response?.data?.detail ?? "Commit failed");
       setLoading(false);
     }
   };
