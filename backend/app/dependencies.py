@@ -108,6 +108,18 @@ async def get_current_user(
             from app.services.user_session_service import update_heartbeat
             await update_heartbeat(db, user.active_session_id)
 
+    # Admin portal: ADMIN users must be explicitly granted access
+    if settings.ADMIN_PORTAL_MODE and user.role == UserRole.ADMIN:
+        if not hasattr(request.state, "admin_access_checked"):
+            from app.services.admin_user_access_service import check_user_access
+            granted = await check_user_access(db, user.id)
+            request.state.admin_access_checked = granted
+        if not request.state.admin_access_checked:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Admin portal access not granted. Contact your system administrator.",
+            )
+
     return user
 
 
