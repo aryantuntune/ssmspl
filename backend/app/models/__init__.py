@@ -21,6 +21,12 @@ from app.models.backup_notification_recipient import BackupNotificationRecipient
 from app.models.user_session import UserSession
 from app.models.daily_report_log import DailyReportLog
 from app.models.user_activity_log import UserActivityLog
+from app.models.admin_user_access import AdminUserAccess
+from app.models.parameter_master import ParameterMaster
+from app.models.admin_adjustments_log import AdminAdjustmentsLog
+from app.models.admin_adjustment_details import AdminAdjustmentDetails
+from app.models.tickets_backup import TicketsBackup
+from app.models.ticket_items_backup import TicketItemsBackup
 
 __all__ = [
     "User",
@@ -47,4 +53,10 @@ __all__ = [
     "UserSession",
     "DailyReportLog",
     "UserActivityLog",
+    "AdminUserAccess",
+    "ParameterMaster",
+    "AdminAdjustmentsLog",
+    "AdminAdjustmentDetails",
+    "TicketsBackup",
+    "TicketItemsBackup",
 ]
