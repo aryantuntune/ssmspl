@@ -21,6 +21,7 @@ from app.models.backup_notification_recipient import BackupNotificationRecipient
 from app.models.user_session import UserSession
 from app.models.daily_report_log import DailyReportLog
 from app.models.user_activity_log import UserActivityLog
+from app.models.admin_screen_toggle import AdminScreenToggle
 
 __all__ = [
     "User",
@@ -47,4 +48,5 @@ __all__ = [
     "UserSession",
     "DailyReportLog",
     "UserActivityLog",
+    "AdminScreenToggle",
 ]

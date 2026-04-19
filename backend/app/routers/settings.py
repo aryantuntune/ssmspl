@@ -9,6 +9,7 @@ from app.dependencies import require_roles
 from app.models.company import Company
 from app.models.daily_report_recipient import DailyReportRecipient
 from app.services.activity_log_service import log_activity, ActivityAction
+from app.services import admin_screen_service
 
 router = APIRouter(prefix="/api/settings", tags=["Settings"])
 
@@ -174,3 +175,50 @@ async def delete_recipient(
         ActivityAction.SETTINGS_CHANGE,
         {"entity": "daily_report_recipient", "action": "delete", "id": recipient_id, "email": email},
     )
+
+
+# --- Admin Portal Screen Toggles ---
+
+
+class ScreenToggleOut(BaseModel):
+    id: int
+    screen_name: str
+    is_enabled: bool
+
+    model_config = {"from_attributes": True}
+
+
+class ScreenToggleBulkUpdate(BaseModel):
+    toggles: dict[str, bool]  # {"Ticketing": true, "Reports": false}
+
+
+@router.get(
+    "/screen-toggles",
+    response_model=list[ScreenToggleOut],
+    summary="List all admin portal screen toggles",
+)
+async def list_screen_toggles(
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(_super_admin_only),
+):
+    return await admin_screen_service.get_all_toggles(db)
+
+
+@router.put(
+    "/screen-toggles",
+    response_model=list[ScreenToggleOut],
+    summary="Bulk update admin portal screen toggles",
+)
+async def update_screen_toggles(
+    body: ScreenToggleBulkUpdate,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(_super_admin_only),
+):
+    result = await admin_screen_service.bulk_update_toggles(db, body.toggles)
+    background_tasks.add_task(
+        log_activity, current_user.active_session_id, current_user.id,
+        ActivityAction.SETTINGS_CHANGE,
+        {"entity": "screen_toggles", "action": "bulk_update", "toggles": body.toggles},
+    )
+    return result
