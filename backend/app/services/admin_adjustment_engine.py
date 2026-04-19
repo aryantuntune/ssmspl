@@ -108,9 +108,14 @@ async def _build_deletion_plan(
     if target_amount <= 0:
         return [], Decimal("0"), {}
 
+    from sqlalchemy import or_ as _or
     rules_result = await db.execute(
         select(ParameterMaster)
-        .where(ParameterMaster.is_active == True, ParameterMaster.is_protected == False)
+        .where(
+            ParameterMaster.is_active == True,
+            ParameterMaster.is_protected == False,
+            _or(ParameterMaster.branch_scope == None, ParameterMaster.branch_scope == branch_id),
+        )
         .order_by(ParameterMaster.priority_order)
     )
     rules = list(rules_result.scalars().all())
@@ -184,8 +189,18 @@ async def _build_deletion_plan(
         rows = (await db.execute(q)).all()
 
         max_per_ticket = Decimal(str(rule.max_adjustment_per_ticket)) if rule.max_adjustment_per_ticket else None
+        max_per_item = Decimal(str(rule.max_adjustment_per_item)) if rule.max_adjustment_per_item else None
+        min_remaining = rule.min_remaining_per_item or 0
         rule_spent = Decimal("0")
         ticket_spent: dict[int, Decimal] = {}
+
+        # Build a per-(ticket_id, item_id) original quantity map for min_remaining enforcement
+        quantity_map: dict[tuple[int, int], int] = {}
+        for r in rows:
+            key = (r.ticket_id, r.item_id)
+            quantity_map[key] = quantity_map.get(key, 0) + r.quantity
+        # Track how much of each (ticket_id, item_id) we've already planned to delete
+        planned_delete_qty: dict[tuple[int, int], int] = {}
 
         for r in rows:
             if r.tiid in deletion_set:
@@ -199,6 +214,20 @@ async def _build_deletion_plan(
             if item_value <= 0:
                 continue
 
+            # Per-item cap: if this single row's value exceeds the max_per_item cap, skip it
+            if max_per_item is not None and item_value > max_per_item:
+                continue
+
+            # Min-remaining guard: deleting this row cannot reduce (ticket_id, item_id)
+            # total quantity below the configured floor.
+            if min_remaining > 0:
+                key = (r.ticket_id, r.item_id)
+                original_qty = quantity_map.get(key, 0)
+                already_planned = planned_delete_qty.get(key, 0)
+                remaining_if_deleted = original_qty - already_planned - r.quantity
+                if remaining_if_deleted < min_remaining:
+                    continue
+
             if item_value > remaining or item_value > (rule_cap - rule_spent):
                 continue
 
@@ -207,6 +236,10 @@ async def _build_deletion_plan(
                 if item_value > (max_per_ticket - tspent):
                     continue
                 ticket_spent[r.ticket_id] = tspent + item_value
+
+            if min_remaining > 0:
+                key = (r.ticket_id, r.item_id)
+                planned_delete_qty[key] = planned_delete_qty.get(key, 0) + r.quantity
 
             deletion_ids.append(r.tiid)
             deletion_set.add(r.tiid)
@@ -289,9 +322,14 @@ async def dry_run(
         raise HTTPException(status_code=400, detail="Adjustment amount must be positive")
 
     # Load protected item IDs from protected rules
+    from sqlalchemy import or_ as _or_pr
     protected_result = await db.execute(
         select(ParameterMaster.item_id)
-        .where(ParameterMaster.is_active == True, ParameterMaster.is_protected == True)
+        .where(
+            ParameterMaster.is_active == True,
+            ParameterMaster.is_protected == True,
+            _or_pr(ParameterMaster.branch_scope == None, ParameterMaster.branch_scope == branch_id),
+        )
     )
     protected_item_ids = {row[0] for row in protected_result.all() if row[0] is not None}
 
@@ -452,14 +490,24 @@ async def commit(
     if not item_ids:
         raise HTTPException(status_code=400, detail="No items in selected plan")
 
-    # Mark IN_PROGRESS in a separate session (survives main tx rollback)
+    # Mark IN_PROGRESS atomically in a separate session using compare-and-swap
+    # (only transitions DRY_RUN -> IN_PROGRESS; fails loudly if status changed).
+    # This prevents concurrent commits on the same batch from racing.
     async with AsyncSessionLocal() as log_session:
         async with log_session.begin():
-            await log_session.execute(
+            cas_result = await log_session.execute(
                 update(AdminAdjustmentsLog)
-                .where(AdminAdjustmentsLog.id == batch_id)
+                .where(
+                    AdminAdjustmentsLog.id == batch_id,
+                    AdminAdjustmentsLog.status == "DRY_RUN",
+                )
                 .values(status="IN_PROGRESS", plan_choice=plan_choice)
             )
+            if cas_result.rowcount == 0:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Batch is being committed by another request or has already been processed.",
+                )
 
     try:
         date_hash = _date_lock_hash(log.date_range_start, log.date_range_end)
@@ -470,41 +518,33 @@ async def commit(
 
         ticket_ids = list({t["ticket_id"] for t in tickets_view})
 
-        # Filter out items from tickets the admin chose to skip
+        # Filter out items from tickets the admin chose to skip.
+        # Derive skipped_item_ids from tickets_view, then FILTER the authoritative
+        # stored plan["item_ids"] (defensive: don't re-derive item_ids from tickets_view).
         if skipped_set:
-            # Remove skipped tickets from the action set
-            item_ids = [
+            skipped_item_ids = {
                 it["ticket_item_id"]
-                for t in tickets_view if t["ticket_id"] not in skipped_set
+                for t in tickets_view if t["ticket_id"] in skipped_set
                 for it in t["items_to_remove"]
-            ]
+            }
+            item_ids = [iid for iid in item_ids if iid not in skipped_item_ids]
             tickets_view = [t for t in tickets_view if t["ticket_id"] not in skipped_set]
             ticket_ids = [tid for tid in ticket_ids if tid not in skipped_set]
 
         if not item_ids:
-            # Admin skipped every ticket — nothing to do. Mark COMMITTED with zero effect.
+            # Admin skipped every ticket — this is a no-op, not a commit. Revert status to DRY_RUN
+            # so the admin can retry with different choices without generating a fresh batch.
             async with AsyncSessionLocal() as log_session:
                 async with log_session.begin():
                     await log_session.execute(
                         update(AdminAdjustmentsLog)
                         .where(AdminAdjustmentsLog.id == batch_id)
-                        .values(
-                            status="COMMITTED",
-                            plan_choice=plan_choice,
-                            executed_at=datetime.now(timezone.utc),
-                            total_tickets_affected=0,
-                            total_items_affected=0,
-                        )
+                        .values(status="DRY_RUN", plan_choice=None)
                     )
-            return {
-                "batch_id": str(log.id),
-                "status": "COMMITTED",
-                "plan_choice": plan_choice,
-                "tickets_affected": 0,
-                "items_deleted": 0,
-                "tickets_hard_deleted": 0,
-                "executed_at": datetime.now(timezone.utc).isoformat(),
-            }
+            raise HTTPException(
+                status_code=400,
+                detail="All tickets were skipped — no changes made. Adjust your skip toggles and retry.",
+            )
 
         # Identify which affected tickets become empty after the deletion (these get hard-deleted)
         hard_delete_ticket_ids: list[int] = [
@@ -553,6 +593,18 @@ async def commit(
                     "is_cancelled": ti.is_cancelled,
                 },
             ))
+
+        # Staleness guard: if any items in the plan no longer exist in the DB (cancelled,
+        # deleted by replication, or concurrent D-drive run), abort — audit must match reality.
+        missing_item_ids = [iid for iid in item_ids if iid not in item_rows_by_id]
+        if missing_item_ids:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"Plan is stale — {len(missing_item_ids)} ticket_item(s) no longer exist. "
+                    f"Re-run the trial preview to generate a fresh plan."
+                ),
+            )
 
         # Also backup any ADDITIONAL items (including cancelled) on tickets that will be hard-deleted
         # so the full ticket state is recoverable
@@ -626,17 +678,24 @@ async def commit(
                 delete(Ticket).where(Ticket.id.in_(hard_delete_ticket_ids))
             )
 
-        # Recalculate net_amount ONLY for tickets that still exist (not hard-deleted)
+        # Recalculate amount + net_amount ONLY for tickets that still exist (not hard-deleted)
+        # net_amount = new_gross - discount   (critical: discount was being ignored)
         surviving_ticket_ids = [tid for tid in ticket_ids if tid not in hard_delete_set]
         if surviving_ticket_ids:
             await db.execute(
                 text("""
                     UPDATE tickets
-                    SET net_amount = (
-                        SELECT COALESCE(SUM((ti.rate + ti.levy) * ti.quantity), 0)
-                        FROM ticket_items ti
-                        WHERE ti.ticket_id = tickets.id AND ti.is_cancelled = false
-                    )
+                    SET
+                        amount = (
+                            SELECT COALESCE(SUM((ti.rate + ti.levy) * ti.quantity), 0)
+                            FROM ticket_items ti
+                            WHERE ti.ticket_id = tickets.id AND ti.is_cancelled = false
+                        ),
+                        net_amount = (
+                            SELECT COALESCE(SUM((ti.rate + ti.levy) * ti.quantity), 0)
+                            FROM ticket_items ti
+                            WHERE ti.ticket_id = tickets.id AND ti.is_cancelled = false
+                        ) - COALESCE(discount, 0)
                     WHERE id = ANY(:ids)
                 """),
                 {"ids": surviving_ticket_ids},
