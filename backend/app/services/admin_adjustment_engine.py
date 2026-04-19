@@ -420,9 +420,12 @@ async def commit(
     batch_id: str,
     plan_choice: str,
     confirmed_by: uuid.UUID,
+    skipped_ticket_ids: list[int] | None = None,
 ) -> dict:
     if plan_choice not in ("recommended", "requested"):
         raise HTTPException(status_code=400, detail="plan_choice must be 'recommended' or 'requested'")
+
+    skipped_set: set[int] = set(skipped_ticket_ids or [])
 
     result = await db.execute(
         select(AdminAdjustmentsLog).where(AdminAdjustmentsLog.id == batch_id)
@@ -457,6 +460,50 @@ async def commit(
         )
 
         ticket_ids = list({t["ticket_id"] for t in tickets_view})
+
+        # Filter out items from tickets the admin chose to skip
+        if skipped_set:
+            # Remove skipped tickets from the action set
+            item_ids = [
+                it["ticket_item_id"]
+                for t in tickets_view if t["ticket_id"] not in skipped_set
+                for it in t["items_to_remove"]
+            ]
+            tickets_view = [t for t in tickets_view if t["ticket_id"] not in skipped_set]
+            ticket_ids = [tid for tid in ticket_ids if tid not in skipped_set]
+
+        if not item_ids:
+            # Admin skipped every ticket — nothing to do. Mark COMMITTED with zero effect.
+            async with AsyncSessionLocal() as log_session:
+                async with log_session.begin():
+                    await log_session.execute(
+                        update(AdminAdjustmentsLog)
+                        .where(AdminAdjustmentsLog.id == batch_id)
+                        .values(
+                            status="COMMITTED",
+                            plan_choice=plan_choice,
+                            executed_at=datetime.now(timezone.utc),
+                            total_tickets_affected=0,
+                            total_items_affected=0,
+                        )
+                    )
+            return {
+                "batch_id": str(log.id),
+                "status": "COMMITTED",
+                "plan_choice": plan_choice,
+                "tickets_affected": 0,
+                "items_deleted": 0,
+                "tickets_hard_deleted": 0,
+                "executed_at": datetime.now(timezone.utc).isoformat(),
+            }
+
+        # Identify which affected tickets become empty after the deletion (these get hard-deleted)
+        hard_delete_ticket_ids: list[int] = [
+            t["ticket_id"]
+            for t in tickets_view
+            if len(t.get("final_items", [])) == 0
+        ]
+        hard_delete_set: set[int] = set(hard_delete_ticket_ids)
 
         # Backup affected tickets
         tickets_result = await db.execute(select(Ticket).where(Ticket.id.in_(ticket_ids)))
@@ -522,19 +569,31 @@ async def commit(
         # DELETE items (the actual mutation)
         await db.execute(delete(TicketItem).where(TicketItem.id.in_(item_ids)))
 
-        # Recalculate net_amount on affected tickets only
-        await db.execute(
-            text("""
-                UPDATE tickets
-                SET net_amount = (
-                    SELECT COALESCE(SUM((ti.rate + ti.levy) * ti.quantity), 0)
-                    FROM ticket_items ti
-                    WHERE ti.ticket_id = tickets.id AND ti.is_cancelled = false
-                )
-                WHERE id = ANY(:ids)
-            """),
-            {"ids": ticket_ids},
-        )
+        # Hard-delete tickets that are now empty (no items left after the deletion)
+        if hard_delete_ticket_ids:
+            # Delete any remaining ticket_items for those tickets (defensive — should be none)
+            await db.execute(
+                delete(TicketItem).where(TicketItem.ticket_id.in_(hard_delete_ticket_ids))
+            )
+            await db.execute(
+                delete(Ticket).where(Ticket.id.in_(hard_delete_ticket_ids))
+            )
+
+        # Recalculate net_amount ONLY for tickets that still exist (not hard-deleted)
+        surviving_ticket_ids = [tid for tid in ticket_ids if tid not in hard_delete_set]
+        if surviving_ticket_ids:
+            await db.execute(
+                text("""
+                    UPDATE tickets
+                    SET net_amount = (
+                        SELECT COALESCE(SUM((ti.rate + ti.levy) * ti.quantity), 0)
+                        FROM ticket_items ti
+                        WHERE ti.ticket_id = tickets.id AND ti.is_cancelled = false
+                    )
+                    WHERE id = ANY(:ids)
+                """),
+                {"ids": surviving_ticket_ids},
+            )
 
         log.status = "COMMITTED"
         log.executed_at = datetime.now(timezone.utc)
@@ -559,5 +618,6 @@ async def commit(
         "plan_choice": plan_choice,
         "tickets_affected": len(ticket_ids),
         "items_deleted": len(item_ids),
+        "tickets_hard_deleted": len(hard_delete_ticket_ids),
         "executed_at": log.executed_at.isoformat(),
     }
