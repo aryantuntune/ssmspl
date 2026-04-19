@@ -102,7 +102,7 @@ async def preview_rule_matches(
             Ticket.ticket_date >= date_start,
             Ticket.ticket_date <= date_end,
             Ticket.is_cancelled == False,
-            PaymentMode.name == "CASH",
+            func.upper(PaymentMode.description) == "CASH",
             item_exists_subq.exists(),
         )
     )
@@ -121,7 +121,7 @@ async def preview_rule_matches(
             Ticket.ticket_date <= date_end,
             Ticket.is_cancelled == False,
             TicketItem.is_cancelled == False,
-            PaymentMode.name == "CASH",
+            func.upper(PaymentMode.description) == "CASH",
         )
     )
     if effective_branch:

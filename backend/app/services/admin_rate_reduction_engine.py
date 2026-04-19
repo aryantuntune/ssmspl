@@ -37,7 +37,7 @@ async def _count_eligible_items(
             Ticket.ticket_date <= date_end,
             Ticket.is_cancelled == False,
             TicketItem.is_cancelled == False,
-            PaymentMode.name == "CASH",
+            func.upper(PaymentMode.description) == "CASH",
         )
     )
     return (await db.execute(q)).scalar_one()
@@ -55,7 +55,7 @@ async def _fetch_cash_total(
             Ticket.ticket_date >= date_start,
             Ticket.ticket_date <= date_end,
             Ticket.is_cancelled == False,
-            PaymentMode.name == "CASH",
+            func.upper(PaymentMode.description) == "CASH",
         )
     )
     return Decimal(str((await db.execute(q)).scalar_one()))
@@ -105,7 +105,7 @@ async def _fetch_eligible_items_for_rule(
             Ticket.ticket_date <= date_end,
             Ticket.is_cancelled == False,
             TicketItem.is_cancelled == False,
-            PaymentMode.name == "CASH",
+            func.upper(PaymentMode.description) == "CASH",
         )
         .order_by(*_order_clause(rule))
     )

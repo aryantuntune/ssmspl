@@ -21,7 +21,7 @@ async def get_branch_summary(
         select(
             Branch.id.label("branch_id"),
             Branch.name.label("branch_name"),
-            PaymentMode.name.label("payment_mode"),
+            PaymentMode.description.label("payment_mode"),
             func.count(Ticket.id).label("ticket_count"),
             func.coalesce(func.sum(Ticket.net_amount), 0).label("total"),
         )
@@ -37,7 +37,7 @@ async def get_branch_summary(
     if branch_id:
         q = q.where(Ticket.branch_id == branch_id)
     if payment_mode_name:
-        q = q.where(PaymentMode.name == payment_mode_name)
+        q = q.where(func.upper(PaymentMode.description) == payment_mode_name.upper())
     if item_id:
         item_exists = (
             select(TicketItem.id)
@@ -49,7 +49,7 @@ async def get_branch_summary(
             .exists()
         )
         q = q.where(item_exists)
-    q = q.group_by(Branch.id, Branch.name, PaymentMode.name).order_by(Branch.name)
+    q = q.group_by(Branch.id, Branch.name, PaymentMode.description).order_by(Branch.name)
 
     rows = (await db.execute(q)).all()
 
@@ -97,7 +97,7 @@ async def list_tickets(
             Ticket.ticket_date,
             Ticket.net_amount,
             Branch.name.label("branch_name"),
-            PaymentMode.name.label("payment_mode"),
+            PaymentMode.description.label("payment_mode"),
             User.full_name.label("operator_name"),
         )
         .select_from(Ticket)
@@ -113,7 +113,7 @@ async def list_tickets(
     if branch_id:
         base = base.where(Ticket.branch_id == branch_id)
     if payment_mode_name:
-        base = base.where(PaymentMode.name == payment_mode_name)
+        base = base.where(func.upper(PaymentMode.description) == payment_mode_name.upper())
     if item_id:
         item_exists = (
             select(TicketItem.id)

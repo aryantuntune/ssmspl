@@ -9,7 +9,7 @@ def set_auth_cookies(
     access_max_age: int | None = None,
     refresh_max_age: int | None = None,
     cookie_prefix: str = "ssmspl",
-    refresh_path: str = "/api/auth/refresh",
+    refresh_path: str = "/api/auth",
 ) -> None:
     """Set HttpOnly auth cookies on a response."""
     if access_max_age is None:
@@ -42,7 +42,7 @@ def set_auth_cookies(
 def clear_auth_cookies(
     response: Response,
     cookie_prefix: str = "ssmspl",
-    refresh_path: str = "/api/auth/refresh",
+    refresh_path: str = "/api/auth",
 ) -> None:
     """Clear auth cookies by setting Max-Age=0."""
     secure = settings.APP_ENV != "development"

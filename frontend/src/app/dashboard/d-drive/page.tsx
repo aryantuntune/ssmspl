@@ -51,8 +51,10 @@ export default function DDrivePage() {
   } | null>(null);
 
   useEffect(() => {
-    api.get("/api/branches").then(r => setBranches(r.data?.branches ?? r.data ?? [])).catch(() => {});
-    api.get("/api/items").then(r => setItems(r.data?.items ?? r.data ?? [])).catch(() => {});
+    api.get("/api/branches", { params: { limit: 200, status: "all" } })
+      .then(r => setBranches(r.data?.branches ?? r.data ?? [])).catch(() => {});
+    api.get("/api/items", { params: { limit: 200, status: "all" } })
+      .then(r => setItems(r.data?.items ?? r.data ?? [])).catch(() => {});
   }, []);
 
   const buildParams = (f: Filters, page = 1) => {

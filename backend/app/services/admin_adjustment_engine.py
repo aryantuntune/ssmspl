@@ -53,7 +53,7 @@ async def _count_eligible_unprotected_items(
             Ticket.ticket_date <= date_end,
             Ticket.is_cancelled == False,
             TicketItem.is_cancelled == False,
-            PaymentMode.name == "CASH",
+            func.upper(PaymentMode.description) == "CASH",
         )
     )
     if protected_item_ids:
@@ -73,7 +73,7 @@ async def _fetch_cash_total(
             Ticket.ticket_date >= date_start,
             Ticket.ticket_date <= date_end,
             Ticket.is_cancelled == False,
-            PaymentMode.name == "CASH",
+            func.upper(PaymentMode.description) == "CASH",
         )
     )
     return Decimal(str((await db.execute(q)).scalar_one()))
@@ -177,7 +177,7 @@ async def _build_deletion_plan(
                 Ticket.ticket_date <= date_end,
                 Ticket.is_cancelled == False,
                 TicketItem.is_cancelled == False,
-                PaymentMode.name == "CASH",
+                func.upper(PaymentMode.description) == "CASH",
             )
             .order_by(*_order_clause(rule))
         )
@@ -354,7 +354,7 @@ async def dry_run(
             Ticket.ticket_date <= date_end,
             Ticket.is_cancelled == False,
             TicketItem.is_cancelled == False,
-            PaymentMode.name == "CASH",
+            func.upper(PaymentMode.description) == "CASH",
         )
     )
     if protected_item_ids:

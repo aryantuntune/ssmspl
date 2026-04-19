@@ -202,6 +202,9 @@ async def forgot_password(db: AsyncSession, email: str) -> str | None:
     user = result.scalar_one_or_none()
     if not user:
         return None
+    # Admin portal: only generate reset tokens for admin roles
+    if settings.ADMIN_PORTAL_MODE and user.role not in (UserRole.SUPER_ADMIN, UserRole.ADMIN):
+        return None
     return create_password_reset_token(subject=str(user.id), user_type="admin")
 
 

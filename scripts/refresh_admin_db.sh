@@ -94,6 +94,17 @@ BEGIN
 END \$\$;
 "
 
+# Step 6b: Offset sequences for locally-written tables to prevent ID collisions with replicated data
+echo "[$(date)] Offsetting admin-local sequences to 10M+..."
+sudo -u postgres psql -d "$ADMIN_DB" -c "
+    SELECT setval('user_sessions_id_seq', GREATEST(nextval('user_sessions_id_seq'), 10000000));
+    SELECT setval('user_activity_logs_id_seq', GREATEST(nextval('user_activity_logs_id_seq'), 10000000));
+    SELECT setval('daily_report_log_id_seq', GREATEST(nextval('daily_report_log_id_seq'), 10000000));
+    SELECT setval('rate_change_logs_id_seq', GREATEST(nextval('rate_change_logs_id_seq'), 10000000));
+    SELECT setval('sys_update_logs_id_seq', GREATEST(nextval('sys_update_logs_id_seq'), 10000000));
+    SELECT setval('admin_screen_toggles_id_seq', GREATEST(nextval('admin_screen_toggles_id_seq'), 10000000));
+"
+
 # Step 7: Recreate cascading replication (ssmspl_sync → ssmspl_admin)
 echo "[$(date)] Re-creating replication slot..."
 sudo -u postgres psql -d "$SYNC_DB" -c "SELECT pg_create_logical_replication_slot('admin_sub', 'pgoutput');"
