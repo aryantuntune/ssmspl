@@ -13,6 +13,8 @@ class UserRole(str, Enum):
 ROLE_MENU_ITEMS: dict[UserRole, list[str]] = {
     UserRole.SUPER_ADMIN: [
         "Dashboard",
+        "D Drive",
+        "Parameter Master",
         "Users",
         "Ferries",
         "Branches",
@@ -32,6 +34,8 @@ ROLE_MENU_ITEMS: dict[UserRole, list[str]] = {
     ],
     UserRole.ADMIN: [
         "Dashboard",
+        "D Drive",
+        "Parameter Master",
         "Users",
         "Ferries",
         "Branches",

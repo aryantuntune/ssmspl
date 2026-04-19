@@ -5,6 +5,8 @@ from app.models.admin_screen_toggle import AdminScreenToggle
 
 # Screens that can be toggled — Dashboard and System Settings are always on
 TOGGLEABLE_SCREENS: list[str] = [
+    "D Drive",
+    "Parameter Master",
     "Users",
     "Ferries",
     "Branches",
