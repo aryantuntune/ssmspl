@@ -16,14 +16,14 @@ interface Rule {
   branch_scope: number | null;
   item_id: number | null;
   payment_mode: string;
-  ticket_conditions: Record<string, unknown>;
-  item_conditions: Record<string, unknown>;
   ticket_selection_order: string;
   max_adjustment_per_ticket: number | null;
   max_adjustment_per_item: number | null;
   max_total_adjustment_per_rule: number | null;
   stop_on_match: boolean;
   is_active: boolean;
+  is_protected: boolean;
+  min_remaining_per_item: number;
 }
 
 export default function ParameterMasterPage() {

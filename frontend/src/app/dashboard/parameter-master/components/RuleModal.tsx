@@ -19,6 +19,8 @@ interface Rule {
   max_adjustment_per_item: number | null;
   max_total_adjustment_per_rule: number | null;
   stop_on_match: boolean;
+  is_protected: boolean;
+  min_remaining_per_item: number;
 }
 
 interface Props {
@@ -39,6 +41,8 @@ const EMPTY: Rule = {
   max_adjustment_per_item: null,
   max_total_adjustment_per_rule: null,
   stop_on_match: false,
+  is_protected: false,
+  min_remaining_per_item: 0,
 };
 
 export default function RuleModal({ rule, branches, items, onSaved, onClose }: Props) {
@@ -157,7 +161,30 @@ export default function RuleModal({ rule, branches, items, onSaved, onClose }: P
               onChange={e => set("max_adjustment_per_item", e.target.value ? parseFloat(e.target.value) : null)}
             />
           </div>
-          <div className="flex items-center gap-3 pt-4">
+          <div className="col-span-2 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded p-3">
+            <div className="flex items-center gap-3">
+              <Switch checked={form.is_protected} onCheckedChange={v => set("is_protected", v)} />
+              <div>
+                <Label className="text-sm font-semibold">Protected item rule</Label>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Items matching this rule will NEVER be deleted during reconciliation.
+                </p>
+              </div>
+            </div>
+          </div>
+          {!form.is_protected && (
+            <div className="col-span-2 space-y-1.5">
+              <Label>Min Remaining Per Item</Label>
+              <Input
+                type="number"
+                min="0"
+                value={form.min_remaining_per_item}
+                onChange={e => set("min_remaining_per_item", parseInt(e.target.value) || 0)}
+              />
+              <p className="text-xs text-muted-foreground">Default 0 — unprotected items can be fully deleted.</p>
+            </div>
+          )}
+          <div className="flex items-center gap-3 pt-4 col-span-2">
             <Switch checked={form.stop_on_match} onCheckedChange={v => set("stop_on_match", v)} />
             <Label>Stop on match</Label>
           </div>

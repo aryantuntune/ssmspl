@@ -7,14 +7,14 @@ interface Rule {
   branch_scope: number | null;
   item_id: number | null;
   payment_mode: string;
-  ticket_conditions: Record<string, unknown>;
-  item_conditions: Record<string, unknown>;
   ticket_selection_order: string;
   max_adjustment_per_ticket: number | null;
   max_adjustment_per_item: number | null;
   max_total_adjustment_per_rule: number | null;
   stop_on_match: boolean;
   is_active: boolean;
+  is_protected: boolean;
+  min_remaining_per_item: number;
 }
 
 interface Props {
@@ -36,7 +36,7 @@ export default function RuleTable({ rules, isSuperAdmin, onEdit, onToggle, onPre
       <table className="w-full text-sm">
         <thead className="bg-muted/50 text-muted-foreground uppercase text-xs">
           <tr>
-            {["#", "Branch", "Item", "Mode", "Order", "Max/Rule", "Stop", "Status", "Actions"].map(h => (
+            {["#", "Branch", "Item", "Mode", "Type", "Order", "Max/Rule", "Stop", "Status", "Actions"].map(h => (
               <th key={h} className="px-4 py-2.5 text-left font-medium">{h}</th>
             ))}
           </tr>
@@ -51,6 +51,17 @@ export default function RuleTable({ rules, isSuperAdmin, onEdit, onToggle, onPre
                 <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200">
                   {r.payment_mode}
                 </span>
+              </td>
+              <td className="px-4 py-2.5">
+                {r.is_protected ? (
+                  <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200">
+                    Protected
+                  </span>
+                ) : (
+                  <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">
+                    Deletable
+                  </span>
+                )}
               </td>
               <td className="px-4 py-2.5 text-muted-foreground text-xs">{r.ticket_selection_order}</td>
               <td className="px-4 py-2.5">{r.max_total_adjustment_per_rule != null ? `₹${r.max_total_adjustment_per_rule}` : "—"}</td>
@@ -77,7 +88,7 @@ export default function RuleTable({ rules, isSuperAdmin, onEdit, onToggle, onPre
           ))}
           {!rules.length && (
             <tr>
-              <td colSpan={9} className="px-4 py-6 text-center text-muted-foreground">
+              <td colSpan={10} className="px-4 py-6 text-center text-muted-foreground">
                 No rules defined yet.
               </td>
             </tr>
