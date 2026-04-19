@@ -5,9 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import api from "@/lib/api";
-import DryRunPreview from "./DryRunPreview";
-
-type DryRunResult = { batch_id: string; summary: { cash_total_before: number; total_adjustment_applied: number; cash_total_after: number; tickets_affected: number; items_affected: number; amount_not_applied: number } };
+import DryRunPreview, { DryRunResult } from "./DryRunPreview";
 
 interface Props {
   open: boolean;
@@ -32,10 +30,9 @@ export default function AdjustmentModal({
     setError("");
     const amt = parseFloat(amount);
     if (!amt || amt <= 0) { setError("Enter a valid positive amount."); return; }
-    if (amt > cashTotal) { setError(`Amount exceeds cash total (₹${cashTotal.toFixed(2)})`); return; }
     setLoading(true);
     try {
-      const res = await api.post("/api/admin/d-drive/adjustment/dry-run", {
+      const res = await api.post<DryRunResult>("/api/admin/d-drive/adjustment/dry-run", {
         branch_id: branchId,
         date_start: dateStart,
         date_end: dateEnd,
@@ -55,6 +52,17 @@ export default function AdjustmentModal({
     onClose();
   };
 
+  if (dryRunResult) {
+    return (
+      <DryRunPreview
+        result={dryRunResult}
+        branchName={branchName}
+        onCancel={() => setDryRunResult(null)}
+        onCommitted={() => { handleClose(); onCommitted(); }}
+      />
+    );
+  }
+
   return (
     <Dialog open={open} onOpenChange={v => !v && handleClose()}>
       <DialogContent className="max-w-lg">
@@ -65,35 +73,28 @@ export default function AdjustmentModal({
           </p>
         </DialogHeader>
 
-        {!dryRunResult ? (
-          <>
-            <div className="space-y-2">
-              <Label>Adjustment Amount (₹)</Label>
-              <Input
-                type="number"
-                min="0.01"
-                step="0.01"
-                value={amount}
-                onChange={e => setAmount(e.target.value)}
-                placeholder="0.00"
-                className="text-xl font-semibold"
-              />
-              {error && <p className="text-sm text-destructive">{error}</p>}
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={handleClose}>Cancel</Button>
-              <Button onClick={handleDryRun} disabled={loading}>
-                {loading ? "Calculating…" : "Run Dry-Run Preview →"}
-              </Button>
-            </DialogFooter>
-          </>
-        ) : (
-          <DryRunPreview
-            result={dryRunResult}
-            onCancel={() => setDryRunResult(null)}
-            onCommitted={() => { handleClose(); onCommitted(); }}
+        <div className="space-y-2">
+          <Label>Adjustment Amount (₹)</Label>
+          <Input
+            type="number"
+            min="0.01"
+            step="0.01"
+            value={amount}
+            onChange={e => setAmount(e.target.value)}
+            placeholder="0.00"
+            className="text-xl font-semibold"
           />
-        )}
+          <p className="text-xs text-muted-foreground">
+            The system will delete unprotected line items from CASH tickets to reach this amount.
+          </p>
+          {error && <p className="text-sm text-destructive">{error}</p>}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={handleClose}>Cancel</Button>
+          <Button onClick={handleDryRun} disabled={loading}>
+            {loading ? "Calculating…" : "Run Trial Preview →"}
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
