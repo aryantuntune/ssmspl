@@ -708,6 +708,12 @@ async def commit(
         log.total_items_affected = len(item_ids)
         await db.flush()
 
+    except HTTPException:
+        # Intentional 4xx/5xx from guards (staleness 409, skip-all 400, etc.)
+        # do NOT mark the log as FAILED — the caller can retry or the batch has
+        # already been reverted to DRY_RUN by the raising guard itself.
+        raise
+
     except Exception as exc:
         async with AsyncSessionLocal() as log_session:
             async with log_session.begin():
