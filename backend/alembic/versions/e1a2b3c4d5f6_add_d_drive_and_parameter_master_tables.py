@@ -1,7 +1,7 @@
 """add_d_drive_and_parameter_master_tables
 
 Revision ID: e1a2b3c4d5f6
-Revises: c3d5e7f9a1b2
+Revises: 2f7ebc290580
 Create Date: 2026-04-18 00:00:00.000000
 
 """
@@ -12,7 +12,7 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = 'e1a2b3c4d5f6'
-down_revision: Union[str, None] = 'c3d5e7f9a1b2'
+down_revision: Union[str, None] = '2f7ebc290580'
 branch_labels: Union[str, None] = None
 depends_on: Union[str, None] = None
 
