@@ -23,7 +23,7 @@ from app.schemas.auth import (
     ResetPasswordRequest,
 )
 from app.schemas.user import UserMeResponse
-from app.services import auth_service, token_service
+from app.services import auth_service, token_service, admin_screen_service
 from app.services.email_service import send_password_reset_email
 from app.services.token_service import cleanup_expired_background
 from app.services.user_service import _resolve_route_name, _resolve_route_branches
@@ -243,7 +243,13 @@ async def select_branch(
     },
 )
 async def me(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    menu = ROLE_MENU_ITEMS.get(current_user.role, [])
+    menu = list(ROLE_MENU_ITEMS.get(current_user.role, []))
+
+    # Admin portal: filter menu for non-SUPER_ADMIN users based on screen toggles
+    if settings.ADMIN_PORTAL_MODE and current_user.role != UserRole.SUPER_ADMIN:
+        enabled = await admin_screen_service.get_enabled_screens(db)
+        menu = [item for item in menu if item in enabled]
+
     route_name = await _resolve_route_name(db, current_user.route_id)
     route_branches = await _resolve_route_branches(db, current_user.route_id)
     data = UserMeResponse.model_validate(current_user)

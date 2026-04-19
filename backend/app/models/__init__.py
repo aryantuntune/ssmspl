@@ -27,6 +27,7 @@ from app.models.admin_adjustments_log import AdminAdjustmentsLog
 from app.models.admin_adjustment_details import AdminAdjustmentDetails
 from app.models.tickets_backup import TicketsBackup
 from app.models.ticket_items_backup import TicketItemsBackup
+from app.models.admin_screen_toggle import AdminScreenToggle
 
 __all__ = [
     "User",
@@ -59,4 +60,5 @@ __all__ = [
     "AdminAdjustmentDetails",
     "TicketsBackup",
     "TicketItemsBackup",
+    "AdminScreenToggle",
 ]
