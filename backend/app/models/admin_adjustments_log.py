@@ -13,6 +13,10 @@ class AdminAdjustmentsLog(Base):
             "status IN ('DRY_RUN','IN_PROGRESS','COMMITTED','FAILED')",
             name="ck_adj_log_status",
         ),
+        CheckConstraint(
+            "plan_choice IS NULL OR plan_choice IN ('recommended','requested')",
+            name="ck_adj_log_plan_choice",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -26,6 +30,7 @@ class AdminAdjustmentsLog(Base):
     row_count_checked: Mapped[int | None] = mapped_column(Integer, nullable=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="DRY_RUN")
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    plan_choice: Mapped[str | None] = mapped_column(String(15), nullable=True)
     executed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
