@@ -27,6 +27,8 @@ class RuleOut(BaseModel):
     max_total_adjustment_per_rule: float | None
     stop_on_match: bool
     is_active: bool
+    is_protected: bool
+    min_remaining_per_item: int
     model_config = {"from_attributes": True}
 
 
@@ -42,6 +44,8 @@ class RuleCreate(BaseModel):
     max_adjustment_per_item: float | None = None
     max_total_adjustment_per_rule: float | None = None
     stop_on_match: bool = False
+    is_protected: bool = False
+    min_remaining_per_item: int = 0
 
 
 class ReorderBody(BaseModel):

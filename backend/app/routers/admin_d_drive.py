@@ -54,6 +54,7 @@ class DryRunRequest(BaseModel):
 
 class CommitRequest(BaseModel):
     batch_id: str
+    plan_choice: str  # "recommended" or "requested"
 
 
 @router.post("/adjustment/dry-run")
@@ -78,7 +79,7 @@ async def adjustment_commit(
     db: AsyncSession = Depends(get_db),
     current_user=Depends(_admin_or_super),
 ):
-    return await admin_adjustment_engine.commit(db, body.batch_id, current_user.id)
+    return await admin_adjustment_engine.commit(db, body.batch_id, body.plan_choice, current_user.id)
 
 
 @router.get("/adjustment/{batch_id}")
