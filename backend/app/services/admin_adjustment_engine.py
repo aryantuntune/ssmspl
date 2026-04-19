@@ -195,6 +195,10 @@ async def _build_deletion_plan(
 
             item_value = (Decimal(str(r.rate)) + Decimal(str(r.levy))) * r.quantity
 
+            # Skip zero-value items (free tickets, comps, etc.) — no point deleting them
+            if item_value <= 0:
+                continue
+
             if item_value > remaining or item_value > (rule_cap - rule_spent):
                 continue
 
@@ -217,6 +221,7 @@ async def _build_deletion_plan(
                 "levy": float(r.levy),
                 "quantity": r.quantity,
                 "line_value": float(item_value),
+                "matched_rule_id": rule.id if rule.id else None,
             })
 
         if rule.stop_on_match and rule_spent > 0:
@@ -321,9 +326,13 @@ async def dry_run(
     if max_possible <= 0:
         raise HTTPException(status_code=400, detail="No value available for deletion")
 
-    recommended_amount = _round_down_to_clean(max_possible)
+    # Recommended = round-down of what's achievable given the request
+    # (capped at max_possible but guided by what admin actually asked for)
+    achievable = min(requested, max_possible)
+    recommended_amount = _round_down_to_clean(achievable)
     if recommended_amount <= 0:
-        recommended_amount = max_possible
+        # If the request is tiny (< ₹100), fall back to exact achievable
+        recommended_amount = achievable
 
     rec_ids, rec_applied, rec_detail = await _build_deletion_plan(
         db, branch_id, date_start, date_end, recommended_amount, protected_item_ids
@@ -524,8 +533,10 @@ async def commit(
         # Backup items being deleted + capture for audit
         items_result = await db.execute(select(TicketItem).where(TicketItem.id.in_(item_ids)))
         item_rows_by_id: dict[int, TicketItem] = {}
+        backed_up_ids: set[int] = set()
         for ti in items_result.scalars().all():
             item_rows_by_id[ti.id] = ti
+            backed_up_ids.add(ti.id)
             db.add(TicketItemsBackup(
                 adjustment_batch_id=log.id,
                 ticket_item_id=ti.id,
@@ -539,10 +550,44 @@ async def commit(
                     "quantity": ti.quantity,
                     "vehicle_no": ti.vehicle_no,
                     "vehicle_name": ti.vehicle_name,
+                    "is_cancelled": ti.is_cancelled,
                 },
             ))
 
+        # Also backup any ADDITIONAL items (including cancelled) on tickets that will be hard-deleted
+        # so the full ticket state is recoverable
+        if hard_delete_ticket_ids:
+            extra_items_result = await db.execute(
+                select(TicketItem).where(
+                    TicketItem.ticket_id.in_(hard_delete_ticket_ids),
+                    ~TicketItem.id.in_(list(backed_up_ids)) if backed_up_ids else True,
+                )
+            )
+            for ti in extra_items_result.scalars().all():
+                db.add(TicketItemsBackup(
+                    adjustment_batch_id=log.id,
+                    ticket_item_id=ti.id,
+                    ticket_id=ti.ticket_id,
+                    original_data={
+                        "id": ti.id,
+                        "ticket_id": ti.ticket_id,
+                        "item_id": ti.item_id,
+                        "rate": str(ti.rate),
+                        "levy": str(ti.levy),
+                        "quantity": ti.quantity,
+                        "vehicle_no": ti.vehicle_no,
+                        "vehicle_name": ti.vehicle_name,
+                        "is_cancelled": ti.is_cancelled,
+                    },
+                ))
+
         # Audit details
+        # Build a map from ticket_item_id -> matched_rule_id from the stored plan
+        rule_map: dict[int, int | None] = {}
+        for t in tickets_view:
+            for it in t["items_to_remove"]:
+                rule_map[it["ticket_item_id"]] = it.get("matched_rule_id")
+
         for t in tickets_view:
             for it in t["items_to_remove"]:
                 ti = item_rows_by_id.get(it["ticket_item_id"])
@@ -550,7 +595,9 @@ async def commit(
                     continue
                 rate_dec = Decimal(str(ti.rate))
                 levy_dec = Decimal(str(ti.levy))
-                total_del = (rate_dec + levy_dec) * ti.quantity
+                rate_delta_total = rate_dec * ti.quantity
+                levy_delta_total = levy_dec * ti.quantity
+                total_del = rate_delta_total + levy_delta_total
                 db.add(AdminAdjustmentDetails(
                     adjustment_id=log.id,
                     ticket_id=ti.ticket_id,
@@ -559,10 +606,10 @@ async def commit(
                     old_levy=float(levy_dec),
                     new_rate=0.0,
                     new_levy=0.0,
-                    rate_delta=float(rate_dec),
-                    levy_delta=float(levy_dec),
+                    rate_delta=float(rate_delta_total),
+                    levy_delta=float(levy_delta_total),
                     total_delta=float(total_del),
-                    matched_rule_id=None,
+                    matched_rule_id=rule_map.get(ti.id),
                     operation_type="DELETE",
                 ))
 

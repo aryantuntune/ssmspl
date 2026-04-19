@@ -272,20 +272,18 @@ export default function DryRunPreview({ result, branchName, onCancel, onCommitte
 
         {error && <p className="px-6 py-2 text-sm text-destructive border-t">{error}</p>}
 
-        <div className="px-6 py-3 border-t flex gap-2 justify-end bg-card flex-wrap">
+        <div className="px-6 py-3 border-t flex gap-2 justify-end bg-card flex-wrap items-center">
+          <p className="text-xs text-muted-foreground mr-auto">
+            Confirming will apply the <strong>{activePlan}</strong> plan currently shown above.
+            Switch plans to commit the other one — your skip toggles will reset.
+          </p>
           <Button variant="outline" onClick={onCancel} disabled={loading}>← Back</Button>
           <Button
-            onClick={() => handleCommit("recommended")}
-            disabled={loading || (activePlan === "recommended" && effective.activeTickets.length === 0)}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white"
+            onClick={() => handleCommit(activePlan)}
+            disabled={loading || effective.activeTickets.length === 0}
+            className={activePlan === "recommended" ? "bg-emerald-600 hover:bg-emerald-700 text-white" : ""}
           >
-            {loading && activePlan === "recommended" ? "Applying…" : `Confirm Recommended (${fmt(activePlan === "recommended" ? effective.applied : result.recommended_plan.applied)})`}
-          </Button>
-          <Button
-            onClick={() => handleCommit("requested")}
-            disabled={loading || (activePlan === "requested" && effective.activeTickets.length === 0)}
-          >
-            {loading && activePlan === "requested" ? "Applying…" : `Confirm Requested (${fmt(activePlan === "requested" ? effective.applied : result.requested_plan.applied)})`}
+            {loading ? "Applying…" : `Confirm & Apply ${activePlan === "recommended" ? "Recommended" : "Requested"} (${fmt(effective.applied)})`}
           </Button>
         </div>
       </DialogContent>
