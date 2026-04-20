@@ -47,7 +47,7 @@ async def scope_data(
             TicketItem.item_id == from_item_id,
             Ticket.is_cancelled == False,
             TicketItem.is_cancelled == False,
-            PaymentMode.name == "CASH",
+            func.upper(PaymentMode.description) == "CASH",
         )
     )
     row = (await db.execute(totals_q)).one()
@@ -67,7 +67,7 @@ async def scope_data(
             TicketItem.item_id == from_item_id,
             Ticket.is_cancelled == False,
             TicketItem.is_cancelled == False,
-            PaymentMode.name == "CASH",
+            func.upper(PaymentMode.description) == "CASH",
         )
         .group_by(Ticket.route_id)
     )
@@ -86,7 +86,7 @@ async def scope_data(
             TicketItem.item_id == from_item_id,
             Ticket.is_cancelled == False,
             TicketItem.is_cancelled == False,
-            PaymentMode.name == "CASH",
+            func.upper(PaymentMode.description) == "CASH",
         )
         .group_by(TicketItem.levy)
         .order_by(func.count().desc())

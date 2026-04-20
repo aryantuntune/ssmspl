@@ -107,7 +107,7 @@ async def _get_scope_data(
             TicketItem.item_id == from_item_id,
             Ticket.is_cancelled == False,
             TicketItem.is_cancelled == False,
-            PaymentMode.name == "CASH",
+            func.upper(PaymentMode.description) == "CASH",
         )
         .order_by(Ticket.created_at.asc(), Ticket.id.asc(), TicketItem.id.asc())
     )
