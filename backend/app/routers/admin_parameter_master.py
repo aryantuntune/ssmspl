@@ -221,3 +221,70 @@ async def set_item_protection(
         "item_name": item.name,
         "is_protected": body.is_protected,
     }
+
+
+class BulkItemProtection(BaseModel):
+    item_ids: list[int]
+    is_protected: bool
+
+
+@router.put("/items/bulk", response_model=list[ItemProtectionOut], summary="Bulk toggle protection for multiple items")
+async def bulk_set_item_protection(
+    body: BulkItemProtection,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(_super_admin_only),
+):
+    """Mark a list of items as Protected or Deletable in a single operation."""
+    from sqlalchemy import select
+    from app.models.parameter_master import ParameterMaster
+
+    if not body.item_ids:
+        raise HTTPException(status_code=400, detail="item_ids cannot be empty")
+
+    # Verify all items exist
+    items_result = await db.execute(select(Item).where(Item.id.in_(body.item_ids)))
+    items_by_id = {i.id: i for i in items_result.scalars().all()}
+    missing = [iid for iid in body.item_ids if iid not in items_by_id]
+    if missing:
+        raise HTTPException(status_code=404, detail=f"Items not found: {missing}")
+
+    # Delete any existing protection rules for these items
+    await db.execute(
+        sa_delete(ParameterMaster).where(
+            ParameterMaster.item_id.in_(body.item_ids),
+            ParameterMaster.is_protected == True,
+        )
+    )
+    await db.flush()
+
+    if body.is_protected:
+        # Create fresh protection rules with sequential priority_orders
+        max_priority_result = await db.execute(select(func.coalesce(func.max(ParameterMaster.priority_order), 0)))
+        next_priority = (max_priority_result.scalar() or 0) + 1
+        for item_id in body.item_ids:
+            rule = ParameterMaster(
+                priority_order=next_priority,
+                branch_scope=None,
+                item_id=item_id,
+                payment_mode="CASH",
+                ticket_conditions={},
+                item_conditions={},
+                ticket_selection_order="FIFO",
+                max_adjustment_per_ticket=None,
+                max_adjustment_per_item=None,
+                max_total_adjustment_per_rule=None,
+                stop_on_match=False,
+                is_active=True,
+                is_protected=True,
+                min_remaining_per_item=0,
+                created_by=current_user.id,
+            )
+            db.add(rule)
+            next_priority += 1
+
+    await db.flush()
+
+    return [
+        {"item_id": iid, "item_name": items_by_id[iid].name, "is_protected": body.is_protected}
+        for iid in body.item_ids
+    ]
