@@ -124,3 +124,100 @@ async def preview_rule(
     return await admin_parameter_master_service.preview_rule_matches(
         db, rule_id, body.branch_id, body.date_start, body.date_end
     )
+
+
+from app.models.item import Item
+from sqlalchemy import func, delete as sa_delete
+
+
+class ItemProtectionOut(BaseModel):
+    item_id: int
+    item_name: str
+    is_protected: bool
+
+
+class ItemProtectionToggle(BaseModel):
+    is_protected: bool
+
+
+@router.get("/items", response_model=list[ItemProtectionOut], summary="List all items with their protection status")
+async def list_items_with_protection(
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(_admin_or_super),
+):
+    """Return every item in the system with whether it is currently protected from deletion."""
+    from sqlalchemy import select
+    from app.models.parameter_master import ParameterMaster
+
+    items_result = await db.execute(select(Item).order_by(Item.name))
+    all_items = list(items_result.scalars().all())
+
+    protected_result = await db.execute(
+        select(ParameterMaster.item_id).where(
+            ParameterMaster.is_protected == True,
+            ParameterMaster.is_active == True,
+            ParameterMaster.item_id != None,
+        )
+    )
+    protected_set = {row[0] for row in protected_result.all()}
+
+    return [
+        {"item_id": item.id, "item_name": item.name, "is_protected": item.id in protected_set}
+        for item in all_items
+    ]
+
+
+@router.put("/items/{item_id}", response_model=ItemProtectionOut, summary="Toggle an item's protection status")
+async def set_item_protection(
+    item_id: int,
+    body: ItemProtectionToggle,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(_super_admin_only),
+):
+    """Mark an item as Protected (never deleted) or Deletable (may be removed during reconciliation)."""
+    from sqlalchemy import select
+    from app.models.parameter_master import ParameterMaster
+
+    item_result = await db.execute(select(Item).where(Item.id == item_id))
+    item = item_result.scalar_one_or_none()
+    if item is None:
+        raise HTTPException(status_code=404, detail="Item not found")
+
+    # Always delete any existing protection rule for this item_id
+    # (a ticket_items.item_id has at most ONE protected rule at any time in this simplified model)
+    await db.execute(
+        sa_delete(ParameterMaster).where(
+            ParameterMaster.item_id == item_id,
+            ParameterMaster.is_protected == True,
+        )
+    )
+
+    if body.is_protected:
+        # Assign a fresh priority_order (max + 1) to avoid collisions
+        max_priority_result = await db.execute(select(func.coalesce(func.max(ParameterMaster.priority_order), 0)))
+        new_priority = (max_priority_result.scalar() or 0) + 1
+        rule = ParameterMaster(
+            priority_order=new_priority,
+            branch_scope=None,
+            item_id=item_id,
+            payment_mode="CASH",
+            ticket_conditions={},
+            item_conditions={},
+            ticket_selection_order="FIFO",
+            max_adjustment_per_ticket=None,
+            max_adjustment_per_item=None,
+            max_total_adjustment_per_rule=None,
+            stop_on_match=False,
+            is_active=True,
+            is_protected=True,
+            min_remaining_per_item=0,
+            created_by=current_user.id,
+        )
+        db.add(rule)
+
+    await db.flush()
+    return {
+        "item_id": item_id,
+        "item_name": item.name,
+        "is_protected": body.is_protected,
+    }
