@@ -34,8 +34,9 @@ export interface DryRunResult {
   batch_id: string;
   cash_total_before: number;
   requested_adjustment: number;
+  achievable_adjustment: number;
   recommended_adjustment: number;
-  max_possible_adjustment: number;
+  unapplied_amount: number;
   recommended_plan: Plan;
   requested_plan: Plan;
   diff_items: number[];
@@ -54,14 +55,11 @@ export default function DryRunPreview({ result, branchName, onCancel, onCommitte
   const [activePlan, setActivePlan] = useState<"recommended" | "requested">("recommended");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  // skippedTickets: ticket_ids for which admin toggled "delete entirely" OFF
-  // (i.e., admin wants to skip these would-be-empty tickets and NOT touch their items)
   const [skippedTickets, setSkippedTickets] = useState<Set<number>>(new Set());
 
   const plan = activePlan === "recommended" ? result.recommended_plan : result.requested_plan;
   const diffSet = new Set(result.diff_items);
 
-  // Effective totals (after applying skip choices)
   const effective = useMemo(() => {
     let applied = 0;
     let itemsRemoved = 0;
@@ -75,10 +73,9 @@ export default function DryRunPreview({ result, branchName, onCancel, onCommitte
     return { applied, itemsRemoved, activeTickets };
   }, [plan, skippedTickets]);
 
+  // Cash After = cash_before - (what this plan actually removes, net of skips)
   const cashAfter = result.cash_total_before - effective.applied;
-  const targetAmount = activePlan === "recommended" ? result.recommended_adjustment : result.requested_adjustment;
-  const notApplied = Math.max(0, targetAmount - effective.applied);
-
+  const ticketsAffected = effective.activeTickets.length;
   const emptyTicketCount = plan.tickets.filter(t => t.final_items.length === 0).length;
   const skippedInView = plan.tickets.filter(t => skippedTickets.has(t.ticket_id)).length;
 
@@ -95,7 +92,6 @@ export default function DryRunPreview({ result, branchName, onCancel, onCommitte
     setLoading(true);
     setError("");
     try {
-      // Only send skipped IDs that actually belong to the plan being committed
       const planTicketIds = new Set((choice === "recommended" ? result.recommended_plan : result.requested_plan).tickets.map(t => t.ticket_id));
       const skippedForThisPlan = Array.from(skippedTickets).filter(id => planTicketIds.has(id));
       await api.post("/api/admin/d-drive/adjustment/commit", {
@@ -118,14 +114,16 @@ export default function DryRunPreview({ result, branchName, onCancel, onCommitte
           <DialogTitle>Trial Preview — {branchName}</DialogTitle>
         </DialogHeader>
 
-        <div className="px-6 py-3 border-b grid grid-cols-7 gap-3">
+        {/* Summary bar — 8 metrics, no more Max Possible */}
+        <div className="px-6 py-3 border-b grid grid-cols-4 xl:grid-cols-8 gap-3">
           {[
             { label: "Cash Before", value: fmt(result.cash_total_before) },
             { label: "Requested", value: fmt(result.requested_adjustment) },
+            { label: "Achievable", value: fmt(result.achievable_adjustment), accent: "text-blue-600 dark:text-blue-400" },
             { label: "Recommended", value: fmt(result.recommended_adjustment), accent: "text-emerald-600 dark:text-emerald-400" },
-            { label: "Max Possible", value: fmt(result.max_possible_adjustment) },
-            { label: "Actual Applied", value: fmt(effective.applied), accent: "text-destructive" },
+            { label: "Unapplied", value: fmt(result.unapplied_amount), accent: result.unapplied_amount > 0.01 ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground" },
             { label: "Cash After", value: fmt(cashAfter), accent: "text-primary" },
+            { label: "Tickets Affected", value: String(ticketsAffected) },
             { label: "Items Removed", value: String(effective.itemsRemoved) },
           ].map(({ label, value, accent }) => (
             <div key={label} className="bg-muted/50 rounded p-2">
@@ -135,6 +133,7 @@ export default function DryRunPreview({ result, branchName, onCancel, onCommitte
           ))}
         </div>
 
+        {/* Plan toggle */}
         <div className="px-6 py-3 border-b flex items-center gap-2 flex-wrap">
           <span className="text-sm font-medium mr-2">View plan:</span>
           <button
@@ -151,12 +150,12 @@ export default function DryRunPreview({ result, branchName, onCancel, onCommitte
           </button>
           {activePlan === "requested" && result.diff_items.length > 0 && (
             <p className="text-xs text-amber-600 dark:text-amber-400 ml-3">
-              Custom amount removes {result.diff_items.length} additional items (highlighted below)
+              The Requested plan removes {result.diff_items.length} additional item(s) beyond the Recommended plan (highlighted below)
             </p>
           )}
-          {notApplied > 0.01 && (
-            <p className="text-xs text-muted-foreground ml-auto">
-              {fmt(notApplied)} could not be applied
+          {result.unapplied_amount > 0.01 && (
+            <p className="text-xs text-amber-700 dark:text-amber-300 ml-auto">
+              {fmt(result.unapplied_amount)} could not be applied due to discrete ticket item values
             </p>
           )}
         </div>
@@ -170,6 +169,7 @@ export default function DryRunPreview({ result, branchName, onCancel, onCommitte
           </div>
         )}
 
+        {/* Per-ticket breakdown */}
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
           {plan.tickets.length === 0 && (
             <p className="text-muted-foreground text-center py-8">No tickets affected.</p>
