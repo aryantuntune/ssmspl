@@ -10,7 +10,7 @@ class AdminAdjustmentsLog(Base):
     __tablename__ = "admin_adjustments_log"
     __table_args__ = (
         CheckConstraint(
-            "status IN ('DRY_RUN','IN_PROGRESS','COMMITTED','FAILED')",
+            "status IN ('DRY_RUN','IN_PROGRESS','COMMITTED','FAILED','ROLLED_BACK')",
             name="ck_adj_log_status",
         ),
         CheckConstraint(
@@ -32,6 +32,8 @@ class AdminAdjustmentsLog(Base):
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     plan_choice: Mapped[str | None] = mapped_column(String(15), nullable=True)
     executed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    rolled_back_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    rolled_back_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
