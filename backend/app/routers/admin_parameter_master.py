@@ -288,3 +288,146 @@ async def bulk_set_item_protection(
         {"item_id": iid, "item_name": items_by_id[iid].name, "is_protected": body.is_protected}
         for iid in body.item_ids
     ]
+
+
+class TransferAllowOut(BaseModel):
+    item_id: int
+    item_name: str
+    allowed_as_transfer_from: bool
+    allowed_as_transfer_to: bool
+
+
+class TransferAllowToggle(BaseModel):
+    item_ids: list[int]
+    field: str  # "from" or "to"
+    allowed: bool
+
+
+@router.get("/items/transfer", response_model=list[TransferAllowOut], summary="List items with transfer allowlist flags")
+async def list_transfer_allowlist(
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(_admin_or_super),
+):
+    """Return every item with its (allowed_as_transfer_from, allowed_as_transfer_to) status from the active rules."""
+    from sqlalchemy import select
+    from app.models.parameter_master import ParameterMaster as PM
+
+    items_result = await db.execute(select(Item).order_by(Item.name))
+    all_items = list(items_result.scalars().all())
+
+    rules_q = (
+        select(PM.item_id, PM.allowed_as_transfer_from, PM.allowed_as_transfer_to)
+        .where(PM.is_active == True, PM.item_id.isnot(None))
+    )
+    from_set: set[int] = set()
+    to_set: set[int] = set()
+    for row in (await db.execute(rules_q)).all():
+        if row.allowed_as_transfer_from:
+            from_set.add(row.item_id)
+        if row.allowed_as_transfer_to:
+            to_set.add(row.item_id)
+
+    return [
+        {
+            "item_id": i.id,
+            "item_name": i.name,
+            "allowed_as_transfer_from": i.id in from_set,
+            "allowed_as_transfer_to": i.id in to_set,
+        }
+        for i in all_items
+    ]
+
+
+@router.put("/items/transfer/bulk", summary="Bulk toggle transfer allowlist for multiple items")
+async def bulk_set_transfer_allowlist(
+    body: TransferAllowToggle,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(_super_admin_only),
+):
+    """
+    Set allowed_as_transfer_from OR allowed_as_transfer_to for the given item_ids.
+    If no rule exists for an item, creates one with defaults. If a rule exists, updates the chosen flag.
+    """
+    from sqlalchemy import select
+    from app.models.parameter_master import ParameterMaster as PM
+
+    if body.field not in ("from", "to"):
+        raise HTTPException(status_code=400, detail="field must be 'from' or 'to'")
+    if not body.item_ids:
+        raise HTTPException(status_code=400, detail="item_ids cannot be empty")
+
+    # Verify items exist
+    items_result = await db.execute(select(Item).where(Item.id.in_(body.item_ids)))
+    items_by_id = {i.id: i for i in items_result.scalars().all()}
+    missing = [iid for iid in body.item_ids if iid not in items_by_id]
+    if missing:
+        raise HTTPException(status_code=404, detail=f"Items not found: {missing}")
+
+    # For each requested item_id, find or create a PM rule
+    existing = await db.execute(
+        select(PM).where(PM.item_id.in_(body.item_ids), PM.is_active == True)
+    )
+    rules_by_item: dict[int, PM] = {}
+    for r in existing.scalars().all():
+        # If multiple rules per item, use the first one we encounter
+        rules_by_item.setdefault(r.item_id, r)
+
+    # Get next priority if we need to insert
+    max_priority_result = await db.execute(select(func.coalesce(func.max(PM.priority_order), 0)))
+    next_priority = (max_priority_result.scalar() or 0) + 1
+
+    for item_id in body.item_ids:
+        rule = rules_by_item.get(item_id)
+        if rule is None:
+            rule = PM(
+                priority_order=next_priority,
+                branch_scope=None,
+                item_id=item_id,
+                payment_mode="CASH",
+                ticket_conditions={},
+                item_conditions={},
+                ticket_selection_order="FIFO",
+                max_adjustment_per_ticket=None,
+                max_adjustment_per_item=None,
+                max_total_adjustment_per_rule=None,
+                stop_on_match=False,
+                is_active=True,
+                is_protected=False,
+                min_remaining_per_item=0,
+                allowed_as_transfer_from=(body.field == "from" and body.allowed),
+                allowed_as_transfer_to=(body.field == "to" and body.allowed),
+                created_by=current_user.id,
+            )
+            db.add(rule)
+            next_priority += 1
+        else:
+            if body.field == "from":
+                rule.allowed_as_transfer_from = body.allowed
+            else:
+                rule.allowed_as_transfer_to = body.allowed
+
+    await db.flush()
+
+    # Return updated list inline (cannot call list_transfer_allowlist via Depends here)
+    items_result = await db.execute(select(Item).order_by(Item.name))
+    all_items = list(items_result.scalars().all())
+    rules_q = (
+        select(PM.item_id, PM.allowed_as_transfer_from, PM.allowed_as_transfer_to)
+        .where(PM.is_active == True, PM.item_id.isnot(None))
+    )
+    from_set: set[int] = set()
+    to_set: set[int] = set()
+    for row in (await db.execute(rules_q)).all():
+        if row.allowed_as_transfer_from:
+            from_set.add(row.item_id)
+        if row.allowed_as_transfer_to:
+            to_set.add(row.item_id)
+    return [
+        {
+            "item_id": i.id,
+            "item_name": i.name,
+            "allowed_as_transfer_from": i.id in from_set,
+            "allowed_as_transfer_to": i.id in to_set,
+        }
+        for i in all_items
+    ]

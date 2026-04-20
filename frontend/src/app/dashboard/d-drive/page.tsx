@@ -5,6 +5,7 @@ import FilterBar, { Filters } from "./components/FilterBar";
 import BranchSummaryCards from "./components/BranchSummaryCards";
 import TicketTable from "./components/TicketTable";
 import AdjustmentModal from "./components/AdjustmentModal";
+import TransferModal from "./components/TransferModal";
 
 interface BranchSummary {
   branch_id: number;
@@ -49,6 +50,7 @@ export default function DDrivePage() {
   const [reconcileTarget, setReconcileTarget] = useState<{
     branchId: number; branchName: string; cashTotal: number;
   } | null>(null);
+  const [transferTarget, setTransferTarget] = useState<{ branchId: number; branchName: string } | null>(null);
 
   useEffect(() => {
     api.get("/api/branches", { params: { limit: 200, status: "all" } })
@@ -105,6 +107,9 @@ export default function DDrivePage() {
           onReconcile={(branchId, branchName, cashTotal) =>
             setReconcileTarget({ branchId, branchName, cashTotal })
           }
+          onTransfer={(branchId, branchName) =>
+            setTransferTarget({ branchId, branchName })
+          }
         />
       </div>
 
@@ -132,6 +137,18 @@ export default function DDrivePage() {
           dateEnd={filters.dateEnd}
           onClose={() => setReconcileTarget(null)}
           onCommitted={() => { setReconcileTarget(null); loadData(filters); }}
+        />
+      )}
+
+      {transferTarget && (
+        <TransferModal
+          open={true}
+          branchId={transferTarget.branchId}
+          branchName={transferTarget.branchName}
+          dateStart={filters.dateStart}
+          dateEnd={filters.dateEnd}
+          onClose={() => setTransferTarget(null)}
+          onCommitted={() => { setTransferTarget(null); loadData(filters); }}
         />
       )}
     </div>

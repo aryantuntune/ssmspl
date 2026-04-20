@@ -15,13 +15,14 @@ interface BranchSummary {
 interface Props {
   summaries: BranchSummary[];
   onReconcile: (branchId: number, branchName: string, cashTotal: number) => void;
+  onTransfer: (branchId: number, branchName: string) => void;
   loading: boolean;
 }
 
 const fmt = (n: number) =>
   "₹" + n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-export default function BranchSummaryCards({ summaries, onReconcile, loading }: Props) {
+export default function BranchSummaryCards({ summaries, onReconcile, onTransfer, loading }: Props) {
   if (loading) return <div className="text-muted-foreground py-6">Loading summaries…</div>;
   if (!summaries.length) return <div className="text-muted-foreground py-6">No data for selected filters.</div>;
 
@@ -34,13 +35,22 @@ export default function BranchSummaryCards({ summaries, onReconcile, loading }: 
               <CardTitle className="text-base">{s.branch_name}</CardTitle>
               <p className="text-xs text-muted-foreground mt-0.5">{s.ticket_count} tickets</p>
             </div>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => onReconcile(s.branch_id, s.branch_name, s.cash)}
-            >
-              Process Reconciliation
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => onReconcile(s.branch_id, s.branch_name, s.cash)}
+              >
+                Reconcile
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => onTransfer(s.branch_id, s.branch_name)}
+              >
+                Transfer
+              </Button>
+            </div>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 gap-2">
