@@ -30,6 +30,8 @@ class ParameterMaster(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
     is_protected: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     min_remaining_per_item: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    allowed_as_transfer_from: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    allowed_as_transfer_to: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
 
