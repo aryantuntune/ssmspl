@@ -6,6 +6,9 @@ import BranchSummaryCards from "./components/BranchSummaryCards";
 import TicketTable from "./components/TicketTable";
 import AdjustmentModal from "./components/AdjustmentModal";
 import TransferModal from "./components/TransferModal";
+import AdjustmentsHistoryModal from "./components/AdjustmentsHistoryModal";
+import { Button } from "@/components/ui/button";
+import { History } from "lucide-react";
 
 interface BranchSummary {
   branch_id: number;
@@ -51,6 +54,7 @@ export default function DDrivePage() {
     branchId: number; branchName: string; cashTotal: number;
   } | null>(null);
   const [transferTarget, setTransferTarget] = useState<{ branchId: number; branchName: string } | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   useEffect(() => {
     api.get("/api/branches", { params: { limit: 200, status: "all" } })
@@ -88,11 +92,16 @@ export default function DDrivePage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">D Drive</h1>
-        <p className="text-muted-foreground text-sm mt-1">
-          Branch-wise ticket collection and reconciliation
-        </p>
+      <div className="flex items-start justify-between flex-wrap gap-3">
+        <div>
+          <h1 className="text-2xl font-bold">D Drive</h1>
+          <p className="text-muted-foreground text-sm mt-1">
+            Branch-wise ticket collection and reconciliation
+          </p>
+        </div>
+        <Button variant="outline" onClick={() => setHistoryOpen(true)}>
+          <History className="w-4 h-4 mr-1.5" /> Adjustments History
+        </Button>
       </div>
 
       <FilterBar branches={branches} items={items} onApply={handleApply} />
@@ -151,6 +160,12 @@ export default function DDrivePage() {
           onCommitted={() => { setTransferTarget(null); loadData(filters); }}
         />
       )}
+
+      <AdjustmentsHistoryModal
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        onRolledBack={() => loadData(filters)}
+      />
     </div>
   );
 }
