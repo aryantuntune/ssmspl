@@ -134,6 +134,7 @@ class ItemProtectionOut(BaseModel):
     item_id: int
     item_name: str
     is_protected: bool
+    is_active: bool
 
 
 class ItemProtectionToggle(BaseModel):
@@ -145,11 +146,14 @@ async def list_items_with_protection(
     db: AsyncSession = Depends(get_db),
     current_user=Depends(_admin_or_super),
 ):
-    """Return every item in the system with whether it is currently protected from deletion."""
+    """Return every item in the system with whether it is currently protected from deletion.
+    Active items are sorted first, then inactive."""
     from sqlalchemy import select
     from app.models.parameter_master import ParameterMaster
 
-    items_result = await db.execute(select(Item).order_by(Item.name))
+    items_result = await db.execute(
+        select(Item).order_by(Item.is_active.desc().nulls_last(), Item.name)
+    )
     all_items = list(items_result.scalars().all())
 
     protected_result = await db.execute(
@@ -162,7 +166,12 @@ async def list_items_with_protection(
     protected_set = {row[0] for row in protected_result.all()}
 
     return [
-        {"item_id": item.id, "item_name": item.name, "is_protected": item.id in protected_set}
+        {
+            "item_id": item.id,
+            "item_name": item.name,
+            "is_protected": item.id in protected_set,
+            "is_active": bool(item.is_active),
+        }
         for item in all_items
     ]
 
@@ -220,6 +229,7 @@ async def set_item_protection(
         "item_id": item_id,
         "item_name": item.name,
         "is_protected": body.is_protected,
+        "is_active": bool(item.is_active),
     }
 
 
@@ -285,7 +295,12 @@ async def bulk_set_item_protection(
     await db.flush()
 
     return [
-        {"item_id": iid, "item_name": items_by_id[iid].name, "is_protected": body.is_protected}
+        {
+            "item_id": iid,
+            "item_name": items_by_id[iid].name,
+            "is_protected": body.is_protected,
+            "is_active": bool(items_by_id[iid].is_active),
+        }
         for iid in body.item_ids
     ]
 
@@ -295,6 +310,7 @@ class TransferAllowOut(BaseModel):
     item_name: str
     allowed_as_transfer_from: bool
     allowed_as_transfer_to: bool
+    is_active: bool
 
 
 class TransferAllowToggle(BaseModel):
@@ -308,11 +324,14 @@ async def list_transfer_allowlist(
     db: AsyncSession = Depends(get_db),
     current_user=Depends(_admin_or_super),
 ):
-    """Return every item with its (allowed_as_transfer_from, allowed_as_transfer_to) status from the active rules."""
+    """Return every item with its (allowed_as_transfer_from, allowed_as_transfer_to) status from the active rules.
+    Active items are sorted first, then inactive."""
     from sqlalchemy import select
     from app.models.parameter_master import ParameterMaster as PM
 
-    items_result = await db.execute(select(Item).order_by(Item.name))
+    items_result = await db.execute(
+        select(Item).order_by(Item.is_active.desc().nulls_last(), Item.name)
+    )
     all_items = list(items_result.scalars().all())
 
     rules_q = (
@@ -333,6 +352,7 @@ async def list_transfer_allowlist(
             "item_name": i.name,
             "allowed_as_transfer_from": i.id in from_set,
             "allowed_as_transfer_to": i.id in to_set,
+            "is_active": bool(i.is_active),
         }
         for i in all_items
     ]
@@ -409,7 +429,9 @@ async def bulk_set_transfer_allowlist(
     await db.flush()
 
     # Return updated list inline (cannot call list_transfer_allowlist via Depends here)
-    items_result = await db.execute(select(Item).order_by(Item.name))
+    items_result = await db.execute(
+        select(Item).order_by(Item.is_active.desc().nulls_last(), Item.name)
+    )
     all_items = list(items_result.scalars().all())
     rules_q = (
         select(PM.item_id, PM.allowed_as_transfer_from, PM.allowed_as_transfer_to)
@@ -428,6 +450,7 @@ async def bulk_set_transfer_allowlist(
             "item_name": i.name,
             "allowed_as_transfer_from": i.id in from_set,
             "allowed_as_transfer_to": i.id in to_set,
+            "is_active": bool(i.is_active),
         }
         for i in all_items
     ]

@@ -13,6 +13,7 @@ interface Item {
   item_id: number;
   item_name: string;
   is_protected: boolean;
+  is_active: boolean;
 }
 
 type Tab = "reconciliation" | "transfer";
@@ -26,6 +27,7 @@ export default function ParameterMasterPage() {
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [showInactive, setShowInactive] = useState(false);
   const [saving, setSaving] = useState<number | null>(null);
   const [bulkSaving, setBulkSaving] = useState(false);
   const [error, setError] = useState("");
@@ -42,11 +44,19 @@ export default function ParameterMasterPage() {
   }, [tab]);
 
   const filtered = useMemo(
-    () => items.filter(i => i.item_name.toLowerCase().includes(search.toLowerCase())),
-    [items, search],
+    () => items.filter(i =>
+      (showInactive || i.is_active) &&
+      i.item_name.toLowerCase().includes(search.toLowerCase())
+    ),
+    [items, search, showInactive],
   );
-  const protectedCount = items.filter(i => i.is_protected).length;
-  const deletableCount = items.length - protectedCount;
+  const visibleItems = useMemo(
+    () => items.filter(i => showInactive || i.is_active),
+    [items, showInactive],
+  );
+  const protectedCount = visibleItems.filter(i => i.is_protected).length;
+  const deletableCount = visibleItems.length - protectedCount;
+  const inactiveCount = items.filter(i => !i.is_active).length;
   const filteredIds = useMemo(() => filtered.map(i => i.item_id), [filtered]);
   const selectedFiltered = filteredIds.filter(id => selected.has(id));
   const allFilteredSelected = filtered.length > 0 && selectedFiltered.length === filtered.length;
@@ -136,6 +146,12 @@ export default function ParameterMasterPage() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input placeholder="Search items…" value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
             </div>
+            <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+              <Checkbox checked={showInactive} onCheckedChange={(v) => setShowInactive(v === true)} />
+              <span className="text-muted-foreground">
+                Show inactive items {inactiveCount > 0 && <span className="text-xs">({inactiveCount})</span>}
+              </span>
+            </label>
             <div className="flex items-center gap-4 text-sm">
               <span className="flex items-center gap-1.5">
                 <ShieldCheck className="w-4 h-4 text-amber-600 dark:text-amber-400" />
@@ -196,7 +212,12 @@ export default function ParameterMasterPage() {
                       <Checkbox checked={isSelected} onCheckedChange={() => toggleSelect(item.item_id)} aria-label={`Select ${item.item_name}`} />
                     )}
                     <div className="min-w-0 flex-1">
-                      <p className="font-medium">{item.item_name}</p>
+                      <p className="font-medium flex items-center gap-2">
+                        <span className={!item.is_active ? "text-muted-foreground" : ""}>{item.item_name}</span>
+                        {!item.is_active && (
+                          <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-muted text-muted-foreground">Inactive</span>
+                        )}
+                      </p>
                       <p className="text-xs text-muted-foreground mt-0.5">
                         {item.is_protected ? "Protected — never deleted" : "Deletable — may be removed"}
                       </p>

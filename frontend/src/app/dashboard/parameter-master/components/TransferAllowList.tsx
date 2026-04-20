@@ -13,6 +13,7 @@ interface TransferItem {
   item_name: string;
   allowed_as_transfer_from: boolean;
   allowed_as_transfer_to: boolean;
+  is_active: boolean;
 }
 
 export default function TransferAllowList() {
@@ -21,6 +22,7 @@ export default function TransferAllowList() {
   const [items, setItems] = useState<TransferItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [showInactive, setShowInactive] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -34,12 +36,20 @@ export default function TransferAllowList() {
   useEffect(() => { load(); }, []);
 
   const filtered = useMemo(
-    () => items.filter(i => i.item_name.toLowerCase().includes(search.toLowerCase())),
-    [items, search],
+    () => items.filter(i =>
+      (showInactive || i.is_active) &&
+      i.item_name.toLowerCase().includes(search.toLowerCase())
+    ),
+    [items, search, showInactive],
   );
 
-  const fromCount = items.filter(i => i.allowed_as_transfer_from).length;
-  const toCount = items.filter(i => i.allowed_as_transfer_to).length;
+  const visibleItems = useMemo(
+    () => items.filter(i => showInactive || i.is_active),
+    [items, showInactive],
+  );
+  const fromCount = visibleItems.filter(i => i.allowed_as_transfer_from).length;
+  const toCount = visibleItems.filter(i => i.allowed_as_transfer_to).length;
+  const inactiveCount = items.filter(i => !i.is_active).length;
   const filteredIds = useMemo(() => filtered.map(i => i.item_id), [filtered]);
   const selectedFiltered = filteredIds.filter(id => selected.has(id));
   const allFilteredSelected = filtered.length > 0 && selectedFiltered.length === filtered.length;
@@ -112,6 +122,12 @@ export default function TransferAllowList() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input placeholder="Search items…" value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
         </div>
+        <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+          <Checkbox checked={showInactive} onCheckedChange={(v) => setShowInactive(v === true)} />
+          <span className="text-muted-foreground">
+            Show inactive items {inactiveCount > 0 && <span className="text-xs">({inactiveCount})</span>}
+          </span>
+        </label>
         <div className="flex items-center gap-4 text-sm">
           <span className="flex items-center gap-1.5">
             <ArrowRightCircle className="w-4 h-4 text-blue-600 dark:text-blue-400" />
@@ -178,7 +194,12 @@ export default function TransferAllowList() {
                   />
                 )}
                 <div className="min-w-0 flex-1">
-                  <p className="font-medium">{item.item_name}</p>
+                  <p className="font-medium flex items-center gap-2">
+                    <span className={!item.is_active ? "text-muted-foreground" : ""}>{item.item_name}</span>
+                    {!item.is_active && (
+                      <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-muted text-muted-foreground">Inactive</span>
+                    )}
+                  </p>
                 </div>
                 <div className="flex items-center gap-8 shrink-0">
                   <div className="w-20 flex justify-center">
