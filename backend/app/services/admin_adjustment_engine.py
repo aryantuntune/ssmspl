@@ -342,48 +342,41 @@ async def dry_run(
 
     cash_total = await _fetch_cash_total(db, branch_id, date_start, date_end)
 
-    # Compute max_possible_adjustment
-    max_possible_q = (
-        select(func.coalesce(func.sum((TicketItem.rate + TicketItem.levy) * TicketItem.quantity), 0))
-        .select_from(TicketItem)
-        .join(Ticket, Ticket.id == TicketItem.ticket_id)
-        .join(PaymentMode, PaymentMode.id == Ticket.payment_mode_id)
-        .where(
-            Ticket.branch_id == branch_id,
-            Ticket.ticket_date >= date_start,
-            Ticket.ticket_date <= date_end,
-            Ticket.is_cancelled == False,
-            TicketItem.is_cancelled == False,
-            func.upper(PaymentMode.description) == "CASH",
-        )
+    # Step 1: Build the REQUESTED plan first — target the exact amount admin entered.
+    # achievable_amount = what this plan actually delivers (discrete items may fall short).
+    req_ids, achievable_amount, req_detail = await _build_deletion_plan(
+        db, branch_id, date_start, date_end, requested, protected_item_ids
     )
-    if protected_item_ids:
-        max_possible_q = max_possible_q.where(~TicketItem.item_id.in_(protected_item_ids))
-    max_possible = Decimal(str((await db.execute(max_possible_q)).scalar_one()))
 
-    if max_possible <= 0:
-        raise HTTPException(status_code=400, detail="No value available for deletion")
+    if achievable_amount <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="No deletable items found for this branch/date range — nothing to adjust.",
+        )
 
-    # Recommended = round-down of what's achievable given the request
-    # (capped at max_possible but guided by what admin actually asked for)
-    achievable = min(requested, max_possible)
-    recommended_amount = _round_down_to_clean(achievable)
+    # Step 2: Recommended = round DOWN of achievable (safe, clean number for admin).
+    recommended_amount = _round_down_to_clean(achievable_amount)
     if recommended_amount <= 0:
-        # If the request is tiny (< ₹100), fall back to exact achievable
-        recommended_amount = achievable
+        # Achievable is smaller than the smallest rounding step — just use achievable as-is.
+        recommended_amount = achievable_amount
 
+    # Step 3: Build the RECOMMENDED plan targeting the rounded-down amount.
+    # This typically matches exactly (since recommended <= achievable).
     rec_ids, rec_applied, rec_detail = await _build_deletion_plan(
         db, branch_id, date_start, date_end, recommended_amount, protected_item_ids
     )
 
-    req_target = min(requested, max_possible)
-    req_ids, req_applied, req_detail = await _build_deletion_plan(
-        db, branch_id, date_start, date_end, req_target, protected_item_ids
-    )
+    # Unapplied = shortfall between what admin wanted and what items can deliver.
+    unapplied_amount = requested - achievable_amount
+    if unapplied_amount < 0:
+        unapplied_amount = Decimal("0")
 
+    # Diff items = items present in Requested plan but NOT in Recommended plan.
+    # These are the "extra" items that get deleted when going for the Requested vs Recommended plan.
     rec_id_set = set(rec_ids)
     diff_items = [tid for tid in req_ids if tid not in rec_id_set]
 
+    # Build preview snapshots
     all_affected_ticket_ids = list(set(list(rec_detail.keys()) + list(req_detail.keys())))
     ticket_snapshots = await _snapshot_tickets_for_preview(db, all_affected_ticket_ids)
 
@@ -410,8 +403,9 @@ async def dry_run(
         "date_start": str(date_start),
         "date_end": str(date_end),
         "requested_adjustment": str(requested),
+        "achievable_adjustment": str(achievable_amount),
         "recommended_adjustment": str(recommended_amount),
-        "max_possible_adjustment": str(max_possible),
+        "unapplied_amount": str(unapplied_amount),
         "cash_total_before": str(cash_total),
         "recommended_plan": {
             "applied": str(rec_applied),
@@ -419,7 +413,7 @@ async def dry_run(
             "tickets": build_tickets_view(rec_detail),
         },
         "requested_plan": {
-            "applied": str(req_applied),
+            "applied": str(achievable_amount),
             "item_ids": req_ids,
             "tickets": build_tickets_view(req_detail),
         },
@@ -446,15 +440,16 @@ async def dry_run(
         "batch_id": str(log.id),
         "cash_total_before": float(cash_total),
         "requested_adjustment": float(requested),
+        "achievable_adjustment": float(achievable_amount),
         "recommended_adjustment": float(recommended_amount),
-        "max_possible_adjustment": float(max_possible),
+        "unapplied_amount": float(unapplied_amount),
         "recommended_plan": {
             "applied": float(rec_applied),
             "tickets": execution_plan["recommended_plan"]["tickets"],
             "item_ids": rec_ids,
         },
         "requested_plan": {
-            "applied": float(req_applied),
+            "applied": float(achievable_amount),
             "tickets": execution_plan["requested_plan"]["tickets"],
             "item_ids": req_ids,
         },
