@@ -43,6 +43,22 @@ export default function ParameterMasterPage() {
     if (tab === "reconciliation") load();
   }, [tab]);
 
+  // When hiding inactive items, drop them from the selection so bulk actions
+  // can't silently mutate items the user can no longer see.
+  useEffect(() => {
+    if (showInactive) return;
+    setSelected(prev => {
+      const inactiveIds = new Set(items.filter(i => !i.is_active).map(i => i.item_id));
+      if (inactiveIds.size === 0) return prev;
+      const next = new Set(prev);
+      let changed = false;
+      for (const id of inactiveIds) {
+        if (next.delete(id)) changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }, [showInactive, items]);
+
   const filtered = useMemo(
     () => items.filter(i =>
       (showInactive || i.is_active) &&
@@ -201,7 +217,19 @@ export default function ParameterMasterPage() {
 
             {filtered.length === 0 ? (
               <p className="px-4 py-8 text-center text-muted-foreground text-sm">
-                {items.length === 0 ? "No items found." : "No items match your search."}
+                {items.length === 0
+                  ? "No items found."
+                  : (() => {
+                      const q = search.toLowerCase();
+                      const hiddenMatches = !showInactive
+                        ? items.filter(i => !i.is_active && i.item_name.toLowerCase().includes(q)).length
+                        : 0;
+                      if (hiddenMatches > 0) {
+                        return `No active items match. ${hiddenMatches} inactive item${hiddenMatches !== 1 ? "s" : ""} match — enable "Show inactive items" to see ${hiddenMatches !== 1 ? "them" : "it"}.`;
+                      }
+                      return "No items match your search.";
+                    })()
+                }
               </p>
             ) : (
               filtered.map(item => {
