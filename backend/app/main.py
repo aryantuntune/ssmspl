@@ -268,11 +268,12 @@ if not settings.ADMIN_PORTAL_MODE:
 
 # Admin-only routers — only active on admin portal
 if settings.ADMIN_PORTAL_MODE:
-    from app.routers import admin_user_access, admin_parameter_master, admin_d_drive, admin_transfer
+    from app.routers import admin_user_access, admin_parameter_master, admin_d_drive, admin_transfer, admin_adjustments
     app.include_router(admin_user_access.router)
     app.include_router(admin_parameter_master.router)
     app.include_router(admin_d_drive.router)
     app.include_router(admin_transfer.router)
+    app.include_router(admin_adjustments.router)
 
 
 @app.get("/health", tags=["Health"])
