@@ -246,12 +246,12 @@ async def _build_deletion_plan(
             applied += item_value
             rule_spent += item_value
             remaining -= item_value
+            unit_value = Decimal(str(r.rate)) + Decimal(str(r.levy))
             per_ticket.setdefault(r.ticket_id, []).append({
                 "ticket_item_id": r.tiid,
                 "item_id": r.item_id,
                 "item_name": r.item_name,
-                "rate": float(r.rate),
-                "levy": float(r.levy),
+                "unit_value": float(unit_value),
                 "quantity": r.quantity,
                 "line_value": float(item_value),
                 "matched_rule_id": rule.id if rule.id else None,
@@ -297,14 +297,14 @@ async def _snapshot_tickets_for_preview(
                 "original_amount": float(r.net_amount),
                 "items": [],
             }
+        unit_value = Decimal(str(r.rate)) + Decimal(str(r.levy))
         result[r.ticket_id]["items"].append({
             "ticket_item_id": r.tiid,
             "item_id": r.item_id,
             "item_name": r.item_name,
-            "rate": float(r.rate),
-            "levy": float(r.levy),
+            "unit_value": float(unit_value),
             "quantity": r.quantity,
-            "line_value": float((Decimal(str(r.rate)) + Decimal(str(r.levy))) * r.quantity),
+            "line_value": float(unit_value * r.quantity),
         })
     return result
 
@@ -645,21 +645,21 @@ async def commit(
                 ti = item_rows_by_id.get(it["ticket_item_id"])
                 if ti is None:
                     continue
-                rate_dec = Decimal(str(ti.rate))
-                levy_dec = Decimal(str(ti.levy))
-                rate_delta_total = rate_dec * ti.quantity
-                levy_delta_total = levy_dec * ti.quantity
-                total_del = rate_delta_total + levy_delta_total
+                # For DELETE operations: the whole line vanishes. Use the combined
+                # per-unit value (rate + levy) as a single number. The rate_delta
+                # column stores the total amount removed; levy_delta is always 0.
+                unit_value = Decimal(str(ti.rate)) + Decimal(str(ti.levy))
+                total_del = unit_value * ti.quantity
                 db.add(AdminAdjustmentDetails(
                     adjustment_id=log.id,
                     ticket_id=ti.ticket_id,
                     ticket_item_id=ti.id,
-                    old_rate=float(rate_dec),
-                    old_levy=float(levy_dec),
+                    old_rate=float(unit_value),
+                    old_levy=0.0,
                     new_rate=0.0,
                     new_levy=0.0,
-                    rate_delta=float(rate_delta_total),
-                    levy_delta=float(levy_delta_total),
+                    rate_delta=float(total_del),
+                    levy_delta=0.0,
                     total_delta=float(total_del),
                     matched_rule_id=rule_map.get(ti.id),
                     operation_type="DELETE",

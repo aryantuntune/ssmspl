@@ -9,8 +9,7 @@ interface ItemLine {
   ticket_item_id: number;
   item_id: number;
   item_name: string;
-  rate: number;
-  levy: number;
+  unit_value: number;
   quantity: number;
   line_value: number;
 }
