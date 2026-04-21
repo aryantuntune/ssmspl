@@ -310,12 +310,13 @@ class TransferAllowOut(BaseModel):
     item_name: str
     allowed_as_transfer_from: bool
     allowed_as_transfer_to: bool
+    quantity_mode: bool  # True when parameter_master.quantity_mode_item_id equals item_id (self-ref)
     is_active: bool
 
 
 class TransferAllowToggle(BaseModel):
     item_ids: list[int]
-    field: str  # "from" or "to"
+    field: str  # "from" | "to" | "quantity_mode"
     allowed: bool
 
 
@@ -335,16 +336,19 @@ async def list_transfer_allowlist(
     all_items = list(items_result.scalars().all())
 
     rules_q = (
-        select(PM.item_id, PM.allowed_as_transfer_from, PM.allowed_as_transfer_to)
+        select(PM.item_id, PM.allowed_as_transfer_from, PM.allowed_as_transfer_to, PM.quantity_mode_item_id)
         .where(PM.is_active == True, PM.item_id.isnot(None))
     )
     from_set: set[int] = set()
     to_set: set[int] = set()
+    qmode_set: set[int] = set()
     for row in (await db.execute(rules_q)).all():
         if row.allowed_as_transfer_from:
             from_set.add(row.item_id)
         if row.allowed_as_transfer_to:
             to_set.add(row.item_id)
+        if row.quantity_mode_item_id is not None and row.quantity_mode_item_id == row.item_id:
+            qmode_set.add(row.item_id)
 
     return [
         {
@@ -352,6 +356,7 @@ async def list_transfer_allowlist(
             "item_name": i.name,
             "allowed_as_transfer_from": i.id in from_set,
             "allowed_as_transfer_to": i.id in to_set,
+            "quantity_mode": i.id in qmode_set,
             "is_active": bool(i.is_active),
         }
         for i in all_items
@@ -371,8 +376,8 @@ async def bulk_set_transfer_allowlist(
     from sqlalchemy import select
     from app.models.parameter_master import ParameterMaster as PM
 
-    if body.field not in ("from", "to"):
-        raise HTTPException(status_code=400, detail="field must be 'from' or 'to'")
+    if body.field not in ("from", "to", "quantity_mode"):
+        raise HTTPException(status_code=400, detail="field must be 'from', 'to', or 'quantity_mode'")
     if not body.item_ids:
         raise HTTPException(status_code=400, detail="item_ids cannot be empty")
 
@@ -416,6 +421,7 @@ async def bulk_set_transfer_allowlist(
                 min_remaining_per_item=0,
                 allowed_as_transfer_from=(body.field == "from" and body.allowed),
                 allowed_as_transfer_to=(body.field == "to" and body.allowed),
+                quantity_mode_item_id=(item_id if (body.field == "quantity_mode" and body.allowed) else None),
                 created_by=current_user.id,
             )
             db.add(rule)
@@ -423,33 +429,37 @@ async def bulk_set_transfer_allowlist(
         else:
             if body.field == "from":
                 rule.allowed_as_transfer_from = body.allowed
-            else:
+            elif body.field == "to":
                 rule.allowed_as_transfer_to = body.allowed
+            else:  # quantity_mode
+                rule.quantity_mode_item_id = item_id if body.allowed else None
 
     await db.flush()
 
     # Return updated list inline (cannot call list_transfer_allowlist via Depends here)
-    items_result = await db.execute(
-        select(Item).order_by(Item.is_active.desc().nulls_last(), Item.name)
-    )
+    items_result = await db.execute(select(Item).order_by(Item.name))
     all_items = list(items_result.scalars().all())
     rules_q = (
-        select(PM.item_id, PM.allowed_as_transfer_from, PM.allowed_as_transfer_to)
+        select(PM.item_id, PM.allowed_as_transfer_from, PM.allowed_as_transfer_to, PM.quantity_mode_item_id)
         .where(PM.is_active == True, PM.item_id.isnot(None))
     )
     from_set: set[int] = set()
     to_set: set[int] = set()
+    qmode_set: set[int] = set()
     for row in (await db.execute(rules_q)).all():
         if row.allowed_as_transfer_from:
             from_set.add(row.item_id)
         if row.allowed_as_transfer_to:
             to_set.add(row.item_id)
+        if row.quantity_mode_item_id is not None and row.quantity_mode_item_id == row.item_id:
+            qmode_set.add(row.item_id)
     return [
         {
             "item_id": i.id,
             "item_name": i.name,
             "allowed_as_transfer_from": i.id in from_set,
             "allowed_as_transfer_to": i.id in to_set,
+            "quantity_mode": i.id in qmode_set,
             "is_active": bool(i.is_active),
         }
         for i in all_items
