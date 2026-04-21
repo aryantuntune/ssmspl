@@ -41,7 +41,7 @@ export default function TransferModal({
   const [inputMode, setInputMode] = useState<"percentage" | "quantity">("quantity");
   const [inputValue, setInputValue] = useState("");
   const [scope, setScope] = useState<ScopeData | null>(null);
-  const [toLevyPreview, setToLevyPreview] = useState<number | null>(null);
+  const [toMasterPreview, setToMasterPreview] = useState<{ rate: number | null; levy: number | null; total: number | null } | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [dryRunResult, setDryRunResult] = useState<TransferDryRunResult | null>(null);
@@ -60,13 +60,13 @@ export default function TransferModal({
     }).then(r => setScope(r.data)).catch(() => setScope(null));
   }, [fromItemId, branchId, dateStart, dateEnd]);
 
-  // Fetch representative TO levy from first route in scope
+  // Fetch TO master (rate + levy) from first route in scope
   useEffect(() => {
-    if (!toItemId || !scope || scope.routes.length === 0) { setToLevyPreview(null); return; }
+    if (!toItemId || !scope || scope.routes.length === 0) { setToMasterPreview(null); return; }
     const firstRoute = scope.routes[0].route_id;
-    api.get<{ levy: number | null }>("/api/admin/d-drive/transfer/to-levy-preview", {
+    api.get<{ rate: number | null; levy: number | null; total: number | null }>("/api/admin/d-drive/transfer/to-master-preview", {
       params: { to_item_id: toItemId, route_id: firstRoute },
-    }).then(r => setToLevyPreview(r.data.levy)).catch(() => setToLevyPreview(null));
+    }).then(r => setToMasterPreview(r.data)).catch(() => setToMasterPreview(null));
   }, [toItemId, scope]);
 
   const fromItems = allowList.filter(i => i.allowed_as_transfer_from);
@@ -108,7 +108,7 @@ export default function TransferModal({
 
   const handleClose = () => {
     setFromItemId(""); setToItemId(""); setInputValue(""); setInputMode("quantity");
-    setScope(null); setToLevyPreview(null); setDryRunResult(null); setError("");
+    setScope(null); setToMasterPreview(null); setDryRunResult(null); setError("");
     onClose();
   };
 
@@ -206,11 +206,11 @@ export default function TransferModal({
             <div className="bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900 rounded-lg p-3 space-y-1.5">
               <p className="text-xs font-semibold uppercase tracking-wide text-emerald-800 dark:text-emerald-200">TO Section (estimate)</p>
               <div className="grid grid-cols-3 gap-2 text-sm">
-                <div><span className="text-muted-foreground">Transfer Qty:</span> <strong>{transferQty}</strong></div>
-                <div><span className="text-muted-foreground">Levy (current):</span> <strong>{toLevyPreview != null ? fmt(toLevyPreview) : "—"}</strong></div>
-                <div><span className="text-muted-foreground">Est. New Levy:</span> <strong>{toLevyPreview != null ? fmt(toLevyPreview * transferQty) : "—"}</strong></div>
+                <div><span className="text-muted-foreground">Transfer Qty (FROM):</span> <strong>{transferQty}</strong></div>
+                <div><span className="text-muted-foreground">TO Unit (rate+levy):</span> <strong>{toMasterPreview?.total != null ? fmt(toMasterPreview.total) : "—"}</strong></div>
+                <div><span className="text-muted-foreground">Est. TO Qty Created:</span> <strong>{toMasterPreview?.total && scope.from_levy_representative != null ? Math.floor(transferQty * ((scope.from_levy_total / scope.total_quantity) || 1) / toMasterPreview.total) : "—"}</strong></div>
               </div>
-              <p className="text-xs text-muted-foreground">Trial preview will compute exact route+date-effective levies per ticket.</p>
+              <p className="text-xs text-muted-foreground">Exact per-ticket quantities computed during Trial Preview.</p>
             </div>
           )}
 

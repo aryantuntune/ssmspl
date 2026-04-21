@@ -103,21 +103,38 @@ async def scope_data(
     }
 
 
-@router.get("/to-levy-preview")
-async def to_levy_preview(
+@router.get("/to-master-preview")
+async def to_master_preview(
     to_item_id: int = Query(...),
     route_id: int = Query(...),
     db: AsyncSession = Depends(get_db),
     current_user=Depends(_admin_or_super),
 ):
-    """Preview TO item's CURRENT levy for the given route (for UI display)."""
-    q = select(ItemRate.levy).where(
+    """Preview TO item's CURRENT rate + levy for the given route (for UI T2 display)."""
+    q = select(ItemRate.rate, ItemRate.levy).where(
         ItemRate.item_id == to_item_id,
         ItemRate.route_id == route_id,
         ItemRate.is_active == True,
     ).limit(1)
     row = (await db.execute(q)).first()
-    return {"levy": float(row[0]) if row and row[0] is not None else None}
+    if row is None:
+        return {"rate": None, "levy": None, "total": None}
+    rate = float(row[0]) if row[0] is not None else None
+    levy = float(row[1]) if row[1] is not None else None
+    total = (rate or 0) + (levy or 0) if (rate is not None or levy is not None) else None
+    return {"rate": rate, "levy": levy, "total": total}
+
+
+# Back-compat alias (frontend may still call /to-levy-preview)
+@router.get("/to-levy-preview")
+async def to_levy_preview_legacy(
+    to_item_id: int = Query(...),
+    route_id: int = Query(...),
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(_admin_or_super),
+):
+    data = await to_master_preview(to_item_id=to_item_id, route_id=route_id, db=db, current_user=current_user)
+    return {"levy": data.get("levy")}
 
 
 class DryRunRequest(BaseModel):

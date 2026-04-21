@@ -13,6 +13,7 @@ interface TransferItem {
   item_name: string;
   allowed_as_transfer_from: boolean;
   allowed_as_transfer_to: boolean;
+  quantity_mode: boolean;
   is_active: boolean;
 }
 
@@ -65,18 +66,23 @@ export default function TransferAllowList() {
   );
   const fromCount = visibleItems.filter(i => i.allowed_as_transfer_from).length;
   const toCount = visibleItems.filter(i => i.allowed_as_transfer_to).length;
+  const qmodeCount = visibleItems.filter(i => i.quantity_mode).length;
   const inactiveCount = items.filter(i => !i.is_active).length;
   const filteredIds = useMemo(() => filtered.map(i => i.item_id), [filtered]);
   const selectedFiltered = filteredIds.filter(id => selected.has(id));
   const allFilteredSelected = filtered.length > 0 && selectedFiltered.length === filtered.length;
   const someFilteredSelected = selectedFiltered.length > 0 && !allFilteredSelected;
 
-  const toggleIndividual = async (item: TransferItem, field: "from" | "to") => {
+  const toggleIndividual = async (item: TransferItem, field: "from" | "to" | "quantity_mode") => {
     if (!isSuperAdmin) return;
-    const current = field === "from" ? item.allowed_as_transfer_from : item.allowed_as_transfer_to;
+    const fieldKey =
+      field === "from" ? "allowed_as_transfer_from"
+      : field === "to" ? "allowed_as_transfer_to"
+      : "quantity_mode";
+    const current = item[fieldKey] as boolean;
     setSaving(true); setError("");
     setItems(prev => prev.map(i => i.item_id === item.item_id
-      ? { ...i, [field === "from" ? "allowed_as_transfer_from" : "allowed_as_transfer_to"]: !current }
+      ? { ...i, [fieldKey]: !current }
       : i));
     try {
       await api.put("/api/admin/parameter-master/items/transfer/bulk", {
@@ -105,12 +111,16 @@ export default function TransferAllowList() {
   };
   const clearSelection = () => setSelected(new Set());
 
-  const bulkUpdate = async (field: "from" | "to", allowed: boolean) => {
+  const bulkUpdate = async (field: "from" | "to" | "quantity_mode", allowed: boolean) => {
     if (!isSuperAdmin || selected.size === 0) return;
     const ids = Array.from(selected);
+    const fieldKey =
+      field === "from" ? "allowed_as_transfer_from"
+      : field === "to" ? "allowed_as_transfer_to"
+      : "quantity_mode";
     setSaving(true); setError("");
     setItems(prev => prev.map(i => selected.has(i.item_id)
-      ? { ...i, [field === "from" ? "allowed_as_transfer_from" : "allowed_as_transfer_to"]: allowed }
+      ? { ...i, [fieldKey]: allowed }
       : i));
     try {
       await api.put("/api/admin/parameter-master/items/transfer/bulk", { item_ids: ids, field, allowed });
@@ -155,6 +165,10 @@ export default function TransferAllowList() {
             <span className="text-muted-foreground">TO:</span>
             <strong className="text-emerald-600 dark:text-emerald-400">{toCount}</strong>
           </span>
+          <span className="flex items-center gap-1.5">
+            <span className="text-muted-foreground">QMODE:</span>
+            <strong className="text-purple-600 dark:text-purple-400">{qmodeCount}</strong>
+          </span>
         </div>
       </div>
 
@@ -168,6 +182,8 @@ export default function TransferAllowList() {
             <Button size="sm" variant="secondary" onClick={() => bulkUpdate("from", false)} disabled={saving}>FROM: Off</Button>
             <Button size="sm" variant="secondary" onClick={() => bulkUpdate("to", true)} disabled={saving} className="bg-emerald-600 hover:bg-emerald-700 text-white border-none">TO: On</Button>
             <Button size="sm" variant="secondary" onClick={() => bulkUpdate("to", false)} disabled={saving}>TO: Off</Button>
+            <Button size="sm" variant="secondary" onClick={() => bulkUpdate("quantity_mode", true)} disabled={saving} className="bg-purple-600 hover:bg-purple-700 text-white border-none">QMODE: On</Button>
+            <Button size="sm" variant="secondary" onClick={() => bulkUpdate("quantity_mode", false)} disabled={saving}>QMODE: Off</Button>
             <Button size="sm" variant="secondary" onClick={clearSelection} disabled={saving}><X className="w-4 h-4 mr-1" /> Clear</Button>
           </div>
         </div>
@@ -189,6 +205,7 @@ export default function TransferAllowList() {
             <div className="ml-auto flex gap-8">
               <span className="w-20 text-center">Allow as FROM</span>
               <span className="w-20 text-center">Allow as TO</span>
+              <span className="w-20 text-center">Qty Mode</span>
             </div>
           </div>
         )}
@@ -242,6 +259,13 @@ export default function TransferAllowList() {
                       checked={item.allowed_as_transfer_to}
                       disabled={!isSuperAdmin || saving}
                       onCheckedChange={() => toggleIndividual(item, "to")}
+                    />
+                  </div>
+                  <div className="w-20 flex justify-center">
+                    <Switch
+                      checked={item.quantity_mode}
+                      disabled={!isSuperAdmin || saving}
+                      onCheckedChange={() => toggleIndividual(item, "quantity_mode")}
                     />
                   </div>
                 </div>
