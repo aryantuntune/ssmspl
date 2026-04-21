@@ -43,6 +43,7 @@ export const SIDEBAR_CONFIG: SidebarSection[] = [
         label: "Reports",
         items: [
           { label: "Reports", icon: BarChart3, href: "/dashboard/reports" },
+          { label: "Admin Reports", icon: BarChart3, href: "/dashboard/admin-reports" },
           { label: "Rate Change Logs", icon: FileText, href: "/dashboard/rate-change-logs" },
         ],
       },
