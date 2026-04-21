@@ -219,6 +219,17 @@ async def rollback(
             if tid in existing_ids:
                 continue
             od = tbackup.original_data
+            # Coerce JSONB-stored strings back into proper Python types for asyncpg.
+            ticket_date_raw = od.get("ticket_date")
+            ticket_date_val = (
+                date.fromisoformat(ticket_date_raw)
+                if isinstance(ticket_date_raw, str)
+                else ticket_date_raw
+            )
+            amount_val = float(od["amount"]) if od.get("amount") is not None else 0.0
+            discount_val = float(od["discount"]) if od.get("discount") is not None else None
+            net_amount_val = float(od["net_amount"]) if od.get("net_amount") is not None else 0.0
+
             # Minimal restore — re-insert with the core fields we captured.
             # The replicated sync will reconcile any drift on the next replication cycle.
             await db.execute(
@@ -234,12 +245,12 @@ async def rollback(
                     ON CONFLICT (id) DO NOTHING
                 """),
                 {
-                    "id": tid,
-                    "branch_id": od.get("branch_id"),
-                    "ticket_date": od.get("ticket_date"),
-                    "amount": od.get("amount"),
-                    "discount": od.get("discount"),
-                    "net_amount": od.get("net_amount"),
+                    "id": int(tid),
+                    "branch_id": int(od["branch_id"]),
+                    "ticket_date": ticket_date_val,
+                    "amount": amount_val,
+                    "discount": discount_val,
+                    "net_amount": net_amount_val,
                 },
             )
 
