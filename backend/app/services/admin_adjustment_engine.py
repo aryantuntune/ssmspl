@@ -505,10 +505,10 @@ async def commit(
                 )
 
     try:
-        date_hash = _date_lock_hash(log.date_range_start, log.date_range_end)
+        # Per-branch lock (overlapping date ranges would otherwise race).
         await db.execute(
             text("SELECT pg_advisory_xact_lock(:a, :b)"),
-            {"a": log.branch_id, "b": date_hash},
+            {"a": log.branch_id, "b": 0},
         )
 
         ticket_ids = list({t["ticket_id"] for t in tickets_view})

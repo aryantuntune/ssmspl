@@ -189,11 +189,10 @@ async def rollback(
                 )
 
     try:
-        # Advisory lock (same key as original commit)
-        date_hash = _date_lock_hash(log.date_range_start, log.date_range_end)
+        # Per-branch lock — matches transfer + deletion engines so all three serialize.
         await db.execute(
             text("SELECT pg_advisory_xact_lock(:a, :b)"),
-            {"a": log.branch_id, "b": date_hash},
+            {"a": log.branch_id, "b": 0},
         )
 
         # Pre-load all backup rows for this batch
