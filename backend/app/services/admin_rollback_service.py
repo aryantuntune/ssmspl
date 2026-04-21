@@ -129,17 +129,20 @@ async def rollback(
 ) -> dict:
     """
     Reverse a COMMITTED adjustment. Destructive operation — SUPER_ADMIN only.
+    Also accepts FAILED batches whose previous rollback attempt errored out
+    (the transaction rolled back cleanly — data is at the committed baseline).
     """
     # Load log + verify state
     result = await db.execute(select(AdminAdjustmentsLog).where(AdminAdjustmentsLog.id == batch_id))
     log = result.scalar_one_or_none()
     if log is None:
         raise HTTPException(status_code=404, detail="Adjustment batch not found")
-    if log.status != "COMMITTED":
+    if log.status not in ("COMMITTED", "FAILED"):
         raise HTTPException(
             status_code=400,
-            detail=f"Only COMMITTED batches can be rolled back (current: {log.status}).",
+            detail=f"Only COMMITTED or FAILED batches can be rolled back (current: {log.status}).",
         )
+    allowed_prev_status = log.status  # remember original status for CAS
 
     # Load audit details
     details_result = await db.execute(
@@ -174,13 +177,13 @@ async def rollback(
             ),
         )
 
-    # CAS COMMITTED -> IN_PROGRESS in a separate session (survives main tx rollback)
+    # CAS allowed_prev_status -> IN_PROGRESS in a separate session (survives main tx rollback)
     async with AsyncSessionLocal() as log_session:
         async with log_session.begin():
             cas = await log_session.execute(
                 update(AdminAdjustmentsLog)
-                .where(AdminAdjustmentsLog.id == batch_id, AdminAdjustmentsLog.status == "COMMITTED")
-                .values(status="IN_PROGRESS")
+                .where(AdminAdjustmentsLog.id == batch_id, AdminAdjustmentsLog.status == allowed_prev_status)
+                .values(status="IN_PROGRESS", error_message=None)
             )
             if cas.rowcount == 0:
                 raise HTTPException(
@@ -344,13 +347,13 @@ async def rollback(
         await db.flush()
 
     except HTTPException:
-        # Restore status back to COMMITTED so admin can retry
+        # Restore status back to where it was so admin can retry
         async with AsyncSessionLocal() as log_session:
             async with log_session.begin():
                 await log_session.execute(
                     update(AdminAdjustmentsLog)
                     .where(AdminAdjustmentsLog.id == batch_id)
-                    .values(status="COMMITTED")
+                    .values(status=allowed_prev_status)
                 )
         raise
 

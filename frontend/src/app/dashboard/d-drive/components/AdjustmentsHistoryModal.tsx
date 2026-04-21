@@ -175,15 +175,16 @@ export default function AdjustmentsHistoryModal({ open, onClose, onRolledBack }:
                       <Badge className={STATUS_COLORS[a.status]}>{a.status}</Badge>
                     </td>
                     <td className="px-4 py-2.5">
-                      {isSuperAdmin && a.status === "COMMITTED" ? (
+                      {isSuperAdmin && (a.status === "COMMITTED" || a.status === "FAILED") ? (
                         <Button
                           size="sm"
                           variant="outline"
                           className="text-destructive border-destructive/50 hover:bg-destructive hover:text-destructive-foreground"
                           onClick={() => setConfirmTarget(a)}
                           disabled={rollingBackId !== null}
+                          title={a.status === "FAILED" ? `Retry rollback (previous attempt: ${a.error_message ?? "unknown error"})` : ""}
                         >
-                          <Undo2 className="w-3 h-3 mr-1" /> Rollback
+                          <Undo2 className="w-3 h-3 mr-1" /> {a.status === "FAILED" ? "Retry Rollback" : "Rollback"}
                         </Button>
                       ) : a.status === "ROLLED_BACK" ? (
                         <span className="text-xs text-muted-foreground">Rolled back {fmtDate(a.rolled_back_at)}</span>
