@@ -354,6 +354,84 @@ async def dry_run(
             detail="No deletable items found for this branch/date range — nothing to adjust.",
         )
 
+    # Step 1b: Build the CLOSEST plan — Requested plan + up to ONE extra item
+    # if that item lands the total closer to `requested` than undershooting does.
+    closest_ids: list[int] = list(req_ids)
+    closest_applied: Decimal = achievable_amount
+    closest_detail: dict[int, list[dict]] = {tid: list(items) for tid, items in req_detail.items()}
+    closest_extra_item_id: int | None = None
+
+    gap = requested - achievable_amount
+    if gap > 0:
+        # Find an unprotected item NOT in req_ids whose value, when added, minimizes
+        # abs(requested - new_total). Only consider items that strictly improve.
+        req_id_set = set(req_ids)
+        candidate_q = (
+            select(
+                TicketItem.id.label("tiid"),
+                TicketItem.ticket_id,
+                TicketItem.item_id,
+                TicketItem.rate,
+                TicketItem.levy,
+                TicketItem.quantity,
+                Item.name.label("item_name"),
+            )
+            .select_from(TicketItem)
+            .join(Ticket, Ticket.id == TicketItem.ticket_id)
+            .join(PaymentMode, PaymentMode.id == Ticket.payment_mode_id)
+            .join(Item, Item.id == TicketItem.item_id)
+            .where(
+                Ticket.branch_id == branch_id,
+                Ticket.ticket_date >= date_start,
+                Ticket.ticket_date <= date_end,
+                Ticket.is_cancelled == False,
+                TicketItem.is_cancelled == False,
+                PaymentMode.name == "CASH",
+            )
+            .order_by(Ticket.id.asc(), TicketItem.id.asc())
+        )
+        if protected_item_ids:
+            candidate_q = candidate_q.where(~TicketItem.item_id.in_(protected_item_ids))
+
+        candidate_rows = (await db.execute(candidate_q)).all()
+        best_item = None
+        best_distance = gap  # current undershoot distance; must beat this to be useful
+
+        for c in candidate_rows:
+            if c.tiid in req_id_set:
+                continue
+            unit_value = Decimal(str(c.rate)) + Decimal(str(c.levy))
+            item_value = unit_value * c.quantity
+            if item_value <= 0:
+                continue
+            new_applied = achievable_amount + item_value
+            new_distance = abs(requested - new_applied)
+            if new_distance < best_distance:
+                best_distance = new_distance
+                best_item = {
+                    "tiid": c.tiid,
+                    "ticket_id": c.ticket_id,
+                    "item_id": c.item_id,
+                    "item_name": c.item_name,
+                    "unit_value": float(unit_value),
+                    "quantity": c.quantity,
+                    "line_value": float(item_value),
+                }
+
+        if best_item is not None:
+            closest_extra_item_id = best_item["tiid"]
+            closest_ids.append(best_item["tiid"])
+            closest_applied = achievable_amount + Decimal(str(best_item["line_value"]))
+            closest_detail.setdefault(best_item["ticket_id"], []).append({
+                "ticket_item_id": best_item["tiid"],
+                "item_id": best_item["item_id"],
+                "item_name": best_item["item_name"],
+                "unit_value": best_item["unit_value"],
+                "quantity": best_item["quantity"],
+                "line_value": best_item["line_value"],
+                "matched_rule_id": None,
+            })
+
     # Step 2: Recommended = round DOWN of achievable (safe, clean number for admin).
     recommended_amount = _round_down_to_clean(achievable_amount)
     if recommended_amount <= 0:
@@ -377,7 +455,7 @@ async def dry_run(
     diff_items = [tid for tid in req_ids if tid not in rec_id_set]
 
     # Build preview snapshots
-    all_affected_ticket_ids = list(set(list(rec_detail.keys()) + list(req_detail.keys())))
+    all_affected_ticket_ids = list(set(list(rec_detail.keys()) + list(req_detail.keys()) + list(closest_detail.keys())))
     ticket_snapshots = await _snapshot_tickets_for_preview(db, all_affected_ticket_ids)
 
     def build_tickets_view(plan_detail: dict[int, list[dict]]) -> list[dict]:
@@ -417,6 +495,12 @@ async def dry_run(
             "item_ids": req_ids,
             "tickets": build_tickets_view(req_detail),
         },
+        "closest_plan": {
+            "applied": str(closest_applied),
+            "item_ids": closest_ids,
+            "tickets": build_tickets_view(closest_detail),
+            "extra_item_id": closest_extra_item_id,
+        },
         "diff_items": diff_items,
     }
 
@@ -453,6 +537,12 @@ async def dry_run(
             "tickets": execution_plan["requested_plan"]["tickets"],
             "item_ids": req_ids,
         },
+        "closest_plan": {
+            "applied": float(closest_applied),
+            "tickets": execution_plan["closest_plan"]["tickets"],
+            "item_ids": closest_ids,
+            "extra_item_id": closest_extra_item_id,
+        },
         "diff_items": diff_items,
     }
 
@@ -464,8 +554,8 @@ async def commit(
     confirmed_by: uuid.UUID,
     skipped_ticket_ids: list[int] | None = None,
 ) -> dict:
-    if plan_choice not in ("recommended", "requested"):
-        raise HTTPException(status_code=400, detail="plan_choice must be 'recommended' or 'requested'")
+    if plan_choice not in ("recommended", "requested", "closest"):
+        raise HTTPException(status_code=400, detail="plan_choice must be 'recommended', 'requested', or 'closest'")
 
     skipped_set: set[int] = set(skipped_ticket_ids or [])
 

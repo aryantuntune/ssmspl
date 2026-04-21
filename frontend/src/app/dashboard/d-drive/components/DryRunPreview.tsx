@@ -30,6 +30,10 @@ interface Plan {
   item_ids: number[];
 }
 
+interface ClosestPlan extends Plan {
+  extra_item_id: number | null;
+}
+
 export interface DryRunResult {
   batch_id: string;
   cash_total_before: number;
@@ -39,6 +43,7 @@ export interface DryRunResult {
   unapplied_amount: number;
   recommended_plan: Plan;
   requested_plan: Plan;
+  closest_plan: ClosestPlan;
   diff_items: number[];
 }
 
@@ -52,12 +57,16 @@ interface Props {
 const fmt = (n: number) => "₹" + n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export default function DryRunPreview({ result, branchName, onCancel, onCommitted }: Props) {
-  const [activePlan, setActivePlan] = useState<"recommended" | "requested">("recommended");
+  const [activePlan, setActivePlan] = useState<"recommended" | "requested" | "closest">("recommended");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [skippedTickets, setSkippedTickets] = useState<Set<number>>(new Set());
 
-  const plan = activePlan === "recommended" ? result.recommended_plan : result.requested_plan;
+  const plan = activePlan === "recommended"
+    ? result.recommended_plan
+    : activePlan === "requested"
+    ? result.requested_plan
+    : result.closest_plan;
   const diffSet = new Set(result.diff_items);
 
   const effective = useMemo(() => {
@@ -87,11 +96,16 @@ export default function DryRunPreview({ result, branchName, onCancel, onCommitte
     });
   };
 
-  const handleCommit = async (choice: "recommended" | "requested") => {
+  const handleCommit = async (choice: "recommended" | "requested" | "closest") => {
     setLoading(true);
     setError("");
     try {
-      const planTicketIds = new Set((choice === "recommended" ? result.recommended_plan : result.requested_plan).tickets.map(t => t.ticket_id));
+      const targetPlan = choice === "recommended"
+        ? result.recommended_plan
+        : choice === "requested"
+        ? result.requested_plan
+        : result.closest_plan;
+      const planTicketIds = new Set(targetPlan.tickets.map(t => t.ticket_id));
       const skippedForThisPlan = Array.from(skippedTickets).filter(id => planTicketIds.has(id));
       await api.post("/api/admin/d-drive/adjustment/commit", {
         batch_id: result.batch_id,
@@ -148,6 +162,16 @@ export default function DryRunPreview({ result, branchName, onCancel, onCommitte
           >
             Requested ({fmt(result.requested_plan.applied)})
           </button>
+          <button
+            onClick={() => { setActivePlan("closest"); setSkippedTickets(new Set()); }}
+            className={`px-4 py-1.5 rounded text-sm font-medium border ${activePlan === "closest" ? "bg-violet-600 text-white border-violet-600" : "bg-card border-border"}`}
+            title={result.closest_plan.applied > result.requested_adjustment ? `Overshoots by ${fmt(result.closest_plan.applied - result.requested_adjustment)}` : undefined}
+          >
+            Closest Match ({fmt(result.closest_plan.applied)})
+            {result.closest_plan.applied > result.requested_adjustment && (
+              <span className="text-[10px] opacity-80 ml-1">+{fmt(result.closest_plan.applied - result.requested_adjustment)}</span>
+            )}
+          </button>
           <div className="ml-auto flex items-center gap-4 text-xs text-muted-foreground">
             <span><strong className="text-foreground">{effective.ticketsAffected}</strong> tickets · <strong className="text-foreground">{effective.itemsRemoved}</strong> items will change</span>
             {unappliedForActivePlan > 0.01 && (
@@ -161,6 +185,20 @@ export default function DryRunPreview({ result, branchName, onCancel, onCommitte
         {activePlan === "requested" && result.diff_items.length > 0 && (
           <div className="px-6 py-2 border-b bg-amber-50 dark:bg-amber-950/20 text-xs text-amber-800 dark:text-amber-200">
             The Requested plan removes <strong>{result.diff_items.length}</strong> additional item(s) beyond the Recommended plan (highlighted below in amber).
+          </div>
+        )}
+        {activePlan === "closest" && result.closest_plan.extra_item_id !== null && (
+          <div className="px-6 py-2 border-b bg-violet-50 dark:bg-violet-950/20 text-xs text-violet-800 dark:text-violet-200">
+            <strong>Closest Match</strong> adds ONE extra item to the Requested plan
+            {result.closest_plan.applied > result.requested_adjustment
+              ? ` — total overshoots Requested by ${fmt(result.closest_plan.applied - result.requested_adjustment)}.`
+              : ` to land exactly on Requested.`}
+            {" "}The extra item is highlighted below in violet.
+          </div>
+        )}
+        {activePlan === "closest" && result.closest_plan.extra_item_id === null && (
+          <div className="px-6 py-2 border-b bg-muted/40 text-xs text-muted-foreground">
+            No items available to bring the total closer to Requested — Closest Match matches the Requested plan.
           </div>
         )}
 
@@ -229,12 +267,18 @@ export default function DryRunPreview({ result, branchName, onCancel, onCommitte
                     <ul className="space-y-0.5 text-sm">
                       {t.original_items.map(i => {
                         const toRemove = t.items_to_remove.some(r => r.ticket_item_id === i.ticket_item_id);
-                        const isExtra = toRemove && diffSet.has(i.ticket_item_id);
+                        const isRequestedExtra = toRemove && diffSet.has(i.ticket_item_id);
+                        const isClosestExtra = activePlan === "closest" && toRemove && result.closest_plan.extra_item_id === i.ticket_item_id;
                         const strikeThrough = toRemove && !isSkipped;
+                        let highlightClass = "";
+                        if (!isSkipped) {
+                          if (isClosestExtra) highlightClass = "bg-violet-100 dark:bg-violet-950/40 rounded px-1";
+                          else if (isRequestedExtra && activePlan === "requested") highlightClass = "bg-amber-100 dark:bg-amber-950/40 rounded px-1";
+                        }
                         return (
                           <li
                             key={i.ticket_item_id}
-                            className={`flex justify-between ${strikeThrough ? "line-through text-destructive" : ""} ${isExtra && !isSkipped ? "bg-amber-100 dark:bg-amber-950/40 rounded px-1" : ""}`}
+                            className={`flex justify-between ${strikeThrough ? "line-through text-destructive" : ""} ${highlightClass}`}
                           >
                             <span>{i.quantity}× {i.item_name}</span>
                             <span className="tabular-nums">{fmt(i.line_value)}</span>
@@ -284,9 +328,17 @@ export default function DryRunPreview({ result, branchName, onCancel, onCommitte
           <Button
             onClick={() => handleCommit(activePlan)}
             disabled={loading || effective.ticketsAffected === 0}
-            className={activePlan === "recommended" ? "bg-emerald-600 hover:bg-emerald-700 text-white" : ""}
+            className={
+              activePlan === "recommended" ? "bg-emerald-600 hover:bg-emerald-700 text-white" :
+              activePlan === "closest" ? "bg-violet-600 hover:bg-violet-700 text-white" :
+              ""
+            }
           >
-            {loading ? "Applying…" : `Confirm & Apply ${activePlan === "recommended" ? "Recommended" : "Requested"} (${fmt(effective.applied)})`}
+            {loading ? "Applying…" : `Confirm & Apply ${
+              activePlan === "recommended" ? "Recommended" :
+              activePlan === "closest" ? "Closest Match" :
+              "Requested"
+            } (${fmt(effective.applied)})`}
           </Button>
         </div>
       </DialogContent>
