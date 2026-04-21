@@ -63,19 +63,18 @@ export default function DryRunPreview({ result, branchName, onCancel, onCommitte
   const effective = useMemo(() => {
     let applied = 0;
     let itemsRemoved = 0;
-    const activeTickets: TicketView[] = [];
+    let ticketsAffected = 0;
     for (const t of plan.tickets) {
       if (skippedTickets.has(t.ticket_id)) continue;
       applied += t.original_amount - t.final_amount;
       itemsRemoved += t.items_to_remove.length;
-      activeTickets.push(t);
+      ticketsAffected += 1;
     }
-    return { applied, itemsRemoved, activeTickets };
+    return { applied, itemsRemoved, ticketsAffected };
   }, [plan, skippedTickets]);
 
-  // Cash After = cash_before - (what this plan actually removes, net of skips)
   const cashAfter = result.cash_total_before - effective.applied;
-  const ticketsAffected = effective.activeTickets.length;
+  const unappliedForActivePlan = Math.max(0, result.requested_adjustment - effective.applied);
   const emptyTicketCount = plan.tickets.filter(t => t.final_items.length === 0).length;
   const skippedInView = plan.tickets.filter(t => skippedTickets.has(t.ticket_id)).length;
 
@@ -114,28 +113,29 @@ export default function DryRunPreview({ result, branchName, onCancel, onCommitte
           <DialogTitle>Trial Preview — {branchName}</DialogTitle>
         </DialogHeader>
 
-        {/* Summary bar — 8 metrics, no more Max Possible */}
-        <div className="px-6 py-3 border-b grid grid-cols-4 xl:grid-cols-8 gap-3">
-          {[
-            { label: "Cash Before", value: fmt(result.cash_total_before) },
-            { label: "Requested", value: fmt(result.requested_adjustment) },
-            { label: "Achievable", value: fmt(result.achievable_adjustment), accent: "text-blue-600 dark:text-blue-400" },
-            { label: "Recommended", value: fmt(result.recommended_adjustment), accent: "text-emerald-600 dark:text-emerald-400" },
-            { label: "Unapplied", value: fmt(result.unapplied_amount), accent: result.unapplied_amount > 0.01 ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground" },
-            { label: "Cash After", value: fmt(cashAfter), accent: "text-primary" },
-            { label: "Tickets Affected", value: String(ticketsAffected) },
-            { label: "Items Removed", value: String(effective.itemsRemoved) },
-          ].map(({ label, value, accent }) => (
-            <div key={label} className="bg-muted/50 rounded p-2">
-              <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{label}</p>
-              <p className={`font-bold text-sm mt-0.5 ${accent ?? ""}`}>{value}</p>
-            </div>
-          ))}
+        {/* Simplified summary — 4 core metrics only */}
+        <div className="px-6 py-4 border-b grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="bg-muted/50 rounded p-3">
+            <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Cash Before</p>
+            <p className="font-bold text-lg mt-1">{fmt(result.cash_total_before)}</p>
+          </div>
+          <div className="bg-muted/50 rounded p-3">
+            <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Requested</p>
+            <p className="font-bold text-lg mt-1">{fmt(result.requested_adjustment)}</p>
+          </div>
+          <div className="bg-destructive/10 rounded p-3 border border-destructive/20">
+            <p className="text-[11px] text-destructive uppercase tracking-wide">Will Remove</p>
+            <p className="font-bold text-lg mt-1 text-destructive">{fmt(effective.applied)}</p>
+          </div>
+          <div className="bg-emerald-50 dark:bg-emerald-950/30 rounded p-3 border border-emerald-200 dark:border-emerald-900">
+            <p className="text-[11px] text-emerald-800 dark:text-emerald-300 uppercase tracking-wide">Cash After</p>
+            <p className="font-bold text-lg mt-1 text-emerald-700 dark:text-emerald-400">{fmt(cashAfter)}</p>
+          </div>
         </div>
 
-        {/* Plan toggle */}
-        <div className="px-6 py-3 border-b flex items-center gap-2 flex-wrap">
-          <span className="text-sm font-medium mr-2">View plan:</span>
+        {/* Plan toggle + secondary stats */}
+        <div className="px-6 py-3 border-b flex items-center gap-3 flex-wrap">
+          <span className="text-sm font-medium">View plan:</span>
           <button
             onClick={() => { setActivePlan("recommended"); setSkippedTickets(new Set()); }}
             className={`px-4 py-1.5 rounded text-sm font-medium border ${activePlan === "recommended" ? "bg-emerald-600 text-white border-emerald-600" : "bg-card border-border"}`}
@@ -148,24 +148,28 @@ export default function DryRunPreview({ result, branchName, onCancel, onCommitte
           >
             Requested ({fmt(result.requested_plan.applied)})
           </button>
-          {activePlan === "requested" && result.diff_items.length > 0 && (
-            <p className="text-xs text-amber-600 dark:text-amber-400 ml-3">
-              The Requested plan removes {result.diff_items.length} additional item(s) beyond the Recommended plan (highlighted below)
-            </p>
-          )}
-          {result.unapplied_amount > 0.01 && (
-            <p className="text-xs text-amber-700 dark:text-amber-300 ml-auto">
-              {fmt(result.unapplied_amount)} could not be applied due to discrete ticket item values
-            </p>
-          )}
+          <div className="ml-auto flex items-center gap-4 text-xs text-muted-foreground">
+            <span><strong className="text-foreground">{effective.ticketsAffected}</strong> tickets · <strong className="text-foreground">{effective.itemsRemoved}</strong> items will change</span>
+            {unappliedForActivePlan > 0.01 && (
+              <span className="text-amber-600 dark:text-amber-400">
+                {fmt(unappliedForActivePlan)} not applied
+              </span>
+            )}
+          </div>
         </div>
+
+        {activePlan === "requested" && result.diff_items.length > 0 && (
+          <div className="px-6 py-2 border-b bg-amber-50 dark:bg-amber-950/20 text-xs text-amber-800 dark:text-amber-200">
+            The Requested plan removes <strong>{result.diff_items.length}</strong> additional item(s) beyond the Recommended plan (highlighted below in amber).
+          </div>
+        )}
 
         {emptyTicketCount > 0 && (
           <div className="px-6 py-2 border-b bg-amber-50 dark:bg-amber-950/20 text-xs text-amber-800 dark:text-amber-200">
             <strong>{emptyTicketCount}</strong> ticket{emptyTicketCount !== 1 ? "s" : ""} would be left empty after this reconciliation.
-            By default they will be hard-deleted (ticket record removed entirely, no trace).
+            By default they will be hard-deleted (no trace).
             Use the toggle on each empty ticket to keep it untouched instead.
-            {skippedInView > 0 && <> Currently <strong>{skippedInView}</strong> such ticket(s) marked as "keep".</>}
+            {skippedInView > 0 && <> Currently <strong>{skippedInView}</strong> ticket(s) marked as "keep".</>}
           </div>
         )}
 
@@ -279,7 +283,7 @@ export default function DryRunPreview({ result, branchName, onCancel, onCommitte
           <Button variant="outline" onClick={onCancel} disabled={loading}>← Back</Button>
           <Button
             onClick={() => handleCommit(activePlan)}
-            disabled={loading || effective.activeTickets.length === 0}
+            disabled={loading || effective.ticketsAffected === 0}
             className={activePlan === "recommended" ? "bg-emerald-600 hover:bg-emerald-700 text-white" : ""}
           >
             {loading ? "Applying…" : `Confirm & Apply ${activePlan === "recommended" ? "Recommended" : "Requested"} (${fmt(effective.applied)})`}
