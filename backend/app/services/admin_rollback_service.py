@@ -222,6 +222,25 @@ async def rollback(
             if tid in existing_ids:
                 continue
             od = tbackup.original_data
+
+            # Validate required fields exist in the backup. Early backups
+            # (pre-2026-04-22) did not capture route_id/payment_mode_id/ticket_no.
+            # Those batches cannot be auto-restored; admin must manually populate
+            # the missing fields in tickets_backup.original_data or restore from
+            # the replicated ssmspl_sync database.
+            required = ("route_id", "payment_mode_id", "ticket_no")
+            missing = [k for k in required if od.get(k) is None]
+            if missing:
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        f"Ticket {tid} backup is missing required fields {missing}. "
+                        "This batch was created before the backup format was fixed. "
+                        "Manually populate the missing fields in tickets_backup "
+                        "(source of truth: ssmspl_sync.tickets) then retry."
+                    ),
+                )
+
             # Coerce JSONB-stored strings back into proper Python types for asyncpg.
             ticket_date_raw = od.get("ticket_date")
             ticket_date_val = (
@@ -233,27 +252,33 @@ async def rollback(
             discount_val = float(od["discount"]) if od.get("discount") is not None else None
             net_amount_val = float(od["net_amount"]) if od.get("net_amount") is not None else 0.0
 
-            # Minimal restore — re-insert with the core fields we captured.
-            # The replicated sync will reconcile any drift on the next replication cycle.
             await db.execute(
                 text("""
                     INSERT INTO tickets (id, branch_id, ticket_no, ticket_date, route_id,
                                           amount, discount, payment_mode_id, is_cancelled,
-                                          net_amount, status, created_by, updated_by,
-                                          created_at, updated_at)
-                    SELECT :id, :branch_id,
-                           (SELECT COALESCE(MAX(ticket_no), 0) + 1 FROM tickets WHERE branch_id = :branch_id),
-                           :ticket_date, 0, :amount, :discount, 1, false, :net_amount,
-                           'CONFIRMED', NULL, NULL, NOW(), NOW()
+                                          net_amount, status, is_multi_ticket, boat_id,
+                                          ref_no, created_by, updated_by, created_at, updated_at)
+                    VALUES (:id, :branch_id, :ticket_no, :ticket_date, :route_id,
+                            :amount, :discount, :payment_mode_id, :is_cancelled,
+                            :net_amount, :status, :is_multi_ticket, :boat_id,
+                            :ref_no, NULL, NULL, NOW(), NOW())
                     ON CONFLICT (id) DO NOTHING
                 """),
                 {
                     "id": int(tid),
                     "branch_id": int(od["branch_id"]),
+                    "ticket_no": int(od["ticket_no"]),
                     "ticket_date": ticket_date_val,
+                    "route_id": int(od["route_id"]),
                     "amount": amount_val,
                     "discount": discount_val,
+                    "payment_mode_id": int(od["payment_mode_id"]),
+                    "is_cancelled": bool(od.get("is_cancelled", False)),
                     "net_amount": net_amount_val,
+                    "status": od.get("status") or "CONFIRMED",
+                    "is_multi_ticket": bool(od.get("is_multi_ticket", False)),
+                    "boat_id": od.get("boat_id"),
+                    "ref_no": od.get("ref_no"),
                 },
             )
 

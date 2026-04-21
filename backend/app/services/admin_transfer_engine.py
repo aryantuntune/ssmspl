@@ -666,7 +666,8 @@ async def commit(
         else:
             fresh_map = {}
 
-        # Backup affected tickets
+        # Backup affected tickets — capture ALL fields needed for a complete restore,
+        # including foreign keys that the rollback path's INSERT will require.
         tickets_result = await db.execute(select(Ticket).where(Ticket.id.in_(affected_ticket_ids)))
         for ticket in tickets_result.scalars().all():
             db.add(TicketsBackup(
@@ -674,11 +675,21 @@ async def commit(
                 ticket_id=ticket.id,
                 original_data={
                     "id": ticket.id,
-                    "net_amount": str(ticket.net_amount),
+                    "branch_id": ticket.branch_id,
+                    "ticket_no": ticket.ticket_no,
+                    "ticket_date": str(ticket.ticket_date),
+                    "route_id": ticket.route_id,
                     "amount": str(ticket.amount),
                     "discount": str(ticket.discount) if ticket.discount is not None else None,
-                    "branch_id": ticket.branch_id,
-                    "ticket_date": str(ticket.ticket_date),
+                    "payment_mode_id": ticket.payment_mode_id,
+                    "net_amount": str(ticket.net_amount),
+                    "is_cancelled": ticket.is_cancelled,
+                    "status": ticket.status,
+                    "is_multi_ticket": ticket.is_multi_ticket,
+                    "boat_id": ticket.boat_id,
+                    "ref_no": ticket.ref_no,
+                    "departure": str(ticket.departure) if ticket.departure is not None else None,
+                    "verification_code": str(ticket.verification_code) if ticket.verification_code is not None else None,
                 },
             ))
 
