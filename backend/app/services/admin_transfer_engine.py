@@ -1,13 +1,27 @@
 """
-Item Transfer engine — transforms a FROM item into a TO item on CASH tickets,
-reassigning the levy to the TO item's route+date-effective levy. FIFO selection,
-splits rows on partial replacement. Plan built in dry_run, reused in commit.
+Item Transfer engine — quantity-preserving transformation.
+
+Converts N units of FROM item into Q2 units of TO item on CASH tickets while
+preserving the total value of each affected ticket. Rate and levy for the TO
+portion come from the TO item's master (item_rates, with historical fallback
+via item_rate_history). The FROM portion's rate+levy on the ticket_item is
+unchanged for any leftover; only its quantity may be reduced.
+
+Math per ticket:
+    T1 = FROM.rate + FROM.levy      (from the ticket_item — what was charged)
+    T2 = TO.master_rate + TO.master_levy   (from item_rates for ticket.route_id at ticket.ticket_date)
+    transferred_qty = FROM units removed from this ticket
+    Q2 = floor(transferred_qty * T1 / T2)
+    applied = Q2 * T2
+    unapplied = transferred_qty * T1 - applied  (remainder from floor)
+
+FIFO by ticket.created_at, deterministic.
 """
 import hashlib
 import uuid
 from datetime import date, datetime, timezone
-from decimal import Decimal
-from sqlalchemy import func, select, text, update, insert
+from decimal import Decimal, ROUND_DOWN
+from sqlalchemy import delete as sa_delete, func, insert as sa_insert, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException
 from app.database import AsyncSessionLocal
@@ -30,18 +44,16 @@ def _date_lock_hash(date_start: date, date_end: date) -> int:
     return int(hashlib.md5(raw).hexdigest(), 16) % (2**31 - 1)
 
 
-async def _resolve_to_levy(
+async def _resolve_to_master(
     db: AsyncSession, to_item_id: int, route_id: int, ticket_date: date
-) -> Decimal | None:
+) -> tuple[Decimal | None, Decimal | None]:
     """
-    Find the TO item's levy effective on ticket_date for the given route.
-    Logic: the earliest item_rate_history record with changed_at > ticket_date
-    tells us what the levy WAS before that change (its old_levy is what we want).
-    If no such record exists, fall back to the current item_rates value.
-    Returns None if no levy can be resolved (caller should abort).
+    Return (rate, levy) effective on ticket_date for TO item on given route.
+    History-aware: if item_rate_history has a change after ticket_date, use the
+    PRE-change values (old_rate, old_levy). Otherwise fall back to current item_rates.
     """
     hist_q = (
-        select(ItemRateHistory.old_levy)
+        select(ItemRateHistory.old_rate, ItemRateHistory.old_levy)
         .where(
             ItemRateHistory.item_id == to_item_id,
             ItemRateHistory.route_id == route_id,
@@ -51,12 +63,11 @@ async def _resolve_to_levy(
         .limit(1)
     )
     row = (await db.execute(hist_q)).first()
-    if row is not None and row[0] is not None:
-        return Decimal(str(row[0]))
+    if row is not None and row[0] is not None and row[1] is not None:
+        return (Decimal(str(row[0])), Decimal(str(row[1])))
 
-    # Fallback: current rate
     current_q = (
-        select(ItemRate.levy)
+        select(ItemRate.rate, ItemRate.levy)
         .where(
             ItemRate.item_id == to_item_id,
             ItemRate.route_id == route_id,
@@ -65,10 +76,11 @@ async def _resolve_to_levy(
         .limit(1)
     )
     row = (await db.execute(current_q)).first()
-    if row is not None and row[0] is not None:
-        return Decimal(str(row[0]))
-
-    return None
+    if row is None:
+        return (None, None)
+    rate = Decimal(str(row[0])) if row[0] is not None else None
+    levy = Decimal(str(row[1])) if row[1] is not None else None
+    return (rate, levy)
 
 
 async def _get_scope_data(
@@ -78,10 +90,7 @@ async def _get_scope_data(
     date_end: date,
     from_item_id: int,
 ):
-    """
-    Return ordered list of candidate ticket_items (CASH, non-cancelled) plus their ticket context.
-    Returns list of dicts in FIFO order.
-    """
+    """Ordered list of FROM ticket_items with their ticket context. FIFO by created_at."""
     q = (
         select(
             TicketItem.id.label("tiid"),
@@ -131,8 +140,27 @@ async def _get_scope_data(
     ]
 
 
+async def _count_other_items_per_ticket(
+    db: AsyncSession, ticket_ids: list[int], exclude_item_id: int
+) -> dict[int, int]:
+    """Count non-cancelled ticket_items per ticket, EXCLUDING the FROM item."""
+    if not ticket_ids:
+        return {}
+    q = (
+        select(TicketItem.ticket_id, func.count(TicketItem.id).label("c"))
+        .where(
+            TicketItem.ticket_id.in_(ticket_ids),
+            TicketItem.is_cancelled == False,
+            TicketItem.item_id != exclude_item_id,
+        )
+        .group_by(TicketItem.ticket_id)
+    )
+    rows = (await db.execute(q)).all()
+    return {r.ticket_id: int(r.c) for r in rows}
+
+
 async def _check_transfer_allowed(db: AsyncSession, from_item_id: int, to_item_id: int):
-    """Verify PM rules allow from_item as FROM and to_item as TO."""
+    """Enforce PM allowlist (from and to)."""
     if from_item_id == to_item_id:
         raise HTTPException(status_code=400, detail="FROM and TO items must be different")
 
@@ -199,28 +227,29 @@ async def dry_run(
     if total_quantity <= 0:
         raise HTTPException(status_code=400, detail="Total FROM quantity is zero — nothing to transfer.")
 
+    # Interpret input
     if input_mode == "percentage":
         pct = Decimal(str(input_value))
         if pct <= 0 or pct > 100:
             raise HTTPException(status_code=400, detail="Percentage must be between 0 (exclusive) and 100.")
-        transfer_quantity = int((Decimal(total_quantity) * pct) // 100)
+        requested_transfer_qty = int((Decimal(total_quantity) * pct) // 100)
     else:
         try:
-            transfer_quantity = int(input_value)
+            requested_transfer_qty = int(input_value)
         except (TypeError, ValueError):
             raise HTTPException(status_code=400, detail="Quantity must be an integer.")
-        if transfer_quantity <= 0:
+        if requested_transfer_qty <= 0:
             raise HTTPException(status_code=400, detail="Quantity must be positive.")
 
-    if transfer_quantity == 0:
+    if requested_transfer_qty == 0:
         raise HTTPException(status_code=400, detail="Computed transfer quantity is 0. Increase percentage or quantity.")
-    if transfer_quantity > total_quantity:
+    if requested_transfer_qty > total_quantity:
         raise HTTPException(
             status_code=400,
-            detail=f"Requested {transfer_quantity} exceeds available {total_quantity}.",
+            detail=f"Requested {requested_transfer_qty} exceeds available {total_quantity}.",
         )
 
-    # Get item names for display
+    # Item names for display
     item_rows = await db.execute(
         select(Item.id, Item.name).where(Item.id.in_([from_item_id, to_item_id]))
     )
@@ -228,42 +257,87 @@ async def dry_run(
     if from_item_id not in item_map or to_item_id not in item_map:
         raise HTTPException(status_code=404, detail="FROM or TO item not found.")
 
-    # Build the transformation plan (FIFO walk)
+    # Count other items per ticket for "will-ticket-become-empty" guard
+    all_scope_ticket_ids = list({r["ticket_id"] for r in scope})
+    other_counts = await _count_other_items_per_ticket(db, all_scope_ticket_ids, from_item_id)
+
+    # Cache TO master per (route, ticket_date)
+    to_master_cache: dict[tuple[int, date], tuple[Decimal | None, Decimal | None]] = {}
+
     operations: list[dict] = []
     affected_ticket_ids: set[int] = set()
     split_ticket_ids: set[int] = set()
-    remaining = transfer_quantity
-    from_levy_total_before = Decimal("0")
-    to_levy_total_after = Decimal("0")
+    skipped_tickets: list[dict] = []  # tickets skipped because they'd become empty or Q2=0
 
-    # Cache TO levy per (route_id, ticket_date) to avoid repeated DB hits in the same dry-run
-    levy_cache: dict[tuple[int, date], Decimal | None] = {}
-
-    for r in scope:
-        # Contribution to "from levy total" — levy across ALL matched items before any transfer
-        from_levy_total_before += r["levy"] * r["quantity"]
+    remaining = requested_transfer_qty
+    total_from_value_applied = Decimal("0")  # sum of transferred_qty * T1 actually converted
+    total_from_value_skipped = Decimal("0")  # sum of transferred_qty * T1 skipped (unapplied at ticket level)
+    total_unapplied_rounding = Decimal("0")  # sum of per-ticket floor remainder
+    total_q2 = 0
+    levy_before = Decimal("0")  # levy contribution removed from FROM (per transferred qty)
+    levy_after = Decimal("0")   # levy contribution added by TO
 
     for r in scope:
         if remaining <= 0:
             break
+
+        # How much we transfer from THIS ticket_item
+        transferred_qty = min(r["quantity"], remaining)
+
+        # Look up TO master
         key = (r["route_id"], r["ticket_date"])
-        if key not in levy_cache:
-            levy_cache[key] = await _resolve_to_levy(db, to_item_id, r["route_id"], r["ticket_date"])
-        to_levy = levy_cache[key]
-        if to_levy is None:
+        if key not in to_master_cache:
+            to_master_cache[key] = await _resolve_to_master(db, to_item_id, r["route_id"], r["ticket_date"])
+        x2, y2 = to_master_cache[key]
+        if x2 is None or y2 is None:
             raise HTTPException(
                 status_code=409,
                 detail=(
-                    f"TO item has no levy configured for route {r['route_id']} at ticket date {r['ticket_date']}. "
+                    f"TO item has no rate+levy configured for route {r['route_id']} at ticket date {r['ticket_date']}. "
                     "Configure item_rates for this route or restrict the transfer date range."
                 ),
             )
+        t2 = x2 + y2
+        if t2 <= 0:
+            raise HTTPException(
+                status_code=409,
+                detail=f"TO item master total value is zero on route {r['route_id']} — cannot transfer.",
+            )
 
-        if r["quantity"] <= remaining:
-            # Case A — full replacement
-            affected_ticket_ids.add(r["ticket_id"])
+        t1 = r["rate"] + r["levy"]  # FROM per-unit value
+        from_value_this = transferred_qty * t1
+
+        # Compute Q2 (floor, integer)
+        q2_dec = from_value_this / t2
+        q2_int = int(q2_dec.to_integral_value(rounding=ROUND_DOWN))
+        applied_value_this = Decimal(q2_int) * t2
+        unapplied_this = from_value_this - applied_value_this
+
+        # Will this ticket become empty?
+        would_remove_entire_row = (transferred_qty == r["quantity"])
+        other_on_ticket = other_counts.get(r["ticket_id"], 0)
+        would_become_empty = (would_remove_entire_row and q2_int == 0 and other_on_ticket == 0)
+
+        if would_become_empty or q2_int == 0:
+            # Skip this ticket entirely — per spec: ticket empty not allowed;
+            # if Q2=0 on a ticket with other items, we also skip to keep the math clean.
+            # The transferred_qty becomes unapplied at the ticket level.
+            total_from_value_skipped += from_value_this
+            skipped_tickets.append({
+                "ticket_id": r["ticket_id"],
+                "reason": "would_empty" if would_become_empty else "q2_zero",
+                "transferred_qty_not_applied": transferred_qty,
+                "value_not_applied": float(from_value_this),
+            })
+            remaining -= transferred_qty
+            continue
+
+        # Plan:
+        affected_ticket_ids.add(r["ticket_id"])
+        if would_remove_entire_row:
+            # UPDATE the FROM row to become the TO row
             operations.append({
-                "type": "UPDATE",
+                "type": "CONVERT",  # UPDATE ticket_item: change item_id, rate, levy, quantity
                 "ticket_id": r["ticket_id"],
                 "ticket_item_id": r["tiid"],
                 "route_id": r["route_id"],
@@ -276,21 +350,20 @@ async def dry_run(
                 },
                 "new": {
                     "item_id": to_item_id,
-                    "rate": str(r["rate"]),  # rate preserved
-                    "levy": str(to_levy),
-                    "quantity": r["quantity"],
+                    "rate": str(x2),
+                    "levy": str(y2),
+                    "quantity": q2_int,
                 },
+                "transferred_qty": transferred_qty,
+                "from_value": str(from_value_this),
+                "applied_value": str(applied_value_this),
+                "unapplied": str(unapplied_this),
             })
-            to_levy_total_after += to_levy * r["quantity"]
-            remaining -= r["quantity"]
         else:
-            # Case B — partial replacement (UPDATE existing + INSERT leftover FROM)
-            transferred_qty = remaining
-            leftover_qty = r["quantity"] - remaining
-            affected_ticket_ids.add(r["ticket_id"])
+            # Partial: UPDATE FROM row to reduce quantity, INSERT new TO row
             split_ticket_ids.add(r["ticket_id"])
             operations.append({
-                "type": "UPDATE",
+                "type": "REDUCE",  # UPDATE FROM row: quantity -= transferred_qty
                 "ticket_id": r["ticket_id"],
                 "ticket_item_id": r["tiid"],
                 "route_id": r["route_id"],
@@ -302,45 +375,45 @@ async def dry_run(
                     "quantity": r["quantity"],
                 },
                 "new": {
-                    "item_id": to_item_id,
+                    "item_id": r["item_id"],
                     "rate": str(r["rate"]),
-                    "levy": str(to_levy),
-                    "quantity": transferred_qty,
+                    "levy": str(r["levy"]),
+                    "quantity": r["quantity"] - transferred_qty,
                 },
+                "transferred_qty": transferred_qty,
+                "from_value": str(from_value_this),
+                "applied_value": str(applied_value_this),
+                "unapplied": str(unapplied_this),
             })
             operations.append({
-                "type": "INSERT",
+                "type": "INSERT",  # INSERT new TO row
                 "ticket_id": r["ticket_id"],
                 "route_id": r["route_id"],
                 "ticket_date": str(r["ticket_date"]),
                 "new_row": {
-                    "item_id": from_item_id,
-                    "rate": str(r["rate"]),
-                    "levy": str(r["levy"]),
-                    "quantity": leftover_qty,
-                    "vehicle_no": r["vehicle_no"],
-                    "vehicle_name": r["vehicle_name"],
+                    "item_id": to_item_id,
+                    "rate": str(x2),
+                    "levy": str(y2),
+                    "quantity": q2_int,
+                    "vehicle_no": None,
+                    "vehicle_name": None,
                 },
             })
-            to_levy_total_after += to_levy * transferred_qty
-            # Leftover FROM still carries the original levy
-            to_levy_total_after += r["levy"] * leftover_qty
-            remaining = 0
-            break
 
-    # For items NOT touched (past the remaining boundary), their levy is unchanged — already counted in total_before
-    # but we also need to add them to the "after" total (their levy is unchanged, so same contribution)
-    touched_tiids = {op["ticket_item_id"] for op in operations if op["type"] == "UPDATE"}
-    for r in scope:
-        if r["tiid"] not in touched_tiids:
-            to_levy_total_after += r["levy"] * r["quantity"]
+        total_from_value_applied += from_value_this
+        total_unapplied_rounding += unapplied_this
+        total_q2 += q2_int
+        levy_before += r["levy"] * transferred_qty
+        levy_after += y2 * q2_int
 
-    levy_difference = to_levy_total_after - from_levy_total_before
+        remaining -= transferred_qty
 
-    # Build preview: gather ticket snapshots for affected tickets
-    affected_ids_list = list(affected_ticket_ids)
+    achieved_qty = requested_transfer_qty - remaining - sum(s["transferred_qty_not_applied"] for s in skipped_tickets)
+    unapplied_qty = requested_transfer_qty - achieved_qty
+
+    # Build per-ticket snapshots for preview
     ticket_preview = {}
-    if affected_ids_list:
+    if affected_ticket_ids:
         snap_q = (
             select(
                 Ticket.id,
@@ -356,7 +429,7 @@ async def dry_run(
             .select_from(Ticket)
             .join(TicketItem, TicketItem.ticket_id == Ticket.id)
             .join(Item, Item.id == TicketItem.item_id)
-            .where(Ticket.id.in_(affected_ids_list), TicketItem.is_cancelled == False)
+            .where(Ticket.id.in_(list(affected_ticket_ids)), TicketItem.is_cancelled == False)
             .order_by(Ticket.id.asc(), TicketItem.id.asc())
         )
         for row in (await db.execute(snap_q)).all():
@@ -377,7 +450,7 @@ async def dry_run(
                 "line_value": float((Decimal(str(row.rate)) + Decimal(str(row.levy))) * row.quantity),
             })
 
-    # Enrich with final_items per ticket (based on ops)
+    # Apply planned ops in-memory to build final_items per ticket
     ops_by_ticket: dict[int, list[dict]] = {}
     for op in operations:
         ops_by_ticket.setdefault(op["ticket_id"], []).append(op)
@@ -385,32 +458,44 @@ async def dry_run(
     tickets_view = []
     for tid, snap in ticket_preview.items():
         tops = ops_by_ticket.get(tid, [])
-        # Build "final_items" by applying ops to original_items
         final_items = [dict(i) for i in snap["original_items"]]  # clone
-        updated_tiids = {op["ticket_item_id"]: op for op in tops if op["type"] == "UPDATE"}
-        inserted_ops = [op for op in tops if op["type"] == "INSERT"]
-        for fi in final_items:
-            if fi["ticket_item_id"] in updated_tiids:
-                new = updated_tiids[fi["ticket_item_id"]]["new"]
-                fi["item_id"] = new["item_id"]
-                fi["item_name"] = item_map.get(new["item_id"], f"#{new['item_id']}")
-                fi["levy"] = float(new["levy"])
-                fi["quantity"] = int(new["quantity"])
-                fi["line_value"] = float(
-                    (Decimal(str(fi["rate"])) + Decimal(new["levy"])) * int(new["quantity"])
-                )
-        for ins in inserted_ops:
-            nr = ins["new_row"]
-            final_items.append({
-                "ticket_item_id": None,  # not yet created
-                "item_id": nr["item_id"],
-                "item_name": item_map.get(nr["item_id"], f"#{nr['item_id']}"),
-                "rate": float(nr["rate"]),
-                "levy": float(nr["levy"]),
-                "quantity": int(nr["quantity"]),
-                "line_value": float((Decimal(nr["rate"]) + Decimal(nr["levy"])) * int(nr["quantity"])),
-                "is_inserted": True,
-            })
+
+        # First apply CONVERTs and REDUCEs (both UPDATE an existing row)
+        for op in tops:
+            if op["type"] in ("CONVERT", "REDUCE"):
+                for fi in final_items:
+                    if fi["ticket_item_id"] == op["ticket_item_id"]:
+                        new = op["new"]
+                        fi["item_id"] = new["item_id"]
+                        fi["item_name"] = item_map.get(new["item_id"], f"#{new['item_id']}")
+                        fi["rate"] = float(Decimal(new["rate"]))
+                        fi["levy"] = float(Decimal(new["levy"]))
+                        fi["quantity"] = int(new["quantity"])
+                        fi["line_value"] = float(
+                            (Decimal(new["rate"]) + Decimal(new["levy"])) * int(new["quantity"])
+                        )
+                        break
+
+        # Then apply INSERTs
+        for op in tops:
+            if op["type"] == "INSERT":
+                nr = op["new_row"]
+                final_items.append({
+                    "ticket_item_id": None,
+                    "item_id": nr["item_id"],
+                    "item_name": item_map.get(nr["item_id"], f"#{nr['item_id']}"),
+                    "rate": float(Decimal(nr["rate"])),
+                    "levy": float(Decimal(nr["levy"])),
+                    "quantity": int(nr["quantity"]),
+                    "line_value": float(
+                        (Decimal(nr["rate"]) + Decimal(nr["levy"])) * int(nr["quantity"])
+                    ),
+                    "is_inserted": True,
+                })
+
+        # Remove zero-quantity rows (CONVERT might leave row with q2_int=0 — shouldn't happen since we skip such tickets, but defensive)
+        final_items = [fi for fi in final_items if int(fi["quantity"]) > 0]
+
         original_total = sum(i["line_value"] for i in snap["original_items"])
         final_total = sum(i["line_value"] for i in final_items)
         tickets_view.append({
@@ -421,6 +506,7 @@ async def dry_run(
             "final_items": final_items,
             "original_amount": original_total,
             "final_amount": final_total,
+            "difference": round(final_total - original_total, 2),  # should be 0
             "is_split": tid in split_ticket_ids,
         })
     tickets_view.sort(key=lambda t: t["ticket_id"])
@@ -435,13 +521,20 @@ async def dry_run(
         "to_item_name": item_map[to_item_id],
         "input_mode": input_mode,
         "input_value": float(input_value),
-        "transfer_quantity": int(transfer_quantity),
-        "total_quantity_in_scope": int(total_quantity),
-        "from_levy_total_before": str(from_levy_total_before),
-        "to_levy_total_after": str(to_levy_total_after),
-        "levy_difference": str(levy_difference),
+        "requested_transfer_qty": int(requested_transfer_qty),
+        "achieved_transfer_qty": int(achieved_qty),
+        "unapplied_transfer_qty": int(unapplied_qty),
+        "total_from_qty_in_scope": int(total_quantity),
+        "total_from_value_applied": str(total_from_value_applied),
+        "total_from_value_skipped": str(total_from_value_skipped),
+        "total_unapplied_rounding": str(total_unapplied_rounding),
+        "total_q2_created": int(total_q2),
+        "levy_before": str(levy_before),
+        "levy_after": str(levy_after),
+        "levy_saved": str(levy_before - levy_after),
         "affected_tickets_count": len(affected_ticket_ids),
         "tickets_to_split_count": len(split_ticket_ids),
+        "skipped_tickets": skipped_tickets,
         "operations": operations,
         "affected_ticket_ids": list(affected_ticket_ids),
         "tickets_view": tickets_view,
@@ -451,10 +544,10 @@ async def dry_run(
         branch_id=branch_id,
         date_range_start=date_start,
         date_range_end=date_end,
-        adjustment_amount=float(levy_difference),  # signed levy delta for reporting
+        adjustment_amount=float(levy_before - levy_after),
         dry_run_summary=execution_plan,
         total_tickets_affected=len(affected_ticket_ids),
-        total_items_affected=len([o for o in operations if o["type"] == "UPDATE"]) + len([o for o in operations if o["type"] == "INSERT"]),
+        total_items_affected=len(operations),
         row_count_checked=len(scope),
         status="DRY_RUN",
         created_by=created_by,
@@ -471,13 +564,20 @@ async def dry_run(
         "to_item_name": item_map[to_item_id],
         "input_mode": input_mode,
         "input_value": float(input_value),
-        "transfer_quantity": int(transfer_quantity),
-        "total_quantity_in_scope": int(total_quantity),
-        "from_levy_total_before": float(from_levy_total_before),
-        "to_levy_total_after": float(to_levy_total_after),
-        "levy_difference": float(levy_difference),
+        "requested_transfer_qty": int(requested_transfer_qty),
+        "achieved_transfer_qty": int(achieved_qty),
+        "unapplied_transfer_qty": int(unapplied_qty),
+        "total_from_qty_in_scope": int(total_quantity),
+        "total_from_value_applied": float(total_from_value_applied),
+        "total_from_value_skipped": float(total_from_value_skipped),
+        "total_unapplied_rounding": float(total_unapplied_rounding),
+        "total_q2_created": int(total_q2),
+        "levy_before": float(levy_before),
+        "levy_after": float(levy_after),
+        "levy_saved": float(levy_before - levy_after),
         "affected_tickets_count": len(affected_ticket_ids),
         "tickets_to_split_count": len(split_ticket_ids),
+        "skipped_tickets": skipped_tickets,
         "tickets": tickets_view,
     }
 
@@ -528,13 +628,13 @@ async def commit(
             {"a": log.branch_id, "b": date_hash},
         )
 
-        # Collect UPDATE targets
-        update_ops = [op for op in operations if op["type"] == "UPDATE"]
+        # Collect UPDATE targets (CONVERT + REDUCE both are updates)
+        update_ops = [op for op in operations if op["type"] in ("CONVERT", "REDUCE")]
         insert_ops = [op for op in operations if op["type"] == "INSERT"]
         update_item_ids = [op["ticket_item_id"] for op in update_ops]
 
-        # Staleness guard — verify every UPDATE target still exists, is not cancelled,
-        # and has the same item_id + quantity that the plan recorded
+        # Staleness guard: every UPDATE target must still exist, not be cancelled,
+        # and have the same item_id + quantity the plan recorded
         if update_item_ids:
             fresh = await db.execute(
                 select(TicketItem).where(TicketItem.id.in_(update_item_ids))
@@ -556,7 +656,7 @@ async def commit(
                 if fresh_ti.item_id != op["old"]["item_id"] or int(fresh_ti.quantity) != int(op["old"]["quantity"]):
                     raise HTTPException(
                         status_code=409,
-                        detail=f"Plan is stale — ticket_item {tiid} state has changed. Re-run the trial preview.",
+                        detail=f"Plan is stale — ticket_item {tiid} state changed. Re-run the trial preview.",
                     )
         else:
             fresh_map = {}
@@ -599,29 +699,31 @@ async def commit(
                 },
             ))
 
-        # Apply UPDATEs
+        # Apply UPDATEs (CONVERT: change item_id, rate, levy, quantity; REDUCE: just lower quantity)
         for op in update_ops:
+            new = op["new"]
             await db.execute(
                 update(TicketItem)
                 .where(TicketItem.id == op["ticket_item_id"])
                 .values(
-                    item_id=op["new"]["item_id"],
-                    levy=float(op["new"]["levy"]),
-                    quantity=int(op["new"]["quantity"]),
+                    item_id=int(new["item_id"]),
+                    rate=float(Decimal(new["rate"])),
+                    levy=float(Decimal(new["levy"])),
+                    quantity=int(new["quantity"]),
                 )
             )
 
-        # Apply INSERTs and capture new ticket_item_ids for audit
+        # Apply INSERTs
         inserted_new_ids: list[int] = []
         for op in insert_ops:
             nr = op["new_row"]
             ins_stmt = (
-                insert(TicketItem)
+                sa_insert(TicketItem)
                 .values(
                     ticket_id=op["ticket_id"],
-                    item_id=nr["item_id"],
-                    rate=float(nr["rate"]),
-                    levy=float(nr["levy"]),
+                    item_id=int(nr["item_id"]),
+                    rate=float(Decimal(nr["rate"])),
+                    levy=float(Decimal(nr["levy"])),
                     quantity=int(nr["quantity"]),
                     vehicle_no=nr.get("vehicle_no"),
                     vehicle_name=nr.get("vehicle_name"),
@@ -631,7 +733,7 @@ async def commit(
             )
             new_id = (await db.execute(ins_stmt)).scalar_one()
             inserted_new_ids.append(new_id)
-            op["_inserted_id"] = new_id  # stash for audit below
+            op["_inserted_id"] = new_id
 
         # Recalc affected ticket totals (amount + net_amount with discount)
         await db.execute(
@@ -653,7 +755,7 @@ async def commit(
             {"ids": affected_ticket_ids},
         )
 
-        # Audit
+        # Audit: CONVERTs and REDUCEs become TRANSFER_UPDATE; INSERTs become TRANSFER_INSERT
         for op in update_ops:
             old = op["old"]
             new = op["new"]
@@ -661,10 +763,11 @@ async def commit(
             old_levy = Decimal(old["levy"])
             new_rate = Decimal(new["rate"])
             new_levy = Decimal(new["levy"])
-            qty = int(new["quantity"])
-            rate_delta = (new_rate - old_rate) * qty
-            levy_delta = (new_levy - old_levy) * qty
-            total_delta = rate_delta + levy_delta
+            old_qty = int(old["quantity"])
+            new_qty = int(new["quantity"])
+            old_line = (old_rate + old_levy) * old_qty
+            new_line = (new_rate + new_levy) * new_qty
+            delta = new_line - old_line
             db.add(AdminAdjustmentDetails(
                 adjustment_id=log.id,
                 ticket_id=op["ticket_id"],
@@ -673,9 +776,9 @@ async def commit(
                 old_levy=float(old_levy),
                 new_rate=float(new_rate),
                 new_levy=float(new_levy),
-                rate_delta=float(rate_delta),
-                levy_delta=float(levy_delta),
-                total_delta=float(total_delta),
+                rate_delta=float((new_rate - old_rate) * new_qty),
+                levy_delta=float((new_levy - old_levy) * new_qty),
+                total_delta=float(delta),
                 matched_rule_id=None,
                 operation_type="TRANSFER_UPDATE",
             ))
@@ -684,7 +787,6 @@ async def commit(
             new_rate = Decimal(nr["rate"])
             new_levy = Decimal(nr["levy"])
             qty = int(nr["quantity"])
-            # For INSERTs: no "old" values. Store zeros for old_*, levy_delta = new_levy*qty (positive contribution).
             db.add(AdminAdjustmentDetails(
                 adjustment_id=log.id,
                 ticket_id=op["ticket_id"],
@@ -708,7 +810,6 @@ async def commit(
         await db.flush()
 
     except HTTPException:
-        # Pass-through 4xx/5xx guards — do not mark FAILED
         raise
 
     except Exception as exc:
