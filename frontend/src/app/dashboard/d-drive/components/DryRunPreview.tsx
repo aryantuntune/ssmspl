@@ -67,8 +67,6 @@ export default function DryRunPreview({ result, branchName, onCancel, onCommitte
     : activePlan === "requested"
     ? result.requested_plan
     : result.closest_plan;
-  const diffSet = new Set(result.diff_items);
-
   const effective = useMemo(() => {
     let applied = 0;
     let itemsRemoved = 0;
@@ -83,9 +81,7 @@ export default function DryRunPreview({ result, branchName, onCancel, onCommitte
   }, [plan, skippedTickets]);
 
   const cashAfter = result.cash_total_before - effective.applied;
-  const unappliedForActivePlan = Math.max(0, result.requested_adjustment - effective.applied);
   const emptyTicketCount = plan.tickets.filter(t => t.final_items.length === 0).length;
-  const skippedInView = plan.tickets.filter(t => skippedTickets.has(t.ticket_id)).length;
 
   const toggleSkip = (ticketId: number) => {
     setSkippedTickets(prev => {
@@ -147,9 +143,9 @@ export default function DryRunPreview({ result, branchName, onCancel, onCommitte
           </div>
         </div>
 
-        {/* Plan toggle + secondary stats */}
-        <div className="px-6 py-3 border-b flex items-center gap-3 flex-wrap">
-          <span className="text-sm font-medium">View plan:</span>
+        {/* Plan toggle */}
+        <div className="px-6 py-3 border-b flex items-center gap-2 flex-wrap">
+          <span className="text-sm font-medium mr-1">Plan:</span>
           <button
             onClick={() => { setActivePlan("recommended"); setSkippedTickets(new Set()); }}
             className={`px-4 py-1.5 rounded text-sm font-medium border ${activePlan === "recommended" ? "bg-emerald-600 text-white border-emerald-600" : "bg-card border-border"}`}
@@ -165,49 +161,15 @@ export default function DryRunPreview({ result, branchName, onCancel, onCommitte
           <button
             onClick={() => { setActivePlan("closest"); setSkippedTickets(new Set()); }}
             className={`px-4 py-1.5 rounded text-sm font-medium border ${activePlan === "closest" ? "bg-violet-600 text-white border-violet-600" : "bg-card border-border"}`}
-            title={result.closest_plan.applied > result.requested_adjustment ? `Overshoots by ${fmt(result.closest_plan.applied - result.requested_adjustment)}` : undefined}
           >
             Closest Match ({fmt(result.closest_plan.applied)})
-            {result.closest_plan.applied > result.requested_adjustment && (
-              <span className="text-[10px] opacity-80 ml-1">+{fmt(result.closest_plan.applied - result.requested_adjustment)}</span>
-            )}
           </button>
-          <div className="ml-auto flex items-center gap-4 text-xs text-muted-foreground">
-            <span><strong className="text-foreground">{effective.ticketsAffected}</strong> tickets · <strong className="text-foreground">{effective.itemsRemoved}</strong> items will change</span>
-            {unappliedForActivePlan > 0.01 && (
-              <span className="text-amber-600 dark:text-amber-400">
-                {fmt(unappliedForActivePlan)} not applied
-              </span>
-            )}
-          </div>
         </div>
-
-        {activePlan === "requested" && result.diff_items.length > 0 && (
-          <div className="px-6 py-2 border-b bg-amber-50 dark:bg-amber-950/20 text-xs text-amber-800 dark:text-amber-200">
-            The Requested plan removes <strong>{result.diff_items.length}</strong> additional item(s) beyond the Recommended plan (highlighted below in amber).
-          </div>
-        )}
-        {activePlan === "closest" && result.closest_plan.extra_item_id !== null && (
-          <div className="px-6 py-2 border-b bg-violet-50 dark:bg-violet-950/20 text-xs text-violet-800 dark:text-violet-200">
-            <strong>Closest Match</strong> adds ONE extra item to the Requested plan
-            {result.closest_plan.applied > result.requested_adjustment
-              ? ` — total overshoots Requested by ${fmt(result.closest_plan.applied - result.requested_adjustment)}.`
-              : ` to land exactly on Requested.`}
-            {" "}The extra item is highlighted below in violet.
-          </div>
-        )}
-        {activePlan === "closest" && result.closest_plan.extra_item_id === null && (
-          <div className="px-6 py-2 border-b bg-muted/40 text-xs text-muted-foreground">
-            No items available to bring the total closer to Requested — Closest Match matches the Requested plan.
-          </div>
-        )}
 
         {emptyTicketCount > 0 && (
           <div className="px-6 py-2 border-b bg-amber-50 dark:bg-amber-950/20 text-xs text-amber-800 dark:text-amber-200">
-            <strong>{emptyTicketCount}</strong> ticket{emptyTicketCount !== 1 ? "s" : ""} would be left empty after this reconciliation.
-            By default they will be hard-deleted (no trace).
-            Use the toggle on each empty ticket to keep it untouched instead.
-            {skippedInView > 0 && <> Currently <strong>{skippedInView}</strong> ticket(s) marked as "keep".</>}
+            <strong>{emptyTicketCount}</strong> ticket{emptyTicketCount !== 1 ? "s" : ""} will be deleted entirely.
+            Use the toggle on any such ticket to keep it untouched.
           </div>
         )}
 
@@ -267,14 +229,9 @@ export default function DryRunPreview({ result, branchName, onCancel, onCommitte
                     <ul className="space-y-0.5 text-sm">
                       {t.original_items.map(i => {
                         const toRemove = t.items_to_remove.some(r => r.ticket_item_id === i.ticket_item_id);
-                        const isRequestedExtra = toRemove && diffSet.has(i.ticket_item_id);
                         const isClosestExtra = activePlan === "closest" && toRemove && result.closest_plan.extra_item_id === i.ticket_item_id;
                         const strikeThrough = toRemove && !isSkipped;
-                        let highlightClass = "";
-                        if (!isSkipped) {
-                          if (isClosestExtra) highlightClass = "bg-violet-100 dark:bg-violet-950/40 rounded px-1";
-                          else if (isRequestedExtra && activePlan === "requested") highlightClass = "bg-amber-100 dark:bg-amber-950/40 rounded px-1";
-                        }
+                        const highlightClass = isClosestExtra && !isSkipped ? "bg-violet-100 dark:bg-violet-950/40 rounded px-1" : "";
                         return (
                           <li
                             key={i.ticket_item_id}
@@ -320,10 +277,6 @@ export default function DryRunPreview({ result, branchName, onCancel, onCommitte
         {error && <p className="px-6 py-2 text-sm text-destructive border-t">{error}</p>}
 
         <div className="px-6 py-3 border-t flex gap-2 justify-end bg-card flex-wrap items-center">
-          <p className="text-xs text-muted-foreground mr-auto">
-            Confirming will apply the <strong>{activePlan}</strong> plan currently shown above.
-            Switch plans to commit the other one — your skip toggles will reset.
-          </p>
           <Button variant="outline" onClick={onCancel} disabled={loading}>← Back</Button>
           <Button
             onClick={() => handleCommit(activePlan)}
@@ -334,11 +287,7 @@ export default function DryRunPreview({ result, branchName, onCancel, onCommitte
               ""
             }
           >
-            {loading ? "Applying…" : `Confirm & Apply ${
-              activePlan === "recommended" ? "Recommended" :
-              activePlan === "closest" ? "Closest Match" :
-              "Requested"
-            } (${fmt(effective.applied)})`}
+            {loading ? "Applying…" : `Confirm & Apply (${fmt(effective.applied)})`}
           </Button>
         </div>
       </DialogContent>
