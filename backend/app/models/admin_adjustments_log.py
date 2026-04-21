@@ -14,7 +14,7 @@ class AdminAdjustmentsLog(Base):
             name="ck_adj_log_status",
         ),
         CheckConstraint(
-            "plan_choice IS NULL OR plan_choice IN ('recommended','requested')",
+            "plan_choice IS NULL OR plan_choice IN ('recommended','requested','transfer')",
             name="ck_adj_log_plan_choice",
         ),
     )

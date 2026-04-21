@@ -621,11 +621,11 @@ async def commit(
                 )
 
     try:
-        # Advisory lock
-        date_hash = _date_lock_hash(log.date_range_start, log.date_range_end)
+        # Advisory lock — per-branch only so overlapping date ranges on the same branch
+        # are serialized. Prevents concurrent transfer/delete operations from racing on shared tickets.
         await db.execute(
             text("SELECT pg_advisory_xact_lock(:a, :b)"),
-            {"a": log.branch_id, "b": date_hash},
+            {"a": log.branch_id, "b": 0},
         )
 
         # Collect UPDATE targets (CONVERT + REDUCE both are updates)
@@ -653,10 +653,15 @@ async def commit(
                         status_code=409,
                         detail=f"Plan is stale — ticket_item {tiid} was cancelled. Re-run the trial preview.",
                     )
-                if fresh_ti.item_id != op["old"]["item_id"] or int(fresh_ti.quantity) != int(op["old"]["quantity"]):
+                if (
+                    fresh_ti.item_id != op["old"]["item_id"]
+                    or int(fresh_ti.quantity) != int(op["old"]["quantity"])
+                    or Decimal(str(fresh_ti.rate)) != Decimal(op["old"]["rate"])
+                    or Decimal(str(fresh_ti.levy)) != Decimal(op["old"]["levy"])
+                ):
                     raise HTTPException(
                         status_code=409,
-                        detail=f"Plan is stale — ticket_item {tiid} state changed. Re-run the trial preview.",
+                        detail=f"Plan is stale — ticket_item {tiid} state changed (item/qty/rate/levy). Re-run the trial preview.",
                     )
         else:
             fresh_map = {}
