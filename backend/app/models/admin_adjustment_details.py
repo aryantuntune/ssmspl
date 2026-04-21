@@ -26,4 +26,4 @@ class AdminAdjustmentDetails(Base):
     levy_delta: Mapped[float] = mapped_column(Numeric(9, 2), nullable=False)
     total_delta: Mapped[float] = mapped_column(Numeric(9, 2), nullable=False)
     matched_rule_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("parameter_master.id"), nullable=True)
-    operation_type: Mapped[str] = mapped_column(String(10), nullable=False, server_default="MODIFY")
+    operation_type: Mapped[str] = mapped_column(String(20), nullable=False, server_default="MODIFY")
