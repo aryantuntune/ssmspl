@@ -18,6 +18,7 @@ TOGGLEABLE_SCREENS: list[str] = [
     "Ticketing",
     "Multi-Ticketing",
     "Reports",
+    "Admin Reports",
     "Rate Change Logs",
     "Employee Transfer",
     "Ticket Verification",
