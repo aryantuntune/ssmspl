@@ -13,6 +13,7 @@ export interface ActiveSession {
   latitude: number | null;
   longitude: number | null;
   isp: string | null;
+  portal: string | null;
   full_name: string;
   username: string;
   role: string;

@@ -16,6 +16,7 @@ class ActiveSessionRead(BaseModel):
     latitude: float | None = Field(None, description="IP geolocation latitude")
     longitude: float | None = Field(None, description="IP geolocation longitude")
     isp: str | None = Field(None, description="Internet service provider")
+    portal: str | None = Field(None, description="Which portal created the session: 'admin' for admin.carferry.online, NULL for replicated production sessions")
     full_name: str = Field(..., description="User full name")
     username: str = Field(..., description="Username")
     role: str = Field(..., description="User role")

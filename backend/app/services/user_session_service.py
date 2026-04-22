@@ -4,6 +4,7 @@ from datetime import datetime, timezone, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, update as sa_update, case
 
+from app.config import settings
 from app.database import AsyncSessionLocal
 from app.models.user_session import UserSession
 from app.models.user import User
@@ -41,6 +42,7 @@ async def start_session(
         latitude=geo.get("latitude"),
         longitude=geo.get("longitude"),
         isp=geo.get("isp"),
+        portal="admin" if settings.ADMIN_PORTAL_MODE else None,
     )
     db.add(session)
     return session
@@ -158,6 +160,7 @@ def _build_session_query(*, include_ended: bool = False):
         UserSession.latitude,
         UserSession.longitude,
         UserSession.isp,
+        UserSession.portal,
         User.full_name,
         User.username,
         User.role,
@@ -193,6 +196,7 @@ def _row_to_dict(row, *, include_ended: bool = False) -> dict:
         "latitude": float(row.latitude) if row.latitude is not None else None,
         "longitude": float(row.longitude) if row.longitude is not None else None,
         "isp": row.isp,
+        "portal": row.portal,
         "full_name": row.full_name,
         "username": row.username,
         "role": row.role.value if hasattr(row.role, "value") else row.role,

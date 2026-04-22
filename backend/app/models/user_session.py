@@ -44,5 +44,10 @@ class UserSession(Base):
     longitude: Mapped[Decimal | None] = mapped_column(Numeric(10, 7), nullable=True)
     isp: Mapped[str | None] = mapped_column(String(150), nullable=True)
 
+    # Which portal created this session: "admin" for admin.carferry.online,
+    # NULL for sessions replicated from production carferry.online (the prod
+    # backend doesn't write this column, so replicated rows stay NULL).
+    portal: Mapped[str | None] = mapped_column(String(10), nullable=True)
+
     def __repr__(self) -> str:
         return f"<UserSession id={self.id} user_id={self.user_id} session_id={self.session_id}>"

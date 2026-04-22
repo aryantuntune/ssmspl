@@ -41,6 +41,21 @@ function formatTime(iso: string | null): string {
   });
 }
 
+function portalBadge(portal: string | null) {
+  if (portal === "admin") {
+    return (
+      <Badge className="bg-blue-600 hover:bg-blue-600 text-white">
+        Admin Portal
+      </Badge>
+    );
+  }
+  return (
+    <Badge variant="secondary" className="text-gray-700">
+      Main Site
+    </Badge>
+  );
+}
+
 function roleBadge(role: string) {
   const colors: Record<
     string,
@@ -245,6 +260,7 @@ function LiveSessions() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [portalFilter, setPortalFilter] = useState<"all" | "admin" | "main">("all");
 
   const fetchSessions = useCallback(async () => {
     setLoading(true);
@@ -265,6 +281,15 @@ function LiveSessions() {
     fetchSessions();
   }, [fetchSessions]);
 
+  const filteredSessions = sessions.filter((s) => {
+    if (portalFilter === "all") return true;
+    if (portalFilter === "admin") return s.portal === "admin";
+    return s.portal !== "admin";
+  });
+
+  const adminCount = sessions.filter((s) => s.portal === "admin").length;
+  const mainCount = sessions.length - adminCount;
+
   const columns: Column<ActiveSession>[] = [
     {
       key: "full_name",
@@ -275,6 +300,11 @@ function LiveSessions() {
           <span className="text-xs text-gray-400 ml-2">@{s.username}</span>
         </div>
       ),
+    },
+    {
+      key: "portal" as keyof ActiveSession,
+      label: "Portal",
+      render: (s) => portalBadge(s.portal),
     },
     {
       key: "role",
@@ -304,11 +334,45 @@ function LiveSessions() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-500">
-          {sessions.length} active session
-          {sessions.length !== 1 ? "s" : ""}
-        </p>
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          <p className="text-sm text-gray-500 mr-2">
+            {filteredSessions.length} of {sessions.length} active session
+            {sessions.length !== 1 ? "s" : ""}
+          </p>
+          <div className="flex rounded-md border overflow-hidden text-xs">
+            <button
+              onClick={() => setPortalFilter("all")}
+              className={`px-3 py-1.5 transition ${
+                portalFilter === "all"
+                  ? "bg-gray-800 text-white"
+                  : "bg-white text-gray-600 hover:bg-gray-50"
+              }`}
+            >
+              All ({sessions.length})
+            </button>
+            <button
+              onClick={() => setPortalFilter("admin")}
+              className={`px-3 py-1.5 border-l transition ${
+                portalFilter === "admin"
+                  ? "bg-blue-600 text-white"
+                  : "bg-white text-gray-600 hover:bg-gray-50"
+              }`}
+            >
+              Admin Portal ({adminCount})
+            </button>
+            <button
+              onClick={() => setPortalFilter("main")}
+              className={`px-3 py-1.5 border-l transition ${
+                portalFilter === "main"
+                  ? "bg-gray-600 text-white"
+                  : "bg-white text-gray-600 hover:bg-gray-50"
+              }`}
+            >
+              Main Site ({mainCount})
+            </button>
+          </div>
+        </div>
         <Button
           variant="outline"
           size="sm"
@@ -321,10 +385,10 @@ function LiveSessions() {
       {error && <p className="text-red-500 text-sm">{error}</p>}
       <DataTable
         columns={columns}
-        data={sessions}
-        totalCount={sessions.length}
+        data={filteredSessions}
+        totalCount={filteredSessions.length}
         page={1}
-        pageSize={sessions.length || 10}
+        pageSize={filteredSessions.length || 10}
         sortBy=""
         sortOrder="asc"
         onPageChange={() => {}}
@@ -408,6 +472,11 @@ function HistoryTab() {
           <span className="text-xs text-gray-400 ml-2">@{s.username}</span>
         </div>
       ),
+    },
+    {
+      key: "portal" as keyof SessionHistory,
+      label: "Portal",
+      render: (s) => portalBadge(s.portal),
     },
     {
       key: "role",
