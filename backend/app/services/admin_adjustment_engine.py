@@ -356,6 +356,46 @@ async def dry_run(
 
     cash_total = await _fetch_cash_total(db, branch_id, date_start, date_end)
 
+    # Compute deletable vs protected cash breakdown for admin clarity.
+    # deletable_cash_total = sum of (rate+levy)*qty for items NOT protected
+    # protected_cash_total = sum of (rate+levy)*qty for items that ARE protected
+    deletable_cash_q = (
+        select(func.coalesce(func.sum((TicketItem.rate + TicketItem.levy) * TicketItem.quantity), 0))
+        .select_from(TicketItem)
+        .join(Ticket, Ticket.id == TicketItem.ticket_id)
+        .join(PaymentMode, PaymentMode.id == Ticket.payment_mode_id)
+        .where(
+            Ticket.branch_id == branch_id,
+            Ticket.ticket_date >= date_start,
+            Ticket.ticket_date <= date_end,
+            Ticket.is_cancelled == False,
+            TicketItem.is_cancelled == False,
+            func.upper(PaymentMode.description) == "CASH",
+        )
+    )
+    if protected_item_ids:
+        deletable_cash_q = deletable_cash_q.where(~TicketItem.item_id.in_(protected_item_ids))
+    deletable_cash_total = Decimal(str((await db.execute(deletable_cash_q)).scalar_one()))
+
+    protected_cash_total = Decimal("0")
+    if protected_item_ids:
+        protected_cash_q = (
+            select(func.coalesce(func.sum((TicketItem.rate + TicketItem.levy) * TicketItem.quantity), 0))
+            .select_from(TicketItem)
+            .join(Ticket, Ticket.id == TicketItem.ticket_id)
+            .join(PaymentMode, PaymentMode.id == Ticket.payment_mode_id)
+            .where(
+                Ticket.branch_id == branch_id,
+                Ticket.ticket_date >= date_start,
+                Ticket.ticket_date <= date_end,
+                Ticket.is_cancelled == False,
+                TicketItem.is_cancelled == False,
+                func.upper(PaymentMode.description) == "CASH",
+                TicketItem.item_id.in_(protected_item_ids),
+            )
+        )
+        protected_cash_total = Decimal(str((await db.execute(protected_cash_q)).scalar_one()))
+
     # Step 1: Build the REQUESTED plan first — target the exact amount admin entered.
     # achievable_amount = what this plan actually delivers (discrete items may fall short).
     req_ids, achievable_amount, req_detail = await _build_deletion_plan(
@@ -534,30 +574,25 @@ async def dry_run(
     await db.flush()
     await db.refresh(log)
 
+    # Unapplied based on what the Closest plan actually delivers
+    closest_unapplied = requested - closest_applied
+    if closest_unapplied < 0:
+        closest_unapplied = Decimal("0")
+
     return {
         "batch_id": str(log.id),
         "cash_total_before": float(cash_total),
         "requested_adjustment": float(requested),
-        "achievable_adjustment": float(achievable_amount),
-        "recommended_adjustment": float(recommended_amount),
-        "unapplied_amount": float(unapplied_amount),
-        "recommended_plan": {
-            "applied": float(rec_applied),
-            "tickets": execution_plan["recommended_plan"]["tickets"],
-            "item_ids": rec_ids,
-        },
-        "requested_plan": {
-            "applied": float(achievable_amount),
-            "tickets": execution_plan["requested_plan"]["tickets"],
-            "item_ids": req_ids,
-        },
-        "closest_plan": {
+        "closest_applied": float(closest_applied),
+        "deletable_cash_total": float(deletable_cash_total),
+        "protected_cash_total": float(protected_cash_total),
+        "unapplied_amount": float(closest_unapplied),
+        "plan": {
             "applied": float(closest_applied),
             "tickets": execution_plan["closest_plan"]["tickets"],
             "item_ids": closest_ids,
             "extra_item_id": closest_extra_item_id,
         },
-        "diff_items": diff_items,
     }
 
 
