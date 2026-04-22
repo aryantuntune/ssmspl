@@ -139,7 +139,7 @@ export default function DryRunPreview({ result, branchName, onCancel, onCommitte
             </div>
             <p className="text-xs text-muted-foreground">
               {result.cash_total_before > 0
-                ? `${((result.deletable_cash_total / result.cash_total_before) * 100).toFixed(1)}% of cash`
+                ? `${Math.min(100, (result.deletable_cash_total / result.cash_total_before) * 100).toFixed(1)}% of cash`
                 : ""}
             </p>
           </div>
@@ -150,7 +150,7 @@ export default function DryRunPreview({ result, branchName, onCancel, onCommitte
             </div>
             <p className="text-xs text-muted-foreground">
               {result.cash_total_before > 0
-                ? `${((result.protected_cash_total / result.cash_total_before) * 100).toFixed(1)}% of cash`
+                ? `${Math.min(100, (result.protected_cash_total / result.cash_total_before) * 100).toFixed(1)}% of cash`
                 : ""}
             </p>
           </div>
@@ -167,7 +167,7 @@ export default function DryRunPreview({ result, branchName, onCancel, onCommitte
               The remaining {fmt(result.protected_cash_total)} is in protected items (passengers, monthly passes, luggage, etc.) which cannot be deleted.
             </p>
             <p>
-              <strong>To adjust more:</strong> widen the date range, mark more items as Deletable in Parameter Master, or reduce your requested amount.
+              <strong>To adjust more:</strong> widen the date range, or mark more items as Deletable in Parameter Master.
             </p>
           </div>
         )}

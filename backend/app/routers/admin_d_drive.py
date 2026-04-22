@@ -54,7 +54,7 @@ class DryRunRequest(BaseModel):
 
 class CommitRequest(BaseModel):
     batch_id: str
-    plan_choice: str  # "recommended" or "requested"
+    plan_choice: str  # "recommended", "requested", or "closest" (new UI always sends "closest")
     skipped_ticket_ids: list[int] = []
 
 

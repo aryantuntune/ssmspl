@@ -72,7 +72,7 @@ def _infer_kind(log: AdminAdjustmentsLog) -> str:
     """Heuristic label for the UI."""
     if log.plan_choice == "transfer":
         return "TRANSFER"
-    if log.plan_choice in ("recommended", "requested"):
+    if log.plan_choice in ("recommended", "requested", "closest"):
         return "DELETE"
     return "UNKNOWN"
 
