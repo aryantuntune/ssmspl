@@ -269,7 +269,7 @@ export default function ParameterMasterPage() {
 
           {!canEdit && (
             <p className="text-xs text-muted-foreground italic">
-              You have read-only access. Contact a System Administrator to change protection settings.
+              You have read-only access. Contact an Administrator to change protection settings.
             </p>
           )}
         </>
