@@ -386,7 +386,7 @@ async def dry_run(
                 Ticket.ticket_date <= date_end,
                 Ticket.is_cancelled == False,
                 TicketItem.is_cancelled == False,
-                PaymentMode.name == "CASH",
+                func.upper(PaymentMode.description) == "CASH",
             )
             .order_by(Ticket.id.asc(), TicketItem.id.asc())
         )
