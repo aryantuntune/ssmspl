@@ -202,7 +202,10 @@ async def set_item_protection(
     )
 
     if body.is_protected:
-        # Assign a fresh priority_order (max + 1) to avoid collisions
+        # Serialize priority_order assignment to avoid UniqueViolation under
+        # concurrent toggles. Lock releases automatically at transaction end.
+        from sqlalchemy import text as _text
+        await db.execute(_text("SELECT pg_advisory_xact_lock(hashtext('parameter_master_priority_order'))"))
         max_priority_result = await db.execute(select(func.coalesce(func.max(ParameterMaster.priority_order), 0)))
         new_priority = (max_priority_result.scalar() or 0) + 1
         rule = ParameterMaster(
@@ -268,6 +271,10 @@ async def bulk_set_item_protection(
     await db.flush()
 
     if body.is_protected:
+        # Serialize priority_order assignment to avoid UniqueViolation under
+        # concurrent toggles. Lock releases automatically at transaction end.
+        from sqlalchemy import text as _text
+        await db.execute(_text("SELECT pg_advisory_xact_lock(hashtext('parameter_master_priority_order'))"))
         # Create fresh protection rules with sequential priority_orders
         max_priority_result = await db.execute(select(func.coalesce(func.max(ParameterMaster.priority_order), 0)))
         next_priority = (max_priority_result.scalar() or 0) + 1

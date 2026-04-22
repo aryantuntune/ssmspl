@@ -150,6 +150,14 @@ async def _build_deletion_plan(
     )
     rules.append(catchall_rule)
 
+    # Collect item_ids explicitly governed by user-defined (non-catch-all) rules.
+    # The catch-all must NOT re-pick items covered by these specific rules;
+    # doing so would bypass their per-rule caps. Specific rules are the sole
+    # handler for their item_id.
+    specific_rule_item_ids: set[int] = {
+        r.item_id for r in rules if r.item_id is not None and r.id != 0
+    }
+
     for rule in rules:
         if remaining <= 0:
             break
@@ -187,6 +195,10 @@ async def _build_deletion_plan(
             q = q.where(~TicketItem.item_id.in_(protected_item_ids))
         if rule.item_id:
             q = q.where(TicketItem.item_id == rule.item_id)
+        elif rule.id == 0 and specific_rule_item_ids:
+            # This is the catch-all. Exclude items already governed by a specific rule
+            # so their per-rule caps (if any) are not bypassed.
+            q = q.where(~TicketItem.item_id.in_(specific_rule_item_ids))
 
         rows = (await db.execute(q)).all()
 
