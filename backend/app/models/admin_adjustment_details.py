@@ -9,7 +9,7 @@ class AdminAdjustmentDetails(Base):
     __tablename__ = "admin_adjustment_details"
     __table_args__ = (
         CheckConstraint(
-            "operation_type IN ('MODIFY','DELETE')",
+            "operation_type IN ('MODIFY','DELETE','TRANSFER_UPDATE','TRANSFER_INSERT')",
             name="ck_adj_details_op_type",
         ),
     )

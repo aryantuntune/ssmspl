@@ -1002,107 +1002,125 @@ async def commit(
 
         # Apply round-off transformation (if any) — transforms one ticket_item
         # on the last ticket to absorb a small remainder.
-        roundoff = log.dry_run_summary.get("roundoff")
+        # Skip round-off entirely when admin skipped tickets — the round-off was
+        # computed for the FULL plan and its remainder-absorb value no longer matches reality.
+        roundoff = log.dry_run_summary.get("roundoff") if not skipped_set else None
         if roundoff:
             ro_ticket_id = roundoff["ticket_id"]
             ro_tiid = roundoff["ticket_item_id"]
 
-            # Check the ticket_item still exists and wasn't touched by deletion
+            # Staleness guard: the round-off target must still exist and not be cancelled.
+            # If invalid, fail loudly with 409 so the admin can re-run the trial preview.
             ro_check = await db.execute(
                 select(TicketItem).where(TicketItem.id == ro_tiid)
             )
             ro_ti = ro_check.scalar_one_or_none()
-            if ro_ti is not None and not ro_ti.is_cancelled:
-                # Backup the original ticket_item (full state) and the ticket (if not already backed up)
-                db.add(TicketItemsBackup(
-                    adjustment_batch_id=log.id,
-                    ticket_item_id=ro_ti.id,
-                    ticket_id=ro_ti.ticket_id,
-                    original_data={
-                        "id": ro_ti.id,
-                        "ticket_id": ro_ti.ticket_id,
-                        "item_id": ro_ti.item_id,
-                        "rate": str(ro_ti.rate),
-                        "levy": str(ro_ti.levy),
-                        "quantity": ro_ti.quantity,
-                        "vehicle_no": ro_ti.vehicle_no,
-                        "vehicle_name": ro_ti.vehicle_name,
-                        "is_cancelled": ro_ti.is_cancelled,
-                    },
-                ))
-                if ro_ticket_id not in set(ticket_ids):
-                    ro_tkt = (await db.execute(select(Ticket).where(Ticket.id == ro_ticket_id))).scalar_one_or_none()
-                    if ro_tkt is not None:
-                        db.add(TicketsBackup(
-                            adjustment_batch_id=log.id,
-                            ticket_id=ro_tkt.id,
-                            original_data={
-                                "id": ro_tkt.id,
-                                "net_amount": str(ro_tkt.net_amount),
-                                "amount": str(ro_tkt.amount),
-                                "discount": str(ro_tkt.discount) if ro_tkt.discount is not None else None,
-                                "branch_id": ro_tkt.branch_id,
-                                "ticket_date": str(ro_tkt.ticket_date),
-                            },
-                        ))
-
-                # Apply the transformation
-                await db.execute(
-                    update(TicketItem)
-                    .where(TicketItem.id == ro_tiid)
-                    .values(
-                        item_id=roundoff["new"]["item_id"],
-                        rate=roundoff["new"]["rate"],
-                        levy=roundoff["new"]["levy"],
-                        quantity=roundoff["new"]["quantity"],
-                        last_adjustment_id=log.id,
-                    )
+            if ro_ti is None or ro_ti.is_cancelled:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Round-off target ticket_item was modified since dry-run. Re-run the trial preview.",
                 )
 
-                # Audit trail (operation_type=MODIFY since we're modifying not deleting)
-                old_rate = Decimal(str(roundoff["old"]["rate"]))
-                old_levy = Decimal(str(roundoff["old"]["levy"]))
-                old_qty = roundoff["old"]["quantity"]
-                new_rate = Decimal(str(roundoff["new"]["rate"]))
-                new_levy = Decimal(str(roundoff["new"]["levy"]))
-                new_qty = roundoff["new"]["quantity"]
-                old_line = (old_rate + old_levy) * old_qty
-                new_line = (new_rate + new_levy) * new_qty
-                db.add(AdminAdjustmentDetails(
-                    adjustment_id=log.id,
-                    ticket_id=ro_ticket_id,
-                    ticket_item_id=ro_tiid,
-                    old_rate=float(old_rate),
-                    old_levy=float(old_levy),
-                    new_rate=float(new_rate),
-                    new_levy=float(new_levy),
-                    rate_delta=float(old_rate * old_qty - new_rate * new_qty),
-                    levy_delta=float(old_levy * old_qty - new_levy * new_qty),
-                    total_delta=float(old_line - new_line),
-                    matched_rule_id=None,
-                    operation_type="MODIFY",
-                ))
+            # Backup the original ticket_item (full state) and the ticket (if not already backed up)
+            db.add(TicketItemsBackup(
+                adjustment_batch_id=log.id,
+                ticket_item_id=ro_ti.id,
+                ticket_id=ro_ti.ticket_id,
+                original_data={
+                    "id": ro_ti.id,
+                    "ticket_id": ro_ti.ticket_id,
+                    "item_id": ro_ti.item_id,
+                    "rate": str(ro_ti.rate),
+                    "levy": str(ro_ti.levy),
+                    "quantity": ro_ti.quantity,
+                    "vehicle_no": ro_ti.vehicle_no,
+                    "vehicle_name": ro_ti.vehicle_name,
+                    "is_cancelled": ro_ti.is_cancelled,
+                },
+            ))
+            if ro_ticket_id not in set(ticket_ids):
+                ro_tkt = (await db.execute(select(Ticket).where(Ticket.id == ro_ticket_id))).scalar_one_or_none()
+                if ro_tkt is not None:
+                    db.add(TicketsBackup(
+                        adjustment_batch_id=log.id,
+                        ticket_id=ro_tkt.id,
+                        original_data={
+                            "id": ro_tkt.id,
+                            "branch_id": ro_tkt.branch_id,
+                            "ticket_no": ro_tkt.ticket_no,
+                            "ticket_date": str(ro_tkt.ticket_date),
+                            "route_id": ro_tkt.route_id,
+                            "amount": str(ro_tkt.amount),
+                            "discount": str(ro_tkt.discount) if ro_tkt.discount is not None else None,
+                            "payment_mode_id": ro_tkt.payment_mode_id,
+                            "net_amount": str(ro_tkt.net_amount),
+                            "is_cancelled": ro_tkt.is_cancelled,
+                            "status": ro_tkt.status,
+                            "is_multi_ticket": ro_tkt.is_multi_ticket,
+                            "boat_id": ro_tkt.boat_id,
+                            "ref_no": ro_tkt.ref_no,
+                            "departure": str(ro_tkt.departure) if ro_tkt.departure is not None else None,
+                            "verification_code": str(ro_tkt.verification_code) if ro_tkt.verification_code is not None else None,
+                        },
+                    ))
 
-                # Recalc net_amount on this ticket if not already in surviving_ticket_ids
-                if ro_ticket_id not in set(surviving_ticket_ids):
-                    await db.execute(
-                        text("""
-                            UPDATE tickets
-                            SET
-                                amount = (
-                                    SELECT COALESCE(SUM((ti.rate + ti.levy) * ti.quantity), 0)
-                                    FROM ticket_items ti
-                                    WHERE ti.ticket_id = tickets.id AND ti.is_cancelled = false
-                                ),
-                                net_amount = (
-                                    SELECT COALESCE(SUM((ti.rate + ti.levy) * ti.quantity), 0)
-                                    FROM ticket_items ti
-                                    WHERE ti.ticket_id = tickets.id AND ti.is_cancelled = false
-                                ) - COALESCE(discount, 0)
-                            WHERE id = :tid
-                        """),
-                        {"tid": ro_ticket_id},
-                    )
+            # Apply the transformation
+            await db.execute(
+                update(TicketItem)
+                .where(TicketItem.id == ro_tiid)
+                .values(
+                    item_id=roundoff["new"]["item_id"],
+                    rate=roundoff["new"]["rate"],
+                    levy=roundoff["new"]["levy"],
+                    quantity=roundoff["new"]["quantity"],
+                    last_adjustment_id=log.id,
+                )
+            )
+
+            # Audit trail (operation_type=MODIFY since we're modifying not deleting)
+            old_rate = Decimal(str(roundoff["old"]["rate"]))
+            old_levy = Decimal(str(roundoff["old"]["levy"]))
+            old_qty = roundoff["old"]["quantity"]
+            new_rate = Decimal(str(roundoff["new"]["rate"]))
+            new_levy = Decimal(str(roundoff["new"]["levy"]))
+            new_qty = roundoff["new"]["quantity"]
+            old_line = (old_rate + old_levy) * old_qty
+            new_line = (new_rate + new_levy) * new_qty
+            db.add(AdminAdjustmentDetails(
+                adjustment_id=log.id,
+                ticket_id=ro_ticket_id,
+                ticket_item_id=ro_tiid,
+                old_rate=float(old_rate),
+                old_levy=float(old_levy),
+                new_rate=float(new_rate),
+                new_levy=float(new_levy),
+                rate_delta=float(old_rate * old_qty - new_rate * new_qty),
+                levy_delta=float(old_levy * old_qty - new_levy * new_qty),
+                total_delta=float(old_line - new_line),
+                matched_rule_id=None,
+                operation_type="MODIFY",
+            ))
+
+            # Recalc net_amount on this ticket if not already in surviving_ticket_ids
+            if ro_ticket_id not in set(surviving_ticket_ids):
+                await db.execute(
+                    text("""
+                        UPDATE tickets
+                        SET
+                            amount = (
+                                SELECT COALESCE(SUM((ti.rate + ti.levy) * ti.quantity), 0)
+                                FROM ticket_items ti
+                                WHERE ti.ticket_id = tickets.id AND ti.is_cancelled = false
+                            ),
+                            net_amount = (
+                                SELECT COALESCE(SUM((ti.rate + ti.levy) * ti.quantity), 0)
+                                FROM ticket_items ti
+                                WHERE ti.ticket_id = tickets.id AND ti.is_cancelled = false
+                            ) - COALESCE(discount, 0)
+                        WHERE id = :tid
+                    """),
+                    {"tid": ro_ticket_id},
+                )
 
         log.status = "COMMITTED"
         log.executed_at = datetime.now(timezone.utc)
