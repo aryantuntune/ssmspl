@@ -22,6 +22,9 @@ from app.models.item import Item
 
 MAX_ITEM_ROWS = 5000
 
+SMALL_REMAINDER_THRESHOLD = Decimal("50")
+ROUND_OFF_ITEM_NAME_KEYWORDS = ["LUGGAGE", "LUG ", "GOODS", "PER KG"]
+
 
 def _date_lock_hash(date_start: date, date_end: date) -> int:
     raw = f"{date_start}{date_end}".encode()
@@ -323,6 +326,120 @@ async def _snapshot_tickets_for_preview(
     return result
 
 
+async def _find_roundoff_target(
+    db: AsyncSession,
+    branch_id: int,
+    date_start: date,
+    date_end: date,
+    remaining: Decimal,
+    excluded_ticket_item_ids: set[int],
+) -> dict | None:
+    """
+    Find a round-off transformation target for a small remainder.
+    Strategy: last CASH ticket in date range -> pick a ticket_item with sufficient
+    value (prefer PASSENGER items) -> transform to a luggage-type item with
+    rate=1, levy=0, adjusted quantity.
+
+    Returns a dict describing the transformation, or None if no suitable target.
+    """
+    if remaining <= 0:
+        return None
+
+    # Find a luggage-type TO item (active items whose name matches keywords)
+    from sqlalchemy import or_ as _or_keywords
+    kw_clauses = [Item.name.ilike(f"%{kw}%") for kw in ROUND_OFF_ITEM_NAME_KEYWORDS]
+    to_item_result = await db.execute(
+        select(Item).where(Item.is_active == True, _or_keywords(*kw_clauses)).order_by(Item.id).limit(1)
+    )
+    to_item = to_item_result.scalar_one_or_none()
+    if to_item is None:
+        return None  # no luggage-type item available; skip round-off
+
+    # Find candidate tickets: last CASH ticket first, walking backward
+    # Use ticket_id DESC as the "last ticket" proxy (tickets are issued sequentially)
+    tickets_q = (
+        select(Ticket.id, Ticket.ticket_date, Ticket.ticket_no)
+        .join(PaymentMode, PaymentMode.id == Ticket.payment_mode_id)
+        .where(
+            Ticket.branch_id == branch_id,
+            Ticket.ticket_date >= date_start,
+            Ticket.ticket_date <= date_end,
+            Ticket.is_cancelled == False,
+            func.upper(PaymentMode.description) == "CASH",
+        )
+        .order_by(Ticket.ticket_date.desc(), Ticket.id.desc())
+        .limit(20)  # at most 20 candidates; usually the first one works
+    )
+    candidate_tickets = (await db.execute(tickets_q)).all()
+
+    for tkt in candidate_tickets:
+        # Fetch items on this ticket, prefer PASSENGER ones first
+        items_q = (
+            select(
+                TicketItem.id.label("tiid"),
+                TicketItem.ticket_id,
+                TicketItem.item_id,
+                TicketItem.rate,
+                TicketItem.levy,
+                TicketItem.quantity,
+                Item.name.label("item_name"),
+            )
+            .join(Item, Item.id == TicketItem.item_id)
+            .where(
+                TicketItem.ticket_id == tkt.id,
+                TicketItem.is_cancelled == False,
+            )
+        )
+        rows = (await db.execute(items_q)).all()
+        # Sort candidate items: PASSENGER first, then highest line_value first
+        def _score(r):
+            lv = (Decimal(str(r.rate)) + Decimal(str(r.levy))) * r.quantity
+            is_passenger = "PASSENGER" in (r.item_name or "").upper()
+            # Tuple: (is_passenger as -1/0 for sort ASC = True first, then -line_value for desc)
+            return (0 if is_passenger else 1, -lv)
+        sorted_rows = sorted(rows, key=_score)
+
+        for r in sorted_rows:
+            if r.tiid in excluded_ticket_item_ids:
+                continue
+            unit_value = Decimal(str(r.rate)) + Decimal(str(r.levy))
+            line_value = unit_value * r.quantity
+            if line_value <= remaining:
+                continue  # can't reduce by more than the item's own value
+            # Target line_value after transform
+            target_line_value = line_value - remaining
+            # TO item is rate=1, levy=0 -> quantity = target_line_value (integer)
+            # target_line_value must be a positive integer
+            if target_line_value <= 0 or target_line_value != target_line_value.to_integral_value():
+                continue
+            new_quantity = int(target_line_value)
+            if new_quantity <= 0:
+                continue
+            return {
+                "ticket_id": r.ticket_id,
+                "ticket_item_id": r.tiid,
+                "remaining_absorbed": float(remaining),
+                "old": {
+                    "item_id": r.item_id,
+                    "item_name": r.item_name,
+                    "rate": float(r.rate),
+                    "levy": float(r.levy),
+                    "quantity": r.quantity,
+                    "line_value": float(line_value),
+                },
+                "new": {
+                    "item_id": to_item.id,
+                    "item_name": to_item.name,
+                    "rate": 1.0,
+                    "levy": 0.0,
+                    "quantity": new_quantity,
+                    "line_value": float(target_line_value),
+                },
+            }
+
+    return None
+
+
 async def dry_run(
     db: AsyncSession,
     branch_id: int,
@@ -486,6 +603,19 @@ async def dry_run(
                 "matched_rule_id": None,
             })
 
+    # Round-off completion: absorb a small remainder by transforming one ticket_item
+    # into a luggage-type item on the last ticket of the date range.
+    roundoff = None
+    pre_roundoff_remaining = requested - closest_applied
+    if Decimal("0") < pre_roundoff_remaining <= SMALL_REMAINDER_THRESHOLD:
+        roundoff = await _find_roundoff_target(
+            db, branch_id, date_start, date_end,
+            pre_roundoff_remaining, excluded_ticket_item_ids=set(closest_ids),
+        )
+
+    # Update closest_applied to reflect the round-off absorption (for UI display)
+    total_applied = closest_applied + (Decimal(str(roundoff["remaining_absorbed"])) if roundoff else Decimal("0"))
+
     # Step 2: Recommended = round DOWN of achievable (safe, clean number for admin).
     recommended_amount = _round_down_to_clean(achievable_amount)
     if recommended_amount <= 0:
@@ -555,6 +685,8 @@ async def dry_run(
             "tickets": build_tickets_view(closest_detail),
             "extra_item_id": closest_extra_item_id,
         },
+        "roundoff": roundoff,
+        "total_applied": str(total_applied),
         "diff_items": diff_items,
     }
 
@@ -574,25 +706,27 @@ async def dry_run(
     await db.flush()
     await db.refresh(log)
 
-    # Unapplied based on what the Closest plan actually delivers
-    closest_unapplied = requested - closest_applied
-    if closest_unapplied < 0:
-        closest_unapplied = Decimal("0")
+    # Unapplied based on what the Closest plan + round-off actually delivers
+    final_unapplied = requested - total_applied
+    if final_unapplied < 0:
+        final_unapplied = Decimal("0")
 
     return {
         "batch_id": str(log.id),
         "cash_total_before": float(cash_total),
         "requested_adjustment": float(requested),
         "closest_applied": float(closest_applied),
+        "total_applied": float(total_applied),
         "deletable_cash_total": float(deletable_cash_total),
         "protected_cash_total": float(protected_cash_total),
-        "unapplied_amount": float(closest_unapplied),
+        "unapplied_amount": float(final_unapplied),
         "plan": {
             "applied": float(closest_applied),
             "tickets": execution_plan["closest_plan"]["tickets"],
             "item_ids": closest_ids,
             "extra_item_id": closest_extra_item_id,
         },
+        "roundoff": roundoff,
     }
 
 
@@ -845,6 +979,110 @@ async def commit(
                 """),
                 {"ids": surviving_ticket_ids},
             )
+
+        # Apply round-off transformation (if any) — transforms one ticket_item
+        # on the last ticket to absorb a small remainder.
+        roundoff = log.dry_run_summary.get("roundoff")
+        if roundoff:
+            ro_ticket_id = roundoff["ticket_id"]
+            ro_tiid = roundoff["ticket_item_id"]
+
+            # Check the ticket_item still exists and wasn't touched by deletion
+            ro_check = await db.execute(
+                select(TicketItem).where(TicketItem.id == ro_tiid)
+            )
+            ro_ti = ro_check.scalar_one_or_none()
+            if ro_ti is not None and not ro_ti.is_cancelled:
+                # Backup the original ticket_item (full state) and the ticket (if not already backed up)
+                db.add(TicketItemsBackup(
+                    adjustment_batch_id=log.id,
+                    ticket_item_id=ro_ti.id,
+                    ticket_id=ro_ti.ticket_id,
+                    original_data={
+                        "id": ro_ti.id,
+                        "ticket_id": ro_ti.ticket_id,
+                        "item_id": ro_ti.item_id,
+                        "rate": str(ro_ti.rate),
+                        "levy": str(ro_ti.levy),
+                        "quantity": ro_ti.quantity,
+                        "vehicle_no": ro_ti.vehicle_no,
+                        "vehicle_name": ro_ti.vehicle_name,
+                        "is_cancelled": ro_ti.is_cancelled,
+                    },
+                ))
+                if ro_ticket_id not in set(ticket_ids):
+                    ro_tkt = (await db.execute(select(Ticket).where(Ticket.id == ro_ticket_id))).scalar_one_or_none()
+                    if ro_tkt is not None:
+                        db.add(TicketsBackup(
+                            adjustment_batch_id=log.id,
+                            ticket_id=ro_tkt.id,
+                            original_data={
+                                "id": ro_tkt.id,
+                                "net_amount": str(ro_tkt.net_amount),
+                                "amount": str(ro_tkt.amount),
+                                "discount": str(ro_tkt.discount) if ro_tkt.discount is not None else None,
+                                "branch_id": ro_tkt.branch_id,
+                                "ticket_date": str(ro_tkt.ticket_date),
+                            },
+                        ))
+
+                # Apply the transformation
+                await db.execute(
+                    update(TicketItem)
+                    .where(TicketItem.id == ro_tiid)
+                    .values(
+                        item_id=roundoff["new"]["item_id"],
+                        rate=roundoff["new"]["rate"],
+                        levy=roundoff["new"]["levy"],
+                        quantity=roundoff["new"]["quantity"],
+                        last_adjustment_id=log.id,
+                    )
+                )
+
+                # Audit trail (operation_type=MODIFY since we're modifying not deleting)
+                old_rate = Decimal(str(roundoff["old"]["rate"]))
+                old_levy = Decimal(str(roundoff["old"]["levy"]))
+                old_qty = roundoff["old"]["quantity"]
+                new_rate = Decimal(str(roundoff["new"]["rate"]))
+                new_levy = Decimal(str(roundoff["new"]["levy"]))
+                new_qty = roundoff["new"]["quantity"]
+                old_line = (old_rate + old_levy) * old_qty
+                new_line = (new_rate + new_levy) * new_qty
+                db.add(AdminAdjustmentDetails(
+                    adjustment_id=log.id,
+                    ticket_id=ro_ticket_id,
+                    ticket_item_id=ro_tiid,
+                    old_rate=float(old_rate),
+                    old_levy=float(old_levy),
+                    new_rate=float(new_rate),
+                    new_levy=float(new_levy),
+                    rate_delta=float(old_rate * old_qty - new_rate * new_qty),
+                    levy_delta=float(old_levy * old_qty - new_levy * new_qty),
+                    total_delta=float(old_line - new_line),
+                    matched_rule_id=None,
+                    operation_type="MODIFY",
+                ))
+
+                # Recalc net_amount on this ticket if not already in surviving_ticket_ids
+                if ro_ticket_id not in set(surviving_ticket_ids):
+                    await db.execute(
+                        text("""
+                            UPDATE tickets
+                            SET
+                                amount = (
+                                    SELECT COALESCE(SUM((ti.rate + ti.levy) * ti.quantity), 0)
+                                    FROM ticket_items ti
+                                    WHERE ti.ticket_id = tickets.id AND ti.is_cancelled = false
+                                ),
+                                net_amount = (
+                                    SELECT COALESCE(SUM((ti.rate + ti.levy) * ti.quantity), 0)
+                                    FROM ticket_items ti
+                                    WHERE ti.ticket_id = tickets.id AND ti.is_cancelled = false
+                                ) - COALESCE(discount, 0)
+                            WHERE id = :tid
+                        """),
+                        {"tid": ro_ticket_id},
+                    )
 
         log.status = "COMMITTED"
         log.executed_at = datetime.now(timezone.utc)

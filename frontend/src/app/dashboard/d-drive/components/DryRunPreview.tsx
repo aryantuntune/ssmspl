@@ -31,15 +31,25 @@ interface Plan {
   extra_item_id: number | null;
 }
 
+interface RoundoffInfo {
+  ticket_id: number;
+  ticket_item_id: number;
+  remaining_absorbed: number;
+  old: { item_id: number; item_name: string; rate: number; levy: number; quantity: number; line_value: number };
+  new: { item_id: number; item_name: string; rate: number; levy: number; quantity: number; line_value: number };
+}
+
 export interface DryRunResult {
   batch_id: string;
   cash_total_before: number;
   requested_adjustment: number;
   closest_applied: number;
+  total_applied: number;
   deletable_cash_total: number;
   protected_cash_total: number;
   unapplied_amount: number;
   plan: Plan;
+  roundoff: RoundoffInfo | null;
 }
 
 interface Props {
@@ -68,8 +78,15 @@ export default function DryRunPreview({ result, branchName, onCancel, onCommitte
       itemsRemoved += t.items_to_remove.length;
       ticketsAffected += 1;
     }
-    return { applied, itemsRemoved, ticketsAffected };
-  }, [plan, skippedTickets]);
+    // Include round-off absorption (always active if present; not user-toggleable)
+    const roundoffAmount = result.roundoff?.remaining_absorbed ?? 0;
+    return {
+      applied: applied + roundoffAmount,
+      itemsRemoved,
+      ticketsAffected: ticketsAffected + (result.roundoff ? 1 : 0),
+      roundoffAmount,
+    };
+  }, [plan, skippedTickets, result.roundoff]);
 
   const cashAfter = result.cash_total_before - effective.applied;
   const unappliedFromRequest = Math.max(0, result.requested_adjustment - effective.applied);
@@ -156,8 +173,21 @@ export default function DryRunPreview({ result, branchName, onCancel, onCommitte
           </div>
         </div>
 
+        {/* Round-off banner when system auto-adjusted a small remainder */}
+        {result.roundoff && (
+          <div className="px-6 py-3 border-b bg-blue-50 dark:bg-blue-950/20 text-xs text-blue-900 dark:text-blue-200">
+            <p className="font-semibold mb-1">
+              System auto-adjusted {fmt(result.roundoff.remaining_absorbed)} using last-ticket balancing.
+            </p>
+            <p>
+              Ticket <strong>#{result.roundoff.ticket_id}</strong>: <strong>{result.roundoff.old.quantity}× {result.roundoff.old.item_name}</strong> (₹{result.roundoff.old.line_value.toFixed(2)})
+              {" → "}
+              <strong>{result.roundoff.new.quantity}× {result.roundoff.new.item_name}</strong> (₹{result.roundoff.new.line_value.toFixed(2)})
+            </p>
+          </div>
+        )}
         {/* Reason banner when requested exceeds what's possible */}
-        {unappliedFromRequest > 0.01 && (
+        {unappliedFromRequest > 0.01 && !result.roundoff && (
           <div className="px-6 py-3 border-b bg-amber-50 dark:bg-amber-950/20 text-xs text-amber-900 dark:text-amber-200">
             <p className="font-semibold mb-1">
               {fmt(unappliedFromRequest)} of your requested {fmt(result.requested_adjustment)} could not be applied.
