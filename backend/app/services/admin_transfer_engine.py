@@ -593,7 +593,26 @@ async def commit(
     log = result.scalar_one_or_none()
     if log is None:
         raise HTTPException(status_code=404, detail="Adjustment batch not found")
+
+    # Idempotency: a second click on an already-COMMITTED batch returns the same
+    # success payload as the first commit, NOT an error. Extra clicks are safe no-ops.
+    if log.status == "COMMITTED":
+        return {
+            "batch_id": str(log.id),
+            "status": "COMMITTED",
+            "tickets_affected": log.total_tickets_affected or 0,
+            "items_updated": 0,  # already applied; recomputing would require re-querying audit
+            "items_inserted": 0,
+            "executed_at": log.executed_at.isoformat() if log.executed_at else None,
+            "idempotent_replay": True,
+        }
+    if log.status == "IN_PROGRESS":
+        raise HTTPException(
+            status_code=409,
+            detail="This batch is currently being processed. Please wait a moment and refresh.",
+        )
     if log.status != "DRY_RUN":
+        # FAILED or ROLLED_BACK — cannot commit
         raise HTTPException(status_code=400, detail=f"Batch is not in DRY_RUN state (current: {log.status})")
 
     plan = log.dry_run_summary

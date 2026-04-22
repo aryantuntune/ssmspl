@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import api from "@/lib/api";
@@ -71,8 +71,12 @@ const fmt = (n: number) => "₹" + n.toLocaleString("en-IN", { minimumFractionDi
 export default function TransferDryRunPreview({ result, branchName, onCancel, onCommitted }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  // Hard guard against double-submit: once clicked, stays true until retry-on-error.
+  const submittedRef = useRef(false);
 
   const handleCommit = async () => {
+    if (loading || submittedRef.current) return;
+    submittedRef.current = true;
     setLoading(true); setError("");
     try {
       await api.post("/api/admin/d-drive/transfer/commit", { batch_id: result.batch_id });
@@ -80,6 +84,7 @@ export default function TransferDryRunPreview({ result, branchName, onCancel, on
     } catch (e) {
       const err = e as { response?: { data?: { detail?: string } } };
       setError(err?.response?.data?.detail ?? "Commit failed");
+      submittedRef.current = false;  // Allow retry on error
       setLoading(false);
     }
   };

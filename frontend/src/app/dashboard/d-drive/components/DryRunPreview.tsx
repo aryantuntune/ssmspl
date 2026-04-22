@@ -1,5 +1,5 @@
 "use client";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -65,6 +65,8 @@ export default function DryRunPreview({ result, branchName, onCancel, onCommitte
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [skippedTickets, setSkippedTickets] = useState<Set<number>>(new Set());
+  // Hard guard against double-submit: once clicked successfully, stays true until retry-on-error.
+  const submittedRef = useRef(false);
 
   const plan = result.plan;
 
@@ -102,6 +104,9 @@ export default function DryRunPreview({ result, branchName, onCancel, onCommitte
   };
 
   const handleCommit = async () => {
+    // Hard single-fire guard: if already loading, or already submitted once, ignore the click.
+    if (loading || submittedRef.current) return;
+    submittedRef.current = true;
     setLoading(true);
     setError("");
     try {
@@ -116,6 +121,8 @@ export default function DryRunPreview({ result, branchName, onCancel, onCommitte
     } catch (e) {
       const err = e as { response?: { data?: { detail?: string } } };
       setError(err?.response?.data?.detail ?? "Commit failed");
+      // Only reset submittedRef on error so user can retry
+      submittedRef.current = false;
       setLoading(false);
     }
   };
