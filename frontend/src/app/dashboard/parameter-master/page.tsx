@@ -20,7 +20,7 @@ type Tab = "reconciliation" | "transfer";
 
 export default function ParameterMasterPage() {
   const user = useDashboardUser();
-  const isSuperAdmin = user?.role === "SUPER_ADMIN";
+  const canEdit = user?.role === "SUPER_ADMIN" || user?.role === "ADMIN";
   const [tab, setTab] = useState<Tab>("reconciliation");
 
   // Reconciliation tab state (preserves existing behavior)
@@ -79,7 +79,7 @@ export default function ParameterMasterPage() {
   const someFilteredSelected = selectedFiltered.length > 0 && !allFilteredSelected;
 
   const toggleOne = async (item: Item) => {
-    if (!isSuperAdmin) return;
+    if (!canEdit) return;
     const newValue = !item.is_protected;
     setSaving(item.item_id); setError("");
     setItems(prev => prev.map(i => i.item_id === item.item_id ? { ...i, is_protected: newValue } : i));
@@ -100,7 +100,7 @@ export default function ParameterMasterPage() {
   };
   const clearSelection = () => setSelected(new Set());
   const bulkUpdate = async (makeProtected: boolean) => {
-    if (!isSuperAdmin || selected.size === 0) return;
+    if (!canEdit || selected.size === 0) return;
     const ids = Array.from(selected);
     setBulkSaving(true); setError("");
     setItems(prev => prev.map(i => selected.has(i.item_id) ? { ...i, is_protected: makeProtected } : i));
@@ -184,7 +184,7 @@ export default function ParameterMasterPage() {
 
           {error && <div className="bg-destructive/10 text-destructive px-4 py-2 rounded text-sm">{error}</div>}
 
-          {isSuperAdmin && selected.size > 0 && (
+          {canEdit && selected.size > 0 && (
             <div className="sticky top-0 z-10 bg-primary text-primary-foreground px-4 py-3 rounded-lg flex items-center gap-3 flex-wrap shadow">
               <span className="text-sm font-medium">{selected.size} item{selected.size !== 1 ? "s" : ""} selected</span>
               <div className="flex gap-2 ml-auto flex-wrap">
@@ -200,7 +200,7 @@ export default function ParameterMasterPage() {
           )}
 
           <div className="border rounded-lg overflow-hidden divide-y">
-            {isSuperAdmin && filtered.length > 0 && (
+            {canEdit && filtered.length > 0 && (
               <div className="px-4 py-2 bg-muted/50 flex items-center gap-3 text-xs text-muted-foreground">
                 <Checkbox
                   checked={allFilteredSelected ? true : someFilteredSelected ? "indeterminate" : false}
@@ -236,7 +236,7 @@ export default function ParameterMasterPage() {
                 const isSelected = selected.has(item.item_id);
                 return (
                   <div key={item.item_id} className={`px-4 py-3 flex items-center gap-3 ${isSelected ? "bg-primary/5" : "hover:bg-muted/30"}`}>
-                    {isSuperAdmin && (
+                    {canEdit && (
                       <Checkbox checked={isSelected} onCheckedChange={() => toggleSelect(item.item_id)} aria-label={`Select ${item.item_name}`} />
                     )}
                     <div className="min-w-0 flex-1">
@@ -257,7 +257,7 @@ export default function ParameterMasterPage() {
                       }`}>{item.is_protected ? "Protected" : "Deletable"}</span>
                       <Switch
                         checked={item.is_protected}
-                        disabled={!isSuperAdmin || saving === item.item_id || bulkSaving}
+                        disabled={!canEdit || saving === item.item_id || bulkSaving}
                         onCheckedChange={() => toggleOne(item)}
                       />
                     </div>
@@ -267,7 +267,7 @@ export default function ParameterMasterPage() {
             )}
           </div>
 
-          {!isSuperAdmin && (
+          {!canEdit && (
             <p className="text-xs text-muted-foreground italic">
               You have read-only access. Contact a System Administrator to change protection settings.
             </p>
