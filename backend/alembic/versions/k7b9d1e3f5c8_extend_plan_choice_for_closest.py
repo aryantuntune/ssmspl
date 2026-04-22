@@ -1,7 +1,7 @@
 """extend_plan_choice_for_closest
 
 Revision ID: k7b9d1e3f5c8
-Revises: j4a6b8c0d2e5
+Revises: l6a3c9e2f8b1
 Create Date: 2026-04-22 00:00:00.000000
 
 """
@@ -9,7 +9,7 @@ from typing import Union
 from alembic import op
 
 revision: str = 'k7b9d1e3f5c8'
-down_revision: Union[str, None] = 'j4a6b8c0d2e5'
+down_revision: Union[str, None] = 'l6a3c9e2f8b1'
 branch_labels: Union[str, None] = None
 depends_on: Union[str, None] = None
 
