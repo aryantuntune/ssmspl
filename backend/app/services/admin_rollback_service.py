@@ -248,20 +248,41 @@ async def rollback(
                 if isinstance(ticket_date_raw, str)
                 else ticket_date_raw
             )
+            # departure is TIME type; backup stored as str(ticket.departure) -> "HH:MM:SS"
+            departure_raw = od.get("departure")
+            departure_val = None
+            if departure_raw is not None and departure_raw != "None":
+                if isinstance(departure_raw, str):
+                    from datetime import time as _time
+                    try:
+                        departure_val = _time.fromisoformat(departure_raw)
+                    except (ValueError, TypeError):
+                        departure_val = None
+                else:
+                    departure_val = departure_raw
+            # verification_code is UUID; backup stored as str(uuid). asyncpg accepts both.
+            verification_code_raw = od.get("verification_code")
+            verification_code_val = (
+                verification_code_raw
+                if verification_code_raw and verification_code_raw != "None"
+                else None
+            )
             amount_val = float(od["amount"]) if od.get("amount") is not None else 0.0
             discount_val = float(od["discount"]) if od.get("discount") is not None else None
             net_amount_val = float(od["net_amount"]) if od.get("net_amount") is not None else 0.0
 
             await db.execute(
                 text("""
-                    INSERT INTO tickets (id, branch_id, ticket_no, ticket_date, route_id,
-                                          amount, discount, payment_mode_id, is_cancelled,
-                                          net_amount, status, is_multi_ticket, boat_id,
-                                          ref_no, created_by, updated_by, created_at, updated_at)
-                    VALUES (:id, :branch_id, :ticket_no, :ticket_date, :route_id,
-                            :amount, :discount, :payment_mode_id, :is_cancelled,
-                            :net_amount, :status, :is_multi_ticket, :boat_id,
-                            :ref_no, NULL, NULL, NOW(), NOW())
+                    INSERT INTO tickets (id, branch_id, ticket_no, ticket_date, departure,
+                                          route_id, amount, discount, payment_mode_id,
+                                          is_cancelled, net_amount, status, is_multi_ticket,
+                                          boat_id, ref_no, verification_code,
+                                          created_by, updated_by, created_at, updated_at)
+                    VALUES (:id, :branch_id, :ticket_no, :ticket_date, :departure,
+                            :route_id, :amount, :discount, :payment_mode_id,
+                            :is_cancelled, :net_amount, :status, :is_multi_ticket,
+                            :boat_id, :ref_no, CAST(:verification_code AS uuid),
+                            NULL, NULL, NOW(), NOW())
                     ON CONFLICT (id) DO NOTHING
                 """),
                 {
@@ -269,6 +290,7 @@ async def rollback(
                     "branch_id": int(od["branch_id"]),
                     "ticket_no": int(od["ticket_no"]),
                     "ticket_date": ticket_date_val,
+                    "departure": departure_val,
                     "route_id": int(od["route_id"]),
                     "amount": amount_val,
                     "discount": discount_val,
@@ -279,6 +301,7 @@ async def rollback(
                     "is_multi_ticket": bool(od.get("is_multi_ticket", False)),
                     "boat_id": od.get("boat_id"),
                     "ref_no": od.get("ref_no"),
+                    "verification_code": verification_code_val,
                 },
             )
 
