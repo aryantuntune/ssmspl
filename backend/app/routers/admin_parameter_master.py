@@ -181,7 +181,7 @@ async def set_item_protection(
     item_id: int,
     body: ItemProtectionToggle,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(_super_admin_only),
+    current_user=Depends(_admin_or_super),
 ):
     """Mark an item as Protected (never deleted) or Deletable (may be removed during reconciliation)."""
     from sqlalchemy import select
@@ -242,7 +242,7 @@ class BulkItemProtection(BaseModel):
 async def bulk_set_item_protection(
     body: BulkItemProtection,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(_super_admin_only),
+    current_user=Depends(_admin_or_super),
 ):
     """Mark a list of items as Protected or Deletable in a single operation."""
     from sqlalchemy import select

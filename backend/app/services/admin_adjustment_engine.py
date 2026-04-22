@@ -126,27 +126,29 @@ async def _build_deletion_plan(
     per_ticket: dict[int, list[dict]] = {}
     remaining = target_amount
 
-    # If no unprotected rules defined, treat it as "all non-protected items eligible"
-    # using a default pseudo-rule (FIFO, no caps)
-    if not rules:
-        pseudo_rule = ParameterMaster(
-            id=0,
-            priority_order=999999,
-            branch_scope=None,
-            item_id=None,
-            payment_mode="CASH",
-            ticket_conditions={},
-            item_conditions={},
-            ticket_selection_order="FIFO",
-            max_adjustment_per_ticket=None,
-            max_adjustment_per_item=None,
-            max_total_adjustment_per_rule=None,
-            stop_on_match=False,
-            is_active=True,
-            is_protected=False,
-            min_remaining_per_item=0,
-        )
-        rules = [pseudo_rule]
+    # Always append a catch-all pseudo-rule at the END. This ensures items marked
+    # "Deletable" via the simplified Parameter Master UI (but not covered by any
+    # user-defined unprotected rule) are still eligible for deletion.
+    # The deletion_set guard prevents double-counting items already processed by
+    # a prior rule.
+    catchall_rule = ParameterMaster(
+        id=0,
+        priority_order=999999,
+        branch_scope=None,
+        item_id=None,
+        payment_mode="CASH",
+        ticket_conditions={},
+        item_conditions={},
+        ticket_selection_order="FIFO",
+        max_adjustment_per_ticket=None,
+        max_adjustment_per_item=None,
+        max_total_adjustment_per_rule=None,
+        stop_on_match=False,
+        is_active=True,
+        is_protected=False,
+        min_remaining_per_item=0,
+    )
+    rules.append(catchall_rule)
 
     for rule in rules:
         if remaining <= 0:
