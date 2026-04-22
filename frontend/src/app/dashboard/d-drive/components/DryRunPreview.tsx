@@ -28,9 +28,6 @@ interface Plan {
   applied: number;
   tickets: TicketView[];
   item_ids: number[];
-}
-
-interface ClosestPlan extends Plan {
   extra_item_id: number | null;
 }
 
@@ -38,13 +35,11 @@ export interface DryRunResult {
   batch_id: string;
   cash_total_before: number;
   requested_adjustment: number;
-  achievable_adjustment: number;
-  recommended_adjustment: number;
+  closest_applied: number;
+  deletable_cash_total: number;
+  protected_cash_total: number;
   unapplied_amount: number;
-  recommended_plan: Plan;
-  requested_plan: Plan;
-  closest_plan: ClosestPlan;
-  diff_items: number[];
+  plan: Plan;
 }
 
 interface Props {
@@ -57,16 +52,12 @@ interface Props {
 const fmt = (n: number) => "₹" + n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export default function DryRunPreview({ result, branchName, onCancel, onCommitted }: Props) {
-  const [activePlan, setActivePlan] = useState<"recommended" | "requested" | "closest">("recommended");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [skippedTickets, setSkippedTickets] = useState<Set<number>>(new Set());
 
-  const plan = activePlan === "recommended"
-    ? result.recommended_plan
-    : activePlan === "requested"
-    ? result.requested_plan
-    : result.closest_plan;
+  const plan = result.plan;
+
   const effective = useMemo(() => {
     let applied = 0;
     let itemsRemoved = 0;
@@ -81,6 +72,7 @@ export default function DryRunPreview({ result, branchName, onCancel, onCommitte
   }, [plan, skippedTickets]);
 
   const cashAfter = result.cash_total_before - effective.applied;
+  const unappliedFromRequest = Math.max(0, result.requested_adjustment - effective.applied);
   const emptyTicketCount = plan.tickets.filter(t => t.final_items.length === 0).length;
 
   const toggleSkip = (ticketId: number) => {
@@ -92,20 +84,15 @@ export default function DryRunPreview({ result, branchName, onCancel, onCommitte
     });
   };
 
-  const handleCommit = async (choice: "recommended" | "requested" | "closest") => {
+  const handleCommit = async () => {
     setLoading(true);
     setError("");
     try {
-      const targetPlan = choice === "recommended"
-        ? result.recommended_plan
-        : choice === "requested"
-        ? result.requested_plan
-        : result.closest_plan;
-      const planTicketIds = new Set(targetPlan.tickets.map(t => t.ticket_id));
+      const planTicketIds = new Set(plan.tickets.map(t => t.ticket_id));
       const skippedForThisPlan = Array.from(skippedTickets).filter(id => planTicketIds.has(id));
       await api.post("/api/admin/d-drive/adjustment/commit", {
         batch_id: result.batch_id,
-        plan_choice: choice,
+        plan_choice: "closest",
         skipped_ticket_ids: skippedForThisPlan,
       });
       onCommitted();
@@ -123,7 +110,7 @@ export default function DryRunPreview({ result, branchName, onCancel, onCommitte
           <DialogTitle>Trial Preview — {branchName}</DialogTitle>
         </DialogHeader>
 
-        {/* Simplified summary — 4 core metrics only */}
+        {/* Primary summary — 4 cards */}
         <div className="px-6 py-4 border-b grid grid-cols-2 md:grid-cols-4 gap-4">
           <div className="bg-muted/50 rounded p-3">
             <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Cash Before</p>
@@ -143,28 +130,47 @@ export default function DryRunPreview({ result, branchName, onCancel, onCommitte
           </div>
         </div>
 
-        {/* Plan toggle */}
-        <div className="px-6 py-3 border-b flex items-center gap-2 flex-wrap">
-          <span className="text-sm font-medium mr-1">Plan:</span>
-          <button
-            onClick={() => { setActivePlan("recommended"); setSkippedTickets(new Set()); }}
-            className={`px-4 py-1.5 rounded text-sm font-medium border ${activePlan === "recommended" ? "bg-emerald-600 text-white border-emerald-600" : "bg-card border-border"}`}
-          >
-            Recommended ({fmt(result.recommended_plan.applied)})
-          </button>
-          <button
-            onClick={() => { setActivePlan("requested"); setSkippedTickets(new Set()); }}
-            className={`px-4 py-1.5 rounded text-sm font-medium border ${activePlan === "requested" ? "bg-primary text-primary-foreground border-primary" : "bg-card border-border"}`}
-          >
-            Requested ({fmt(result.requested_plan.applied)})
-          </button>
-          <button
-            onClick={() => { setActivePlan("closest"); setSkippedTickets(new Set()); }}
-            className={`px-4 py-1.5 rounded text-sm font-medium border ${activePlan === "closest" ? "bg-violet-600 text-white border-violet-600" : "bg-card border-border"}`}
-          >
-            Closest Match ({fmt(result.closest_plan.applied)})
-          </button>
+        {/* Breakdown — where the cash is */}
+        <div className="px-6 py-3 border-b grid grid-cols-2 gap-4 bg-muted/20">
+          <div className="flex items-center justify-between text-sm">
+            <div>
+              <p className="text-[11px] text-red-700 dark:text-red-400 uppercase tracking-wide">Deletable (unprotected items)</p>
+              <p className="font-semibold text-red-700 dark:text-red-400">{fmt(result.deletable_cash_total)}</p>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {result.cash_total_before > 0
+                ? `${((result.deletable_cash_total / result.cash_total_before) * 100).toFixed(1)}% of cash`
+                : ""}
+            </p>
+          </div>
+          <div className="flex items-center justify-between text-sm">
+            <div>
+              <p className="text-[11px] text-amber-800 dark:text-amber-300 uppercase tracking-wide">Protected (locked items)</p>
+              <p className="font-semibold text-amber-800 dark:text-amber-300">{fmt(result.protected_cash_total)}</p>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {result.cash_total_before > 0
+                ? `${((result.protected_cash_total / result.cash_total_before) * 100).toFixed(1)}% of cash`
+                : ""}
+            </p>
+          </div>
         </div>
+
+        {/* Reason banner when requested exceeds what's possible */}
+        {unappliedFromRequest > 0.01 && (
+          <div className="px-6 py-3 border-b bg-amber-50 dark:bg-amber-950/20 text-xs text-amber-900 dark:text-amber-200">
+            <p className="font-semibold mb-1">
+              {fmt(unappliedFromRequest)} of your requested {fmt(result.requested_adjustment)} could not be applied.
+            </p>
+            <p className="mb-1">
+              <strong>Why?</strong> Only {fmt(result.deletable_cash_total)} of deletable cash items exist in <strong>{branchName}</strong> for the selected date range.
+              The remaining {fmt(result.protected_cash_total)} is in protected items (passengers, monthly passes, luggage, etc.) which cannot be deleted.
+            </p>
+            <p>
+              <strong>To adjust more:</strong> widen the date range, mark more items as Deletable in Parameter Master, or reduce your requested amount.
+            </p>
+          </div>
+        )}
 
         {emptyTicketCount > 0 && (
           <div className="px-6 py-2 border-b bg-amber-50 dark:bg-amber-950/20 text-xs text-amber-800 dark:text-amber-200">
@@ -229,13 +235,11 @@ export default function DryRunPreview({ result, branchName, onCancel, onCommitte
                     <ul className="space-y-0.5 text-sm">
                       {t.original_items.map(i => {
                         const toRemove = t.items_to_remove.some(r => r.ticket_item_id === i.ticket_item_id);
-                        const isClosestExtra = activePlan === "closest" && toRemove && result.closest_plan.extra_item_id === i.ticket_item_id;
                         const strikeThrough = toRemove && !isSkipped;
-                        const highlightClass = isClosestExtra && !isSkipped ? "bg-violet-100 dark:bg-violet-950/40 rounded px-1" : "";
                         return (
                           <li
                             key={i.ticket_item_id}
-                            className={`flex justify-between ${strikeThrough ? "line-through text-destructive" : ""} ${highlightClass}`}
+                            className={`flex justify-between ${strikeThrough ? "line-through text-destructive" : ""}`}
                           >
                             <span>{i.quantity}× {i.item_name}</span>
                             <span className="tabular-nums">{fmt(i.line_value)}</span>
@@ -279,13 +283,8 @@ export default function DryRunPreview({ result, branchName, onCancel, onCommitte
         <div className="px-6 py-3 border-t flex gap-2 justify-end bg-card flex-wrap items-center">
           <Button variant="outline" onClick={onCancel} disabled={loading}>← Back</Button>
           <Button
-            onClick={() => handleCommit(activePlan)}
+            onClick={handleCommit}
             disabled={loading || effective.ticketsAffected === 0}
-            className={
-              activePlan === "recommended" ? "bg-emerald-600 hover:bg-emerald-700 text-white" :
-              activePlan === "closest" ? "bg-violet-600 hover:bg-violet-700 text-white" :
-              ""
-            }
           >
             {loading ? "Applying…" : `Confirm & Apply (${fmt(effective.applied)})`}
           </Button>
