@@ -48,12 +48,14 @@ const KIND_COLORS: Record<string, string> = {
 
 export default function AdjustmentsHistoryModal({ open, onClose, onRolledBack }: Props) {
   const user = useDashboardUser();
-  const isSuperAdmin = user?.role === "SUPER_ADMIN";
   const [items, setItems] = useState<Adjustment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [rollingBackId, setRollingBackId] = useState<string | null>(null);
   const [confirmTarget, setConfirmTarget] = useState<Adjustment | null>(null);
+  // Server-authoritative: whether the current viewer is allowed to rollback.
+  // SUPER_ADMIN always true; ADMIN only if "Admin Rollback Access" toggle is ON.
+  const [canRollback, setCanRollback] = useState(false);
 
   const load = () => {
     setLoading(true);
@@ -61,6 +63,9 @@ export default function AdjustmentsHistoryModal({ open, onClose, onRolledBack }:
       .then(r => setItems(r.data))
       .catch(() => setError("Could not load adjustment history"))
       .finally(() => setLoading(false));
+    api.get<{ can_rollback: boolean }>("/api/admin/d-drive/adjustments/permissions")
+      .then(r => setCanRollback(r.data.can_rollback))
+      .catch(() => setCanRollback(user?.role === "SUPER_ADMIN"));  // fallback: hard role check
   };
 
   useEffect(() => {
@@ -175,7 +180,7 @@ export default function AdjustmentsHistoryModal({ open, onClose, onRolledBack }:
                       <Badge className={STATUS_COLORS[a.status]}>{a.status}</Badge>
                     </td>
                     <td className="px-4 py-2.5">
-                      {isSuperAdmin && (a.status === "COMMITTED" || a.status === "FAILED") ? (
+                      {canRollback && (a.status === "COMMITTED" || a.status === "FAILED") ? (
                         <Button
                           size="sm"
                           variant="outline"

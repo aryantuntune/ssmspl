@@ -1,16 +1,41 @@
 import uuid
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.rbac import UserRole
 from app.database import get_db
-from app.dependencies import require_roles
-from app.services import admin_rollback_service
+from app.dependencies import get_current_user, require_roles
+from app.models.user import User
+from app.services import admin_rollback_service, admin_screen_service
 
 router = APIRouter(prefix="/api/admin/d-drive/adjustments", tags=["Admin D Drive Adjustments"])
 
 _admin_or_super = require_roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
-_super_admin_only = require_roles(UserRole.SUPER_ADMIN)
+
+
+async def require_rollback_permission(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> User:
+    """
+    Gate for the rollback endpoint:
+    - SUPER_ADMIN: always allowed
+    - ADMIN: allowed only when "Admin Rollback Access" toggle is ON in Settings → Screen Access
+    - Other roles: denied
+    """
+    if current_user.role == UserRole.SUPER_ADMIN:
+        return current_user
+    if current_user.role == UserRole.ADMIN:
+        if await admin_screen_service.is_permission_enabled(db, "Admin Rollback Access"):
+            return current_user
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Rollback is disabled for admin users. Ask a SUPER_ADMIN to enable 'Admin Rollback Access' in Settings.",
+        )
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Access denied. Insufficient permissions.",
+    )
 
 
 @router.get("")
@@ -22,6 +47,21 @@ async def list_adjustments(
 ):
     """Recent adjustment log entries — visible to ADMIN + SUPER_ADMIN."""
     return await admin_rollback_service.list_adjustments(db, branch_id=branch_id, limit=limit)
+
+
+@router.get("/permissions")
+async def get_viewer_permissions(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(_admin_or_super),
+):
+    """Return what the current viewer can do on the adjustments history.
+    Used by the frontend to decide whether to render the Rollback button."""
+    can_rollback = False
+    if current_user.role == UserRole.SUPER_ADMIN:
+        can_rollback = True
+    elif current_user.role == UserRole.ADMIN:
+        can_rollback = await admin_screen_service.is_permission_enabled(db, "Admin Rollback Access")
+    return {"can_rollback": can_rollback, "role": current_user.role.value}
 
 
 @router.get("/{batch_id}")
@@ -38,7 +78,7 @@ async def get_adjustment(
 async def rollback_adjustment(
     batch_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(_super_admin_only),
+    current_user: User = Depends(require_rollback_permission),
 ):
-    """Reverse a COMMITTED adjustment — SUPER_ADMIN only."""
+    """Reverse a COMMITTED adjustment — SUPER_ADMIN always; ADMIN if the 'Admin Rollback Access' toggle is ON."""
     return await admin_rollback_service.rollback(db, str(batch_id), current_user.id)
