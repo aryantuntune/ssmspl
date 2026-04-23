@@ -17,8 +17,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database_sync import SyncSessionLocal, is_sync_configured
 from fastapi import HTTPException
 
-MAX_TICKETS_IN_RANGE = 2500
-
 
 def _norm_decimal(v: Any) -> str | None:
     """Normalize a numeric value (Decimal / float / str / None) to a 2-decimal string for comparison."""
@@ -132,14 +130,6 @@ async def run_sync_check(
 
     # Fetch both sides for the date range / branch
     admin_tickets = await _fetch_tickets(admin_db, branch_id, date_start, date_end)
-    if len(admin_tickets) > MAX_TICKETS_IN_RANGE:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                f"Range contains {len(admin_tickets)} tickets in admin DB — above the {MAX_TICKETS_IN_RANGE} "
-                "safety cap for a single check. Narrow the date range."
-            ),
-        )
 
     assert SyncSessionLocal is not None
     async with SyncSessionLocal() as sync_session:
