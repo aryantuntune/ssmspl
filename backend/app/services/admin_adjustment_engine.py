@@ -576,7 +576,12 @@ async def dry_run(
             if item_value <= 0:
                 continue
             new_applied = achievable_amount + item_value
-            new_distance = abs(requested - new_applied)
+            # STRICT NO-OVERSHOOT: only accept items that keep new_applied <= requested.
+            # Admin explicitly wants: never remove more than requested.
+            # Any small undershoot is absorbed exactly by the round-off step below.
+            if new_applied > requested:
+                continue
+            new_distance = requested - new_applied  # always >= 0 after the guard
             if new_distance < best_distance:
                 best_distance = new_distance
                 best_item = {
