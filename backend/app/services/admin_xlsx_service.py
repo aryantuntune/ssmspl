@@ -59,10 +59,11 @@ _BORDER_TOP_DARK = Border(top=Side(border_style="medium", color=_RULE_DARK))
 _BORDER_BOTTOM_LIGHT = Border(bottom=Side(border_style="thin", color=_RULE))
 _BORDER_HEADER_BOTTOM = Border(bottom=Side(border_style="medium", color=_RULE_DARK))
 
-# ₹ format — Excel handles the rupee glyph via system fonts
-_CUR_FMT = '"₹"#,##0.00;[Red]-"₹"#,##0.00'
-_RATE_FMT = '"₹"#,##0.00'
-_INT_FMT = "#,##0"
+# Indian locale (0x4009 = en-IN) + Indian digit grouping "#,##,##0".
+# Renders 192749 → ₹1,92,749.00, not the Western ₹192,749.00.
+_CUR_FMT = '[$₹-4009] #,##,##0.00;[Red]-[$₹-4009] #,##,##0.00'
+_RATE_FMT = '[$₹-4009] #,##0.00'   # small rates never need lakh grouping
+_INT_FMT = '#,##,##0'
 _DATE_FMT = "dd-mmm-yyyy"
 
 

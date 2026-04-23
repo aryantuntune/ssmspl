@@ -105,6 +105,45 @@ def _fmt_date_long(d: datetime.date) -> str:
     return d.strftime("%d %b %Y") if isinstance(d, datetime.date) else str(d)
 
 
+# ── Cell-wrapping helpers ────────────────────────────────────────────────────
+#
+# Plain strings in a reportlab Table cell render as a single line and overflow
+# into the next column if they exceed the cell width. Long item names (>30
+# chars) must therefore be wrapped in Paragraph objects so the text breaks
+# inside the cell and the row grows vertically without corrupting alignment.
+
+
+def _cell_text_style() -> ParagraphStyle:
+    return ParagraphStyle(
+        "AdminCellText",
+        fontName=FONT_BODY,
+        fontSize=9,
+        leading=11,
+        textColor=_COLOR_TEXT,
+        alignment=TA_LEFT,
+        wordWrap="CJK",  # character-wrap fallback for tokens with no spaces
+    )
+
+
+def _cell_num_style() -> ParagraphStyle:
+    return ParagraphStyle(
+        "AdminCellNum",
+        fontName=FONT_BODY,
+        fontSize=9,
+        leading=11,
+        textColor=_COLOR_TEXT,
+        alignment=TA_RIGHT,
+    )
+
+
+def _wrap_text(value: str) -> Paragraph:
+    return Paragraph(value or "", _cell_text_style())
+
+
+def _wrap_num(value: str) -> Paragraph:
+    return Paragraph(value or "", _cell_num_style())
+
+
 # ── Styles ───────────────────────────────────────────────────────────────────
 
 
@@ -238,13 +277,15 @@ def _base_table_style(
         ("VALIGN", (0, 0), (-1, 0), "MIDDLE"),
         ("TOPPADDING", (0, 0), (-1, 0), 6),
         ("BOTTOMPADDING", (0, 0), (-1, 0), 6),
-        # Body
+        # Body — TOP valign so numeric cells sit alongside the first line
+        # of a wrapped item name instead of drifting to the vertical centre
+        # of a tall row.
         ("FONTNAME", (0, 1), (-1, -1), FONT_BODY),
         ("FONTSIZE", (0, 1), (-1, -1), 9),
         ("TEXTCOLOR", (0, 1), (-1, -1), _COLOR_TEXT),
-        ("VALIGN", (0, 1), (-1, -1), "MIDDLE"),
-        ("TOPPADDING", (0, 1), (-1, -1), 4),
-        ("BOTTOMPADDING", (0, 1), (-1, -1), 4),
+        ("VALIGN", (0, 1), (-1, -1), "TOP"),
+        ("TOPPADDING", (0, 1), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 1), (-1, -1), 5),
         ("LEFTPADDING", (0, 0), (-1, -1), 6),
         ("RIGHTPADDING", (0, 0), (-1, -1), 6),
         # Alignment: text left, numeric columns right
@@ -283,11 +324,13 @@ def generate_itemwise_levy_pdf(data: dict) -> BytesIO:
 
     branches = data["branches"]
     headers = ["Item"] + ["Levy"] + [b["name"] for b in branches] + ["Quantity", "Amount"]
-    body: list[list[str]] = [headers]
+    body: list = [headers]
 
+    # Only the Item column needs wrapping (names up to ~43 chars). Numeric
+    # columns stay as plain strings so TableStyle can control their font.
     for row in data["rows"]:
-        line = [
-            row["item_name"],
+        line: list = [
+            _wrap_text(row["item_name"]),
             fmt_rate(row["levy"]),
         ]
         for b in branches:
@@ -297,16 +340,21 @@ def generate_itemwise_levy_pdf(data: dict) -> BytesIO:
         line.append(fmt_currency(row["amount"]))
         body.append(line)
 
-    total_line = ["Total"] + [""] * (1 + len(branches) + 1) + [fmt_currency(data["grand_total"])]
+    total_line: list = (
+        ["Total"]
+        + [""] * (1 + len(branches) + 1)
+        + [fmt_currency(data["grand_total"])]
+    )
     body.append(total_line)
 
-    # Column widths calibrated to A4 portrait (usable ≈17.6cm)
-    item_w_cm = 5.8
-    levy_w_cm = 1.7
-    branch_w_cm = 2.2
-    qty_w_cm = 2.0
+    # Column widths calibrated to A4 portrait (usable ≈17.6cm).
+    # Give Item extra room — most cluttered column, has 40-char names.
+    item_w_cm = 6.8
+    levy_w_cm = 1.5
+    branch_w_cm = 1.9
+    qty_w_cm = 1.9
     used_cm = item_w_cm + levy_w_cm + branch_w_cm * len(branches) + qty_w_cm
-    amount_w_cm = max(2.6, 17.6 - used_cm)
+    amount_w_cm = max(3.2, 17.6 - used_cm)
     col_widths = (
         [item_w_cm * cm, levy_w_cm * cm]
         + [branch_w_cm * cm] * len(branches)
@@ -441,11 +489,11 @@ def generate_itemwise_daily_charges_pdf(data: dict) -> BytesIO:
         for bs in ds["branches"]:
             block.append(Paragraph(bs["branch_name"], s["BranchLabel"]))
             headers = ["Item", "Charges", "Quantity", "Amount"]
-            rows: list[list[str]] = [headers]
+            rows: list = [headers]
             for r in bs["rows"]:
                 rows.append(
                     [
-                        r["item_name"],
+                        _wrap_text(r["item_name"]),   # wraps gracefully
                         fmt_rate(r["charges"]),
                         fmt_int(r["quantity"]),
                         fmt_currency(r["amount"]),
@@ -454,7 +502,7 @@ def generate_itemwise_daily_charges_pdf(data: dict) -> BytesIO:
             # Branch subtotal row
             rows.append(["Subtotal", "", "", fmt_currency(bs["subtotal"])])
 
-            col_widths = [9.5 * cm, 2.6 * cm, 2.5 * cm, 3.0 * cm]
+            col_widths = [9.2 * cm, 2.6 * cm, 2.4 * cm, 3.2 * cm]
             tbl = Table(rows, colWidths=col_widths, repeatRows=1)
             tbl.setStyle(
                 _base_table_style(
