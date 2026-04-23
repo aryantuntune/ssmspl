@@ -1,66 +1,22 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { CheckCircle2, AlertCircle, PlayCircle, Loader2 } from "lucide-react";
+import { CheckCircle2, AlertCircle, PlayCircle, Loader2, X, ChevronLeft, StopCircle } from "lucide-react";
 import api from "@/lib/api";
+import SyncCheckResultView, { SyncCheckResult } from "./SyncCheckResultView";
 
-interface Diff {
-  field: string;
-  admin: unknown;
-  sync: unknown;
-}
+type BatchStatus = "pending" | "checking" | "in_sync" | "drift" | "error";
 
-interface TicketMismatch {
-  ticket_id: number;
-  branch_id: number;
-  ticket_date: string;
-  diffs: Diff[];
-}
-
-interface ItemMismatch {
-  ticket_item_id: number;
-  ticket_id: number;
-  diffs: Diff[];
-}
-
-interface ItemMissing {
-  ticket_item_id: number;
-  ticket_id: number;
-  item_id: number;
-  rate: string | null;
-  levy: string | null;
-  quantity: number;
-}
-
-interface SyncCheckResult {
-  in_sync: boolean;
-  checked_range: { date_start: string; date_end: string; branch_id: number | null };
-  totals: {
-    admin_tickets: number;
-    sync_tickets: number;
-    admin_ticket_items: number;
-    sync_ticket_items: number;
-  };
-  tickets: {
-    missing_in_admin_count: number;
-    only_in_admin_count: number;
-    field_mismatch_count: number;
-    missing_in_admin: number[];
-    only_in_admin: number[];
-    field_mismatch: TicketMismatch[];
-  };
-  ticket_items: {
-    missing_in_admin_count: number;
-    only_in_admin_count: number;
-    field_mismatch_count: number;
-    missing_in_admin: ItemMissing[];
-    only_in_admin: ItemMissing[];
-    field_mismatch: ItemMismatch[];
-  };
+interface DayBatch {
+  date: string;
+  status: BatchStatus;
+  result?: SyncCheckResult;
+  error?: string;
+  driftTotal?: number;  // sum of all mismatch/missing counts
 }
 
 interface Props {
@@ -72,18 +28,48 @@ interface Props {
   defaultBranchId?: string;
 }
 
+const CONCURRENCY = 4;
+
+function* eachDay(start: string, end: string): Generator<string> {
+  const s = new Date(start);
+  const e = new Date(end);
+  for (let d = new Date(s); d <= e; d.setDate(d.getDate() + 1)) {
+    yield d.toISOString().slice(0, 10);
+  }
+}
+
+function daysBetween(start: string, end: string): number {
+  const s = new Date(start).getTime();
+  const e = new Date(end).getTime();
+  return Math.round((e - s) / (1000 * 60 * 60 * 24)) + 1;
+}
+
+function driftSum(r: SyncCheckResult): number {
+  return (
+    r.tickets.missing_in_admin_count +
+    r.tickets.only_in_admin_count +
+    r.tickets.field_mismatch_count +
+    r.ticket_items.missing_in_admin_count +
+    r.ticket_items.only_in_admin_count +
+    r.ticket_items.field_mismatch_count
+  );
+}
+
 export default function SyncCheckModal({ open, onClose, branches, defaultDateStart, defaultDateEnd, defaultBranchId }: Props) {
   const [configured, setConfigured] = useState<boolean | null>(null);
   const [dateStart, setDateStart] = useState(defaultDateStart);
   const [dateEnd, setDateEnd] = useState(defaultDateEnd);
   const [branchId, setBranchId] = useState(defaultBranchId ?? "all");
-  const [loading, setLoading] = useState(false);
+  const [batches, setBatches] = useState<DayBatch[]>([]);
+  const [running, setRunning] = useState(false);
   const [error, setError] = useState("");
-  const [result, setResult] = useState<SyncCheckResult | null>(null);
+  const [focusedDay, setFocusedDay] = useState<string | null>(null);
+  const cancelRef = useRef(false);
 
   useEffect(() => {
     if (!open) return;
-    setError(""); setResult(null);
+    setError(""); setBatches([]); setFocusedDay(null);
+    cancelRef.current = false;
     setDateStart(defaultDateStart);
     setDateEnd(defaultDateEnd);
     setBranchId(defaultBranchId ?? "all");
@@ -92,53 +78,96 @@ export default function SyncCheckModal({ open, onClose, branches, defaultDateSta
       .catch(() => setConfigured(false));
   }, [open, defaultDateStart, defaultDateEnd, defaultBranchId]);
 
+  const totalDays = dateStart && dateEnd ? daysBetween(dateStart, dateEnd) : 0;
+  const checkedCount = batches.filter(b => b.status !== "pending" && b.status !== "checking").length;
+  const driftDays = batches.filter(b => b.status === "drift").length;
+  const errorDays = batches.filter(b => b.status === "error").length;
+  const syncedDays = batches.filter(b => b.status === "in_sync").length;
+
+  const cancel = () => { cancelRef.current = true; setRunning(false); };
+
   const runCheck = async () => {
-    setLoading(true); setError(""); setResult(null);
-    try {
-      const params: Record<string, string> = { date_start: dateStart, date_end: dateEnd };
-      if (branchId !== "all") params.branch_id = branchId;
-      const res = await api.get<SyncCheckResult>("/api/admin/d-drive/sync-check", { params });
-      setResult(res.data);
-    } catch (e) {
-      const err = e as { response?: { data?: { detail?: string } } };
-      setError(err?.response?.data?.detail ?? "Sync check failed");
-    } finally {
-      setLoading(false);
+    if (!dateStart || !dateEnd) { setError("Pick both dates."); return; }
+    if (dateEnd < dateStart) { setError("End date must be >= start date."); return; }
+    setError(""); setFocusedDay(null);
+    cancelRef.current = false;
+
+    // Build batches (one per day)
+    const days = Array.from(eachDay(dateStart, dateEnd));
+    const initialBatches: DayBatch[] = days.map(d => ({ date: d, status: "pending" }));
+    setBatches(initialBatches);
+    setRunning(true);
+
+    const queue = [...days];
+    const workers: Promise<void>[] = [];
+
+    const updateBatch = (date: string, patch: Partial<DayBatch>) => {
+      setBatches(prev => prev.map(b => (b.date === date ? { ...b, ...patch } : b)));
+    };
+
+    const worker = async () => {
+      while (queue.length > 0) {
+        if (cancelRef.current) return;
+        const day = queue.shift();
+        if (!day) return;
+        updateBatch(day, { status: "checking" });
+        try {
+          const params: Record<string, string> = { date_start: day, date_end: day };
+          if (branchId !== "all") params.branch_id = branchId;
+          const res = await api.get<SyncCheckResult>("/api/admin/d-drive/sync-check", { params });
+          const drift = driftSum(res.data);
+          updateBatch(day, {
+            status: drift === 0 ? "in_sync" : "drift",
+            result: res.data,
+            driftTotal: drift,
+          });
+        } catch (e) {
+          const err = e as { response?: { data?: { detail?: string } } };
+          updateBatch(day, { status: "error", error: err?.response?.data?.detail ?? "Check failed" });
+        }
+      }
+    };
+
+    for (let i = 0; i < Math.min(CONCURRENCY, days.length); i++) {
+      workers.push(worker());
     }
+    await Promise.all(workers);
+    setRunning(false);
   };
 
-  const fmtCell = (v: unknown) => (v === null || v === undefined ? <em className="text-muted-foreground">null</em> : String(v));
+  // Focused day drilldown view
+  const focusedBatch = focusedDay ? batches.find(b => b.date === focusedDay) : null;
 
   return (
     <Dialog open={open} onOpenChange={v => !v && onClose()}>
-      <DialogContent className="!max-w-[90vw] w-[90vw] !max-h-[90vh] overflow-hidden flex flex-col p-0">
+      <DialogContent className="!max-w-[92vw] w-[92vw] !max-h-[92vh] overflow-hidden flex flex-col p-0">
         <DialogHeader className="px-6 pt-6 pb-3 border-b">
           <DialogTitle>Sync Check — ssmspl_admin vs ssmspl_sync</DialogTitle>
           <p className="text-xs text-muted-foreground">
-            Verifies that the admin database matches the read-only mirror of production. Useful after rollbacks.
+            Compares per-day. Days with drift are highlighted red — click to see details.
           </p>
         </DialogHeader>
 
         {configured === false && (
           <div className="px-6 py-4 text-sm text-destructive">
-            Sync-check is not configured on this server. A system administrator needs to set <code>SYNC_DATABASE_URL</code> in the admin backend environment.
+            Sync-check is not configured on this server. Set <code>SYNC_DATABASE_URL</code> in the admin backend environment.
           </div>
         )}
 
-        {configured !== false && (
+        {configured !== false && !focusedBatch && (
           <>
-            <div className="px-6 py-4 border-b grid grid-cols-4 gap-4 items-end">
+            <div className="px-6 py-4 border-b grid grid-cols-5 gap-4 items-end">
               <div className="space-y-1.5">
                 <Label>From Date</Label>
-                <Input type="date" value={dateStart} onChange={e => setDateStart(e.target.value)} />
+                <Input type="date" value={dateStart} onChange={e => setDateStart(e.target.value)} disabled={running} />
               </div>
               <div className="space-y-1.5">
                 <Label>To Date</Label>
-                <Input type="date" value={dateEnd} onChange={e => setDateEnd(e.target.value)} />
+                <Input type="date" value={dateEnd} onChange={e => setDateEnd(e.target.value)} disabled={running} />
               </div>
               <div className="space-y-1.5">
                 <Label>Branch</Label>
-                <Select value={branchId} onValueChange={setBranchId}>
+                <Select value={branchId} onValueChange={setBranchId} disabled={running}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Branches</SelectItem>
@@ -146,189 +175,98 @@ export default function SyncCheckModal({ open, onClose, branches, defaultDateSta
                   </SelectContent>
                 </Select>
               </div>
-              <Button onClick={runCheck} disabled={loading || !dateStart || !dateEnd}>
-                {loading ? <><Loader2 className="w-4 h-4 mr-1 animate-spin" /> Checking…</> : <><PlayCircle className="w-4 h-4 mr-1" /> Run Check</>}
-              </Button>
+              <div className="col-span-2 flex gap-2">
+                {!running ? (
+                  <Button onClick={runCheck} disabled={!dateStart || !dateEnd} className="flex-1">
+                    <PlayCircle className="w-4 h-4 mr-1" /> Run Check ({totalDays} day{totalDays !== 1 ? "s" : ""})
+                  </Button>
+                ) : (
+                  <Button onClick={cancel} variant="outline" className="flex-1">
+                    <StopCircle className="w-4 h-4 mr-1" /> Stop
+                  </Button>
+                )}
+              </div>
             </div>
 
-            {error && (
-              <div className="px-6 py-3 text-sm text-destructive border-b bg-destructive/5">{error}</div>
-            )}
+            {error && <div className="px-6 py-3 text-sm text-destructive border-b bg-destructive/5">{error}</div>}
 
-            <div className="flex-1 overflow-auto">
-              {result === null && !loading && !error && (
-                <p className="py-10 text-center text-muted-foreground text-sm">
-                  Pick a date range (and optional branch) and click Run Check.
-                </p>
-              )}
-
-              {result && (
-                <>
-                  <div className={`px-6 py-4 border-b ${result.in_sync ? "bg-emerald-50 dark:bg-emerald-950/20" : "bg-destructive/5"}`}>
-                    <div className="flex items-center gap-3">
-                      {result.in_sync ? (
-                        <CheckCircle2 className="w-7 h-7 text-emerald-600 dark:text-emerald-400" />
-                      ) : (
-                        <AlertCircle className="w-7 h-7 text-destructive" />
+            {batches.length > 0 && (
+              <>
+                {/* Progress / summary bar */}
+                <div className="px-6 py-3 border-b bg-muted/30">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-sm font-medium">
+                      {running ? "Checking…" : "Complete"}:
+                      <span className="ml-2">{checkedCount} / {batches.length} days</span>
+                    </p>
+                    <div className="flex gap-3 text-xs">
+                      <span className="flex items-center gap-1 text-emerald-700 dark:text-emerald-400">
+                        <CheckCircle2 className="w-3 h-3" /> In sync: <strong>{syncedDays}</strong>
+                      </span>
+                      <span className="flex items-center gap-1 text-destructive">
+                        <AlertCircle className="w-3 h-3" /> Drift: <strong>{driftDays}</strong>
+                      </span>
+                      {errorDays > 0 && (
+                        <span className="flex items-center gap-1 text-amber-600 dark:text-amber-400">
+                          Errors: <strong>{errorDays}</strong>
+                        </span>
                       )}
-                      <div>
-                        <p className="font-bold text-lg">
-                          {result.in_sync ? "Fully in sync" : "Drift detected"}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {result.checked_range.date_start} → {result.checked_range.date_end}
-                          {result.checked_range.branch_id ? ` · Branch #${result.checked_range.branch_id}` : " · All branches"}
-                        </p>
-                      </div>
                     </div>
                   </div>
+                  {/* progress bar */}
+                  <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-primary transition-all"
+                      style={{ width: `${batches.length > 0 ? (checkedCount / batches.length) * 100 : 0}%` }}
+                    />
+                  </div>
+                </div>
 
-                  <div className="px-6 py-3 border-b grid grid-cols-4 gap-3">
-                    {[
-                      { label: "Admin Tickets", value: result.totals.admin_tickets },
-                      { label: "Sync Tickets", value: result.totals.sync_tickets },
-                      { label: "Admin Items", value: result.totals.admin_ticket_items },
-                      { label: "Sync Items", value: result.totals.sync_ticket_items },
-                    ].map(({ label, value }) => (
-                      <div key={label} className="bg-muted/50 rounded p-2">
-                        <p className="text-[10px] text-muted-foreground uppercase">{label}</p>
-                        <p className="font-bold text-sm mt-0.5">{value.toLocaleString()}</p>
-                      </div>
+                {/* Day grid */}
+                <div className="flex-1 overflow-auto p-6">
+                  <div className="grid grid-cols-[repeat(auto-fill,minmax(110px,1fr))] gap-2">
+                    {batches.map(b => (
+                      <DayCell key={b.date} batch={b} onClick={() => b.result && setFocusedDay(b.date)} />
                     ))}
                   </div>
+                  {!running && checkedCount === batches.length && driftDays === 0 && errorDays === 0 && (
+                    <div className="mt-6 p-4 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900 rounded-lg flex items-center gap-3">
+                      <CheckCircle2 className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
+                      <div>
+                        <p className="font-semibold">All {batches.length} day(s) fully in sync with prod mirror.</p>
+                        <p className="text-xs text-muted-foreground">No drift detected in any ticket or ticket_item across the selected range.</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+          </>
+        )}
 
-                  <div className="p-6 space-y-4">
-                    <SectionCard
-                      label="Tickets missing in admin (hard-deleted, no rollback)"
-                      count={result.tickets.missing_in_admin_count}
-                      empty={result.tickets.missing_in_admin_count === 0}
-                    >
-                      {result.tickets.missing_in_admin.length > 0 && (
-                        <p className="text-xs font-mono">{result.tickets.missing_in_admin.map(id => `#${id}`).join(", ")}</p>
-                      )}
-                    </SectionCard>
-
-                    <SectionCard
-                      label="Tickets only in admin (extras — shouldn't happen normally)"
-                      count={result.tickets.only_in_admin_count}
-                      empty={result.tickets.only_in_admin_count === 0}
-                    >
-                      {result.tickets.only_in_admin.length > 0 && (
-                        <p className="text-xs font-mono">{result.tickets.only_in_admin.map(id => `#${id}`).join(", ")}</p>
-                      )}
-                    </SectionCard>
-
-                    <SectionCard
-                      label="Tickets with field mismatch"
-                      count={result.tickets.field_mismatch_count}
-                      empty={result.tickets.field_mismatch_count === 0}
-                    >
-                      {result.tickets.field_mismatch.length > 0 && (
-                        <table className="w-full text-xs">
-                          <thead className="bg-muted/50">
-                            <tr>
-                              <th className="px-2 py-1 text-left">Ticket</th>
-                              <th className="px-2 py-1 text-left">Field</th>
-                              <th className="px-2 py-1 text-left">Admin</th>
-                              <th className="px-2 py-1 text-left">Sync</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {result.tickets.field_mismatch.flatMap(t =>
-                              t.diffs.map((d, idx) => (
-                                <tr key={`${t.ticket_id}-${d.field}-${idx}`} className="border-t">
-                                  <td className="px-2 py-1 font-mono">#{t.ticket_id}</td>
-                                  <td className="px-2 py-1">{d.field}</td>
-                                  <td className="px-2 py-1 text-destructive">{fmtCell(d.admin)}</td>
-                                  <td className="px-2 py-1 text-emerald-700 dark:text-emerald-400">{fmtCell(d.sync)}</td>
-                                </tr>
-                              ))
-                            )}
-                          </tbody>
-                        </table>
-                      )}
-                    </SectionCard>
-
-                    <SectionCard
-                      label="Ticket items missing in admin"
-                      count={result.ticket_items.missing_in_admin_count}
-                      empty={result.ticket_items.missing_in_admin_count === 0}
-                    >
-                      {result.ticket_items.missing_in_admin.length > 0 && (
-                        <table className="w-full text-xs">
-                          <thead className="bg-muted/50">
-                            <tr>
-                              <th className="px-2 py-1 text-left">Item row</th>
-                              <th className="px-2 py-1 text-left">Ticket</th>
-                              <th className="px-2 py-1 text-left">Item id</th>
-                              <th className="px-2 py-1 text-right">Rate</th>
-                              <th className="px-2 py-1 text-right">Levy</th>
-                              <th className="px-2 py-1 text-right">Qty</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {result.ticket_items.missing_in_admin.map(i => (
-                              <tr key={i.ticket_item_id} className="border-t">
-                                <td className="px-2 py-1 font-mono">#{i.ticket_item_id}</td>
-                                <td className="px-2 py-1 font-mono">#{i.ticket_id}</td>
-                                <td className="px-2 py-1">{i.item_id}</td>
-                                <td className="px-2 py-1 text-right">{i.rate}</td>
-                                <td className="px-2 py-1 text-right">{i.levy}</td>
-                                <td className="px-2 py-1 text-right">{i.quantity}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      )}
-                    </SectionCard>
-
-                    <SectionCard
-                      label="Ticket items only in admin"
-                      count={result.ticket_items.only_in_admin_count}
-                      empty={result.ticket_items.only_in_admin_count === 0}
-                    >
-                      {result.ticket_items.only_in_admin.length > 0 && (
-                        <p className="text-xs font-mono">
-                          {result.ticket_items.only_in_admin.map(i => `#${i.ticket_item_id}`).join(", ")}
-                        </p>
-                      )}
-                    </SectionCard>
-
-                    <SectionCard
-                      label="Ticket items with field mismatch"
-                      count={result.ticket_items.field_mismatch_count}
-                      empty={result.ticket_items.field_mismatch_count === 0}
-                    >
-                      {result.ticket_items.field_mismatch.length > 0 && (
-                        <table className="w-full text-xs">
-                          <thead className="bg-muted/50">
-                            <tr>
-                              <th className="px-2 py-1 text-left">Item row</th>
-                              <th className="px-2 py-1 text-left">Ticket</th>
-                              <th className="px-2 py-1 text-left">Field</th>
-                              <th className="px-2 py-1 text-left">Admin</th>
-                              <th className="px-2 py-1 text-left">Sync</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {result.ticket_items.field_mismatch.flatMap(i =>
-                              i.diffs.map((d, idx) => (
-                                <tr key={`${i.ticket_item_id}-${d.field}-${idx}`} className="border-t">
-                                  <td className="px-2 py-1 font-mono">#{i.ticket_item_id}</td>
-                                  <td className="px-2 py-1 font-mono">#{i.ticket_id}</td>
-                                  <td className="px-2 py-1">{d.field}</td>
-                                  <td className="px-2 py-1 text-destructive">{fmtCell(d.admin)}</td>
-                                  <td className="px-2 py-1 text-emerald-700 dark:text-emerald-400">{fmtCell(d.sync)}</td>
-                                </tr>
-                              ))
-                            )}
-                          </tbody>
-                        </table>
-                      )}
-                    </SectionCard>
-                  </div>
-                </>
+        {/* Focused day drilldown */}
+        {configured !== false && focusedBatch && focusedBatch.result && (
+          <>
+            <div className="px-6 py-3 border-b flex items-center gap-3 bg-muted/20">
+              <Button size="sm" variant="outline" onClick={() => setFocusedDay(null)}>
+                <ChevronLeft className="w-4 h-4 mr-1" /> Back to grid
+              </Button>
+              <span className="text-sm font-semibold">
+                {focusedBatch.date}
+                {branchId !== "all" && ` · Branch #${branchId}`}
+              </span>
+              {focusedBatch.status === "drift" ? (
+                <span className="ml-auto flex items-center gap-1 text-destructive text-sm font-semibold">
+                  <AlertCircle className="w-4 h-4" /> Drift detected
+                </span>
+              ) : (
+                <span className="ml-auto flex items-center gap-1 text-emerald-700 dark:text-emerald-400 text-sm font-semibold">
+                  <CheckCircle2 className="w-4 h-4" /> In sync
+                </span>
               )}
+            </div>
+            <div className="flex-1 overflow-auto p-6">
+              <SyncCheckResultView result={focusedBatch.result} />
             </div>
           </>
         )}
@@ -341,18 +279,42 @@ export default function SyncCheckModal({ open, onClose, branches, defaultDateSta
   );
 }
 
-function SectionCard({
-  label, count, empty, children,
-}: { label: string; count: number; empty: boolean; children?: React.ReactNode }) {
+function DayCell({ batch, onClick }: { batch: DayBatch; onClick: () => void }) {
+  const statusConfig = {
+    pending: { bg: "bg-muted", text: "text-muted-foreground", label: "" },
+    checking: { bg: "bg-blue-100 dark:bg-blue-950/50 animate-pulse", text: "text-blue-700 dark:text-blue-300", label: "checking…" },
+    in_sync: { bg: "bg-emerald-50 dark:bg-emerald-950/30 hover:bg-emerald-100 dark:hover:bg-emerald-950/50", text: "text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900", label: "in sync" },
+    drift: { bg: "bg-red-50 dark:bg-red-950/30 hover:bg-red-100 dark:hover:bg-red-950/50 cursor-pointer", text: "text-red-700 dark:text-red-400 border-red-200 dark:border-red-900", label: "" },
+    error: { bg: "bg-amber-50 dark:bg-amber-950/30", text: "text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-900", label: "error" },
+  };
+  const c = statusConfig[batch.status];
+  const clickable = batch.status === "drift" || batch.status === "in_sync";
+
   return (
-    <div className={`border rounded-lg overflow-hidden ${empty ? "" : "border-destructive/50"}`}>
-      <div className={`px-4 py-2 flex items-center justify-between ${empty ? "bg-emerald-50 dark:bg-emerald-950/20" : "bg-destructive/5"}`}>
-        <p className="text-sm font-medium">{label}</p>
-        <span className={`text-xs font-bold ${empty ? "text-emerald-700 dark:text-emerald-400" : "text-destructive"}`}>
-          {empty ? "0 — OK" : count}
-        </span>
-      </div>
-      {!empty && <div className="p-3">{children}</div>}
-    </div>
+    <button
+      onClick={clickable ? onClick : undefined}
+      disabled={!clickable}
+      className={`border rounded p-2 text-left transition ${c.bg} ${c.text} ${clickable ? "cursor-pointer" : "cursor-default"}`}
+      title={batch.error || (batch.result ? `Admin tickets: ${batch.result.totals.admin_tickets}` : batch.date)}
+    >
+      <p className="text-[10px] font-mono">{batch.date}</p>
+      {batch.status === "drift" && (
+        <p className="text-sm font-bold mt-1">
+          {batch.driftTotal} {batch.driftTotal === 1 ? "issue" : "issues"}
+        </p>
+      )}
+      {batch.status === "in_sync" && (
+        <p className="text-[10px] mt-1 flex items-center gap-0.5">
+          <CheckCircle2 className="w-3 h-3 inline" /> OK
+        </p>
+      )}
+      {batch.status === "checking" && (
+        <p className="text-[10px] mt-1 flex items-center gap-0.5">
+          <Loader2 className="w-3 h-3 animate-spin" /> {c.label}
+        </p>
+      )}
+      {batch.status === "error" && <p className="text-[10px] mt-1 truncate">{batch.error}</p>}
+      {batch.status === "pending" && <p className="text-[10px] mt-1">queued</p>}
+    </button>
   );
 }
