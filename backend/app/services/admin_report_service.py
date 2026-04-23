@@ -144,9 +144,17 @@ async def _tickets_total(
     route_id: int,
     mode_ids: tuple[int, ...],
 ) -> Decimal:
-    """SUM(net_amount) over active tickets in scope."""
+    """SUM(Ticket.amount) — gross, before discount — over active tickets in scope.
+
+    We compare against the gross ``amount`` (not ``net_amount``) because the
+    integrity check's purpose is to detect drift between the item tree and
+    the ticket header. ``amount`` equals ``SUM(qty × (rate + levy))`` by
+    construction; ``net_amount`` subtracts a discount that has no
+    representation in ticket_items, so using net would generate false
+    positives equal to the sum of discounts in the scope.
+    """
     q = (
-        select(func.coalesce(func.sum(Ticket.net_amount), 0))
+        select(func.coalesce(func.sum(Ticket.amount), 0))
         .where(Ticket.is_cancelled == False)  # noqa: E712
         .where(Ticket.net_amount >= 0)
         .where(Ticket.ticket_date >= date_from)
