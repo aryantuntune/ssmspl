@@ -46,6 +46,7 @@ POS tickets use modes **1 (Cash) / 2 (UPI) / 3 (Card)**. Portal bookings use **4
 
 `GET /api/reports/admin/itemwise-levy-summary?date_from&date_to&route_id`
 `GET /api/reports/admin/itemwise-levy-summary/pdf?date_from&date_to&route_id`
+`GET /api/reports/admin/itemwise-levy-summary/xlsx?date_from&date_to&route_id`
 
 ### 4.3 SQL
 
@@ -64,7 +65,7 @@ JOIN branches b ON t.branch_id  = b.id
 WHERE t.is_cancelled  = false
   AND ti.is_cancelled = false
   AND ti.quantity > 0
-  AND ti.levy >= 0
+  AND ti.levy > 0                       -- zero-levy items (ambulance, luggage) excluded from display
   AND t.ticket_date BETWEEN :date_from AND :date_to
   AND t.route_id = :route_id
   AND t.payment_mode_id IN (1, 2, 3)   -- POS only
@@ -116,6 +117,7 @@ GROUP BY i.id, i.name, ti.levy, b.id, b.name;
 
 `GET /api/reports/admin/date-branch-summary?date_from&date_to&route_id`
 `GET /api/reports/admin/date-branch-summary/pdf?date_from&date_to&route_id`
+`GET /api/reports/admin/date-branch-summary/xlsx?date_from&date_to&route_id`
 
 ### 5.3 SQL
 
@@ -161,6 +163,7 @@ See Section 3 of the main design (already documented in the brainstorm). JSON st
 
 `GET /api/reports/admin/itemwise-daily-charges?date_from&date_to&route_id`
 `GET /api/reports/admin/itemwise-daily-charges/pdf?date_from&date_to&route_id`
+`GET /api/reports/admin/itemwise-daily-charges/xlsx?date_from&date_to&route_id`
 
 ### 6.3 SQL
 
@@ -242,13 +245,13 @@ Three generators in `app/services/admin_pdf_service.py`, reusing `reportlab` pat
 - Router uses `require_roles(SUPER_ADMIN, ADMIN)`.
 - `settings.ADMIN_PORTAL_MODE=true` on the admin backend (already configured); this already enforces `AdminUserAccess.is_granted` for ADMIN users at the dependency level.
 - Rate limit: `10/minute` on each endpoint (matches existing reports).
-- Activity log: log both view and PDF download using `log_activity` (existing pattern).
+- Activity log: every access is logged via `log_activity`. The `action_type` is `REPORT_VIEW` for JSON, `REPORT_PDF` for PDF download, `REPORT_XLSX` for Excel download. Metadata includes `report_type` and `format`.
 
 ## 10. Menu & navigation
 
 - **Backend** (`core/rbac.py`): append `"Admin Reports"` to `ROLE_MENU_ITEMS[SUPER_ADMIN]` and `[ADMIN]`. In the route that serves `/api/auth/me` (or wherever menu items are filtered), filter out `"Admin Reports"` when `settings.ADMIN_PORTAL_MODE == false`.
 - **Frontend** (`components/Sidebar.tsx`): add `"Admin Reports": "/dashboard/admin-reports"` to `MENU_ROUTES`.
-- **New page**: `frontend/src/app/dashboard/admin-reports/page.tsx` — tabbed UI (3 tabs for the 3 reports), shared filters (date range + route), per-report preview table, "Download PDF" button.
+- **New page**: `frontend/src/app/dashboard/admin-reports/page.tsx` — tabbed UI (3 tabs for the 3 reports), shared filters (date range + route), per-report preview table, "Download PDF" and "Download Excel" buttons.
 
 ## 11. File inventory
 
@@ -261,10 +264,11 @@ backend/app/
   services/
     admin_report_service.py      # orchestrator + integrity
     admin_pdf_service.py         # three PDF generators
+    admin_xlsx_service.py        # three Excel (xlsx) generators
   schemas/
     admin_report.py              # Pydantic responses
   routers/
-    admin_reports.py             # 6 endpoints
+    admin_reports.py             # 9 endpoints (3 JSON + 3 PDF + 3 XLSX)
   core/rbac.py                   # menu update
   routers/auth.py                # menu filter (if needed)
 

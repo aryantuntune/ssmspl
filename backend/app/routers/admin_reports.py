@@ -31,14 +31,22 @@ router = APIRouter(prefix="/api/reports/admin", tags=["Admin Reports"])
 _admin_roles = require_roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
 
 
-def _log(bg: BackgroundTasks, user: User, report_type: str, is_pdf: bool, **filters):
+_ACTION_BY_FORMAT = {
+    "json": ActivityAction.REPORT_VIEW,
+    "pdf": ActivityAction.REPORT_PDF,
+    "xlsx": ActivityAction.REPORT_XLSX,
+}
+
+
+def _log(bg: BackgroundTasks, user: User, report_type: str, fmt: str, **filters):
     bg.add_task(
         log_activity,
         session_id=user.active_session_id,
         user_id=user.id,
-        action_type=ActivityAction.REPORT_PDF if is_pdf else ActivityAction.REPORT_VIEW,
+        action_type=_ACTION_BY_FORMAT[fmt],
         metadata={
             "report_type": f"admin_{report_type}",
+            "format": fmt,
             **{k: str(v) for k, v in filters.items() if v is not None},
         },
     )
@@ -62,7 +70,7 @@ async def itemwise_levy_summary(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(_admin_roles),
 ):
-    _log(background_tasks, current_user, "itemwise_levy_summary", False,
+    _log(background_tasks, current_user, "itemwise_levy_summary", "json",
          date_from=date_from, date_to=date_to, route_id=route_id)
     return await admin_report_service.run_itemwise_levy_summary(
         db, date_from, date_to, route_id
@@ -86,7 +94,7 @@ async def itemwise_levy_summary_pdf(
     data = await admin_report_service.run_itemwise_levy_summary(
         db, date_from, date_to, route_id
     )
-    _log(background_tasks, current_user, "itemwise_levy_summary", True,
+    _log(background_tasks, current_user, "itemwise_levy_summary", "pdf",
          date_from=date_from, date_to=date_to, route_id=route_id)
     return StreamingResponse(
         admin_pdf_service.generate_itemwise_levy_pdf(data),
@@ -116,8 +124,8 @@ async def itemwise_levy_summary_xlsx(
     data = await admin_report_service.run_itemwise_levy_summary(
         db, date_from, date_to, route_id
     )
-    _log(background_tasks, current_user, "itemwise_levy_summary", True,
-         date_from=date_from, date_to=date_to, route_id=route_id, format="xlsx")
+    _log(background_tasks, current_user, "itemwise_levy_summary", "xlsx",
+         date_from=date_from, date_to=date_to, route_id=route_id)
     return StreamingResponse(
         admin_xlsx_service.generate_itemwise_levy_xlsx(data),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -147,7 +155,7 @@ async def date_branch_summary(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(_admin_roles),
 ):
-    _log(background_tasks, current_user, "date_branch_summary", False,
+    _log(background_tasks, current_user, "date_branch_summary", "json",
          date_from=date_from, date_to=date_to, route_id=route_id)
     return await admin_report_service.run_date_branch_summary(
         db, date_from, date_to, route_id
@@ -171,7 +179,7 @@ async def date_branch_summary_pdf(
     data = await admin_report_service.run_date_branch_summary(
         db, date_from, date_to, route_id
     )
-    _log(background_tasks, current_user, "date_branch_summary", True,
+    _log(background_tasks, current_user, "date_branch_summary", "pdf",
          date_from=date_from, date_to=date_to, route_id=route_id)
     return StreamingResponse(
         admin_pdf_service.generate_date_branch_summary_pdf(data),
@@ -201,8 +209,8 @@ async def date_branch_summary_xlsx(
     data = await admin_report_service.run_date_branch_summary(
         db, date_from, date_to, route_id
     )
-    _log(background_tasks, current_user, "date_branch_summary", True,
-         date_from=date_from, date_to=date_to, route_id=route_id, format="xlsx")
+    _log(background_tasks, current_user, "date_branch_summary", "xlsx",
+         date_from=date_from, date_to=date_to, route_id=route_id)
     return StreamingResponse(
         admin_xlsx_service.generate_date_branch_summary_xlsx(data),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -232,7 +240,7 @@ async def itemwise_daily_charges(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(_admin_roles),
 ):
-    _log(background_tasks, current_user, "itemwise_daily_charges", False,
+    _log(background_tasks, current_user, "itemwise_daily_charges", "json",
          date_from=date_from, date_to=date_to, route_id=route_id)
     return await admin_report_service.run_itemwise_daily_charges(
         db, date_from, date_to, route_id
@@ -256,7 +264,7 @@ async def itemwise_daily_charges_pdf(
     data = await admin_report_service.run_itemwise_daily_charges(
         db, date_from, date_to, route_id
     )
-    _log(background_tasks, current_user, "itemwise_daily_charges", True,
+    _log(background_tasks, current_user, "itemwise_daily_charges", "pdf",
          date_from=date_from, date_to=date_to, route_id=route_id)
     return StreamingResponse(
         admin_pdf_service.generate_itemwise_daily_charges_pdf(data),
@@ -286,8 +294,8 @@ async def itemwise_daily_charges_xlsx(
     data = await admin_report_service.run_itemwise_daily_charges(
         db, date_from, date_to, route_id
     )
-    _log(background_tasks, current_user, "itemwise_daily_charges", True,
-         date_from=date_from, date_to=date_to, route_id=route_id, format="xlsx")
+    _log(background_tasks, current_user, "itemwise_daily_charges", "xlsx",
+         date_from=date_from, date_to=date_to, route_id=route_id)
     return StreamingResponse(
         admin_xlsx_service.generate_itemwise_daily_charges_xlsx(data),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
