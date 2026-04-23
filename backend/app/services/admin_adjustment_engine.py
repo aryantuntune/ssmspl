@@ -6,7 +6,7 @@ and DELETEs chosen ticket_items on commit.
 import hashlib
 import uuid
 from datetime import date, datetime, timezone
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from sqlalchemy import func, select, text, update, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException
@@ -782,6 +782,25 @@ async def commit(
 
     if not item_ids:
         raise HTTPException(status_code=400, detail="No items in selected plan")
+
+    # Defensive no-overshoot guard: reject any stored plan whose deletion value
+    # exceeds the admin-requested amount. Protects against legacy dry-runs
+    # generated before the strict no-overshoot fix, and against any future
+    # regression of the plan builder. Round-off is separate and always exact.
+    try:
+        plan_applied = Decimal(str(plan.get("applied", "0")))
+        requested_dec = Decimal(str(log.adjustment_amount))
+        if plan_applied > requested_dec:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"Stored plan is out-of-policy (applied {plan_applied} > requested {requested_dec}). "
+                    "Re-run the trial preview to generate a fresh plan."
+                ),
+            )
+    except (InvalidOperation, TypeError, ValueError):
+        # Plan data malformed — let downstream logic handle it
+        pass
 
     # Mark IN_PROGRESS atomically in a separate session using compare-and-swap
     # (only transitions DRY_RUN -> IN_PROGRESS; fails loudly if status changed).
