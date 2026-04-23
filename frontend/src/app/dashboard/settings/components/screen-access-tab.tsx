@@ -12,6 +12,7 @@ interface ScreenToggle {
   id: number;
   screen_name: string;
   is_enabled: boolean;
+  is_permission?: boolean;
 }
 
 export default function ScreenAccessTab() {
@@ -95,12 +96,21 @@ export default function ScreenAccessTab() {
                 <div className="space-y-0.5">
                   <Label
                     htmlFor={`screen-${toggle.id}`}
-                    className="text-sm font-medium"
+                    className="text-sm font-medium flex items-center gap-2"
                   >
                     {toggle.screen_name}
+                    {toggle.is_permission && (
+                      <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200">
+                        Permission
+                      </span>
+                    )}
                   </Label>
                   <p className="text-xs text-muted-foreground">
-                    {toggle.is_enabled
+                    {toggle.is_permission
+                      ? toggle.is_enabled
+                        ? "Granted to admin users"
+                        : "Not granted to admin users"
+                      : toggle.is_enabled
                       ? "Visible to admin users"
                       : "Hidden from admin users"}
                   </p>

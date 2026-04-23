@@ -184,6 +184,7 @@ class ScreenToggleOut(BaseModel):
     id: int
     screen_name: str
     is_enabled: bool
+    is_permission: bool = False  # True if this row gates a privileged action, not a screen
 
     model_config = {"from_attributes": True}
 
@@ -201,7 +202,13 @@ async def list_screen_toggles(
     db: AsyncSession = Depends(get_db),
     current_user=Depends(_super_admin_only),
 ):
-    return await admin_screen_service.get_all_toggles(db)
+    rows = await admin_screen_service.get_all_toggles(db)
+    perms = admin_screen_service.PERMISSION_TOGGLES
+    return [
+        {"id": t.id, "screen_name": t.screen_name, "is_enabled": t.is_enabled,
+         "is_permission": t.screen_name in perms}
+        for t in rows
+    ]
 
 
 @router.put(
@@ -216,9 +223,14 @@ async def update_screen_toggles(
     current_user=Depends(_super_admin_only),
 ):
     result = await admin_screen_service.bulk_update_toggles(db, body.toggles)
+    perms = admin_screen_service.PERMISSION_TOGGLES
     background_tasks.add_task(
         log_activity, current_user.active_session_id, current_user.id,
         ActivityAction.SETTINGS_CHANGE,
         {"entity": "screen_toggles", "action": "bulk_update", "toggles": body.toggles},
     )
-    return result
+    return [
+        {"id": t.id, "screen_name": t.screen_name, "is_enabled": t.is_enabled,
+         "is_permission": t.screen_name in perms}
+        for t in result
+    ]
