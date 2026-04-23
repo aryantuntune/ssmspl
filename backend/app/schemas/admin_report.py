@@ -19,6 +19,25 @@ class BranchRef(BaseModel):
     name: str
 
 
+class DriftedTicket(BaseModel):
+    ticket_id: int
+    ticket_no: int
+    ticket_amount: str
+    items_sum: str
+    diff: str
+
+
+class IntegrityWarning(BaseModel):
+    """Non-blocking warning emitted when items_total disagrees with ticket
+    headers by more than ₹0.01. The report itself is always returned."""
+
+    items_total: str
+    tickets_total: str
+    diff: str
+    message: str
+    sample_tickets: list[DriftedTicket] = Field(default_factory=list)
+
+
 # ── Report A: Itemwise Levy Summary ───────────────────────────────────────────
 
 
@@ -41,6 +60,7 @@ class ItemwiseLevyReport(BaseModel):
     rows: list[ItemwiseLevyRow]
     branch_totals: dict[str, str]
     grand_total: str
+    integrity_warning: IntegrityWarning | None = None
 
 
 # ── Report B: Date-Wise Branch Summary (Cash + GPay) ──────────────────────────
@@ -68,6 +88,7 @@ class DateBranchSummaryReport(BaseModel):
     rows: list[DateBranchRow]
     column_totals: dict[str, str]
     grand_total: str
+    integrity_warning: IntegrityWarning | None = None
 
 
 # ── Report C: Itemwise Daily Collection Charges Summary ───────────────────────
@@ -101,3 +122,4 @@ class ItemwiseDailyChargesReport(BaseModel):
     date_to: datetime.date
     dates: list[DailyDateSection]
     grand_total: str
+    integrity_warning: IntegrityWarning | None = None
