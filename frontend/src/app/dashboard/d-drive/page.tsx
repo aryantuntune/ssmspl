@@ -7,8 +7,9 @@ import TicketTable from "./components/TicketTable";
 import AdjustmentModal from "./components/AdjustmentModal";
 import TransferModal from "./components/TransferModal";
 import AdjustmentsHistoryModal from "./components/AdjustmentsHistoryModal";
+import SyncCheckModal from "./components/SyncCheckModal";
 import { Button } from "@/components/ui/button";
-import { History } from "lucide-react";
+import { History, ShieldCheck } from "lucide-react";
 
 interface BranchSummary {
   branch_id: number;
@@ -55,6 +56,7 @@ export default function DDrivePage() {
   } | null>(null);
   const [transferTarget, setTransferTarget] = useState<{ branchId: number; branchName: string } | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [syncCheckOpen, setSyncCheckOpen] = useState(false);
 
   useEffect(() => {
     api.get("/api/branches", { params: { limit: 200, status: "all" } })
@@ -99,9 +101,14 @@ export default function DDrivePage() {
             Branch-wise ticket collection and reconciliation
           </p>
         </div>
-        <Button variant="outline" onClick={() => setHistoryOpen(true)}>
-          <History className="w-4 h-4 mr-1.5" /> Adjustments History
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setSyncCheckOpen(true)}>
+            <ShieldCheck className="w-4 h-4 mr-1.5" /> Sync Check
+          </Button>
+          <Button variant="outline" onClick={() => setHistoryOpen(true)}>
+            <History className="w-4 h-4 mr-1.5" /> Adjustments History
+          </Button>
+        </div>
       </div>
 
       <FilterBar branches={branches} items={items} onApply={handleApply} />
@@ -165,6 +172,15 @@ export default function DDrivePage() {
         open={historyOpen}
         onClose={() => setHistoryOpen(false)}
         onRolledBack={() => loadData(filters)}
+      />
+
+      <SyncCheckModal
+        open={syncCheckOpen}
+        onClose={() => setSyncCheckOpen(false)}
+        branches={branches}
+        defaultDateStart={filters.dateStart}
+        defaultDateEnd={filters.dateEnd}
+        defaultBranchId={filters.branchId}
       />
     </div>
   );

@@ -27,6 +27,9 @@ class Settings(BaseSettings):
 
     # Database
     DATABASE_URL: str
+    # Optional secondary DB for sync-check diagnostics. Points to ssmspl_sync (mirrors prod).
+    # When unset, the sync-check endpoint is disabled.
+    SYNC_DATABASE_URL: str | None = None
 
     # CORS
     ALLOWED_ORIGINS: str = "http://localhost:3000"
