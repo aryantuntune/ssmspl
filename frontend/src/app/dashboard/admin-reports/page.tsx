@@ -350,9 +350,6 @@ export default function AdminReportsPage() {
                 {error}
               </p>
             )}
-            {generated && data?.integrity_warning && (
-              <IntegrityBanner warning={data.integrity_warning} />
-            )}
           </CardContent>
         </Card>
 
@@ -376,49 +373,8 @@ export default function AdminReportsPage() {
   );
 }
 
-function IntegrityBanner({ warning }: { warning: IntegrityWarning }) {
-  return (
-    <div
-      className="mt-4 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900"
-      role="status"
-    >
-      <div className="flex items-start gap-2">
-        <span className="text-amber-600 font-semibold">!</span>
-        <div className="flex-1 space-y-1">
-          <p className="font-semibold">Integrity check: drift of ₹{warning.diff}</p>
-          <p className="text-amber-800">{warning.message}</p>
-          {warning.sample_tickets.length > 0 && (
-            <details className="mt-2">
-              <summary className="cursor-pointer text-xs underline decoration-amber-500">
-                Show {warning.sample_tickets.length} sample ticket
-                {warning.sample_tickets.length === 1 ? "" : "s"}
-              </summary>
-              <div className="mt-2 overflow-x-auto">
-                <table className="text-xs">
-                  <thead>
-                    <tr>
-                      <th className="pr-4 text-left">Ticket #</th>
-                      <th className="pr-4 text-right">Header ₹</th>
-                      <th className="pr-4 text-right">Items ₹</th>
-                      <th className="text-right">Diff ₹</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {warning.sample_tickets.map((t) => (
-                      <tr key={t.ticket_id}>
-                        <td className="pr-4">{t.ticket_no}</td>
-                        <td className="pr-4 text-right">{t.ticket_amount}</td>
-                        <td className="pr-4 text-right">{t.items_sum}</td>
-                        <td className="text-right">{t.diff}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </details>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
+// Note: the backend still computes an integrity cross-check and attaches
+// `integrity_warning` to the response when items/tickets diverge, and the
+// adjustment engine writes to the structured log. We intentionally do not
+// render it in the admin UI — it's surfaced via server logs / JSON API
+// for engineers, not as an end-user banner.
