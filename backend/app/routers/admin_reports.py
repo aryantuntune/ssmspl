@@ -23,7 +23,7 @@ from app.schemas.admin_report import (
     ItemwiseDailyChargesReport,
     ItemwiseLevyReport,
 )
-from app.services import admin_pdf_service, admin_report_service
+from app.services import admin_pdf_service, admin_report_service, admin_xlsx_service
 from app.services.activity_log_service import ActivityAction, log_activity
 
 router = APIRouter(prefix="/api/reports/admin", tags=["Admin Reports"])
@@ -99,6 +99,36 @@ async def itemwise_levy_summary_pdf(
     )
 
 
+@limiter.limit("10/minute")
+@router.get(
+    "/itemwise-levy-summary/xlsx",
+    summary="Itemwise Levy Summary (Excel)",
+)
+async def itemwise_levy_summary_xlsx(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    date_from: datetime.date = Query(...),
+    date_to: datetime.date = Query(...),
+    route_id: int = Query(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(_admin_roles),
+):
+    data = await admin_report_service.run_itemwise_levy_summary(
+        db, date_from, date_to, route_id
+    )
+    _log(background_tasks, current_user, "itemwise_levy_summary", True,
+         date_from=date_from, date_to=date_to, route_id=route_id, format="xlsx")
+    return StreamingResponse(
+        admin_xlsx_service.generate_itemwise_levy_xlsx(data),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": (
+                f"attachment; filename=itemwise_levy_summary_{date_from}_{date_to}.xlsx"
+            )
+        },
+    )
+
+
 # ── Report B ──────────────────────────────────────────────────────────────────
 
 
@@ -154,6 +184,36 @@ async def date_branch_summary_pdf(
     )
 
 
+@limiter.limit("10/minute")
+@router.get(
+    "/date-branch-summary/xlsx",
+    summary="Date-Wise Branch Summary (Excel)",
+)
+async def date_branch_summary_xlsx(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    date_from: datetime.date = Query(...),
+    date_to: datetime.date = Query(...),
+    route_id: int = Query(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(_admin_roles),
+):
+    data = await admin_report_service.run_date_branch_summary(
+        db, date_from, date_to, route_id
+    )
+    _log(background_tasks, current_user, "date_branch_summary", True,
+         date_from=date_from, date_to=date_to, route_id=route_id, format="xlsx")
+    return StreamingResponse(
+        admin_xlsx_service.generate_date_branch_summary_xlsx(data),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": (
+                f"attachment; filename=date_branch_summary_{date_from}_{date_to}.xlsx"
+            )
+        },
+    )
+
+
 # ── Report C ──────────────────────────────────────────────────────────────────
 
 
@@ -204,6 +264,36 @@ async def itemwise_daily_charges_pdf(
         headers={
             "Content-Disposition": (
                 f"attachment; filename=itemwise_daily_charges_{date_from}_{date_to}.pdf"
+            )
+        },
+    )
+
+
+@limiter.limit("10/minute")
+@router.get(
+    "/itemwise-daily-charges/xlsx",
+    summary="Itemwise Daily Collection Charges (Excel)",
+)
+async def itemwise_daily_charges_xlsx(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    date_from: datetime.date = Query(...),
+    date_to: datetime.date = Query(...),
+    route_id: int = Query(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(_admin_roles),
+):
+    data = await admin_report_service.run_itemwise_daily_charges(
+        db, date_from, date_to, route_id
+    )
+    _log(background_tasks, current_user, "itemwise_daily_charges", True,
+         date_from=date_from, date_to=date_to, route_id=route_id, format="xlsx")
+    return StreamingResponse(
+        admin_xlsx_service.generate_itemwise_daily_charges_xlsx(data),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": (
+                f"attachment; filename=itemwise_daily_charges_{date_from}_{date_to}.xlsx"
             )
         },
     )

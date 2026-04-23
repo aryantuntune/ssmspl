@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Download, Loader2 } from "lucide-react";
+import { Download, FileSpreadsheet, Loader2 } from "lucide-react";
 
 import api from "@/lib/api";
 import { Route } from "@/types";
@@ -97,24 +97,27 @@ export interface DailyChargesData {
 
 type TabKey = "itemwise-levy" | "date-branch" | "daily-charges";
 
-const REPORTS: { key: TabKey; label: string; endpoint: string; pdf: string }[] = [
+const REPORTS: { key: TabKey; label: string; endpoint: string; pdf: string; xlsx: string }[] = [
   {
     key: "itemwise-levy",
     label: "Itemwise Levy Summary",
     endpoint: "/api/reports/admin/itemwise-levy-summary",
     pdf: "/api/reports/admin/itemwise-levy-summary/pdf",
+    xlsx: "/api/reports/admin/itemwise-levy-summary/xlsx",
   },
   {
     key: "date-branch",
     label: "Date-Wise Branch Summary (Cash + GPay)",
     endpoint: "/api/reports/admin/date-branch-summary",
     pdf: "/api/reports/admin/date-branch-summary/pdf",
+    xlsx: "/api/reports/admin/date-branch-summary/xlsx",
   },
   {
     key: "daily-charges",
     label: "Itemwise Daily Collection Charges Summary",
     endpoint: "/api/reports/admin/itemwise-daily-charges",
     pdf: "/api/reports/admin/itemwise-daily-charges/pdf",
+    xlsx: "/api/reports/admin/itemwise-daily-charges/xlsx",
   },
 ];
 
@@ -146,6 +149,7 @@ export default function AdminReportsPage() {
   const [routes, setRoutes] = useState<Route[]>([]);
   const [loading, setLoading] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [downloadingXlsx, setDownloadingXlsx] = useState(false);
   const [error, setError] = useState("");
   const [data, setData] = useState<ItemwiseLevyData | DateBranchData | DailyChargesData | null>(
     null
@@ -192,22 +196,24 @@ export default function AdminReportsPage() {
     }
   };
 
-  const downloadPdf = async () => {
+  const download = async (kind: "pdf" | "xlsx") => {
     if (!routeId) {
       setError("Please select a route.");
       return;
     }
     setError("");
-    setDownloading(true);
+    const endpoint = kind === "pdf" ? current.pdf : current.xlsx;
+    const setter = kind === "pdf" ? setDownloading : setDownloadingXlsx;
+    setter(true);
     try {
-      const res = await api.get(current.pdf, {
+      const res = await api.get(endpoint, {
         params: { date_from: dateFrom, date_to: dateTo, route_id: Number(routeId) },
         responseType: "blob",
       });
       const url = window.URL.createObjectURL(new Blob([res.data]));
       const a = document.createElement("a");
       a.href = url;
-      a.download = `${current.key}_${dateFrom}_${dateTo}.pdf`;
+      a.download = `${current.key}_${dateFrom}_${dateTo}.${kind}`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -215,10 +221,10 @@ export default function AdminReportsPage() {
     } catch (err) {
       const detail =
         (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
-        "Failed to download PDF.";
+        `Failed to download ${kind.toUpperCase()}.`;
       setError(detail);
     } finally {
-      setDownloading(false);
+      setter(false);
     }
   };
 
@@ -296,7 +302,7 @@ export default function AdminReportsPage() {
                 </Button>
                 <Button
                   variant="outline"
-                  onClick={downloadPdf}
+                  onClick={() => download("pdf")}
                   disabled={downloading || !generated}
                 >
                   {downloading ? (
@@ -305,6 +311,18 @@ export default function AdminReportsPage() {
                     <Download className="w-4 h-4 mr-2" />
                   )}
                   PDF
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => download("xlsx")}
+                  disabled={downloadingXlsx || !generated}
+                >
+                  {downloadingXlsx ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <FileSpreadsheet className="w-4 h-4 mr-2" />
+                  )}
+                  Excel
                 </Button>
               </div>
             </div>

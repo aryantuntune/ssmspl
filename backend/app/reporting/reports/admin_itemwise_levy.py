@@ -8,7 +8,7 @@ Query scope (always):
     - tickets.is_cancelled = false
     - ticket_items.is_cancelled = false
     - ticket_items.quantity > 0
-    - ticket_items.levy >= 0
+    - ticket_items.levy > 0      # exclude zero-levy items (ambulance, luggage, etc.)
     - ticket_date BETWEEN :date_from AND :date_to
     - route_id = :route_id
     - payment_mode_id IN (1, 2, 3)   # Cash, UPI, Card — POS modes
@@ -129,7 +129,7 @@ async def _query_items_by_branch(
         .where(Ticket.is_cancelled == False)  # noqa: E712
         .where(TicketItem.is_cancelled == False)  # noqa: E712
         .where(TicketItem.quantity > 0)
-        .where(TicketItem.levy >= 0)
+        .where(TicketItem.levy > 0)
         .where(Ticket.ticket_date >= date_from)
         .where(Ticket.ticket_date <= date_to)
         .where(Ticket.route_id == route_id)
