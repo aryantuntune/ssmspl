@@ -1125,26 +1125,30 @@ async def commit(
                 operation_type="MODIFY",
             ))
 
-            # Recalc net_amount on this ticket if not already in surviving_ticket_ids
-            if ro_ticket_id not in set(surviving_ticket_ids):
-                await db.execute(
-                    text("""
-                        UPDATE tickets
-                        SET
-                            amount = (
-                                SELECT COALESCE(SUM((ti.rate + ti.levy) * ti.quantity), 0)
-                                FROM ticket_items ti
-                                WHERE ti.ticket_id = tickets.id AND ti.is_cancelled = false
-                            ),
-                            net_amount = (
-                                SELECT COALESCE(SUM((ti.rate + ti.levy) * ti.quantity), 0)
-                                FROM ticket_items ti
-                                WHERE ti.ticket_id = tickets.id AND ti.is_cancelled = false
-                            ) - COALESCE(discount, 0)
-                        WHERE id = :tid
-                    """),
-                    {"tid": ro_ticket_id},
-                )
+            # Always recompute amount + net_amount after the round-off.
+            # Even if ro_ticket_id is in surviving_ticket_ids (and was recomputed
+            # at line 1008), that earlier recompute ran *before* the round-off
+            # mutation above — so Ticket.amount is still stale by the round-off
+            # delta. A second recompute here is idempotent and required for
+            # header/items consistency.
+            await db.execute(
+                text("""
+                    UPDATE tickets
+                    SET
+                        amount = (
+                            SELECT COALESCE(SUM((ti.rate + ti.levy) * ti.quantity), 0)
+                            FROM ticket_items ti
+                            WHERE ti.ticket_id = tickets.id AND ti.is_cancelled = false
+                        ),
+                        net_amount = (
+                            SELECT COALESCE(SUM((ti.rate + ti.levy) * ti.quantity), 0)
+                            FROM ticket_items ti
+                            WHERE ti.ticket_id = tickets.id AND ti.is_cancelled = false
+                        ) - COALESCE(discount, 0)
+                    WHERE id = :tid
+                """),
+                {"tid": ro_ticket_id},
+            )
 
         log.status = "COMMITTED"
         log.executed_at = datetime.now(timezone.utc)
