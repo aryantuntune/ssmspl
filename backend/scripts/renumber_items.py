@@ -2,63 +2,58 @@
 """
 Item ID Renumber Script
 =======================
-Closes the gap left by the V1->V2 migration by renumbering specific item IDs
-to consecutive low-numbered IDs that match what the operator sees in the
-Item Master.
+Compacts gaps in the `items` primary key so the active item IDs become
+consecutive (1, 2, 3, ...). The Items master only shows ACTIVE items, so
+operators expect to type the same numbers they see in the master. After the
+V1->V2 migration, deactivated V1 items leave gaps and post-migration items
+get high auto-incremented IDs (e.g. 154+), breaking that expectation.
 
-Default mapping (override with --remap):
-    154 -> 22
-    155 -> 23
-    156 -> 24
+This script DOES NOT hardcode any item IDs. It:
+  1. Reads all active items from the database
+  2. Finds gaps in the active-ID sequence
+  3. Proposes a remapping that fills the gaps from the top
 
-WHY THIS EXISTS
+Default mode is diagnostic-only (read-only). Nothing changes unless you pass
+--dry-run (transaction rolled back at the end) or --apply (commits).
+
+WHAT IT TOUCHES
 ---------------
-After V1->V2 migration, V2 occupies IDs 1-21 and old V1-only items remain as
-inactive rows occupying IDs 22-45 etc. New items added post-migration get
-auto-incremented IDs starting from MAX(id)+1, which is well above 100.
-
-The Items master only shows ACTIVE items, so operators see 1-21 + the new
-ones (e.g. 154, 155, 156) and expect them to read like 22, 23, 24.
-
-RISK / BLAST RADIUS
--------------------
-This UPDATEs primary keys in `items` and CASCADES through every table that
-references item_id:
+Updates `items.id` and every reference column:
     - item_rates             (FK)
     - ticket_items           (FK)
-    - booking_items          (no FK, logical reference)
+    - booking_items          (logical reference, no FK)
     - rate_change_logs       (FK)
-    - item_rate_history      (no FK, audit log)
-    - item_migration_map     (no FK, audit log)
+    - item_rate_history      (audit log, no FK)
+    - item_migration_map     (audit log, no FK — both old_item_id and new_item_id)
     - parameter_master       (FK)
 
-Run during a maintenance window. Stop the API server first to avoid mid-flight
-inserts referencing the old IDs.
+FKs are dropped, updates run, FKs are re-added — all inside a single
+transaction so any failure rolls back cleanly. Inactive items occupying
+target IDs are stashed to id + --stash-offset (default 9000).
+
+Run during a maintenance window with the API server stopped.
 
 USAGE
 -----
-    # Preview only (no writes)
-    python scripts/renumber_items.py --dry-run
+    # Diagnose only (read-only, shows discovered items + proposed remap)
+    python scripts/renumber_items.py --env .env.production
 
-    # Custom mapping
-    python scripts/renumber_items.py --remap "154:22,155:23,156:24" --dry-run
+    # Auto-compact: preview the transaction
+    python scripts/renumber_items.py --auto-compact --dry-run
 
-    # Apply
-    python scripts/renumber_items.py --apply
+    # Auto-compact: apply for real
+    python scripts/renumber_items.py --auto-compact --apply
 
-    # Use production env file
-    python scripts/renumber_items.py --apply --env .env.production
+    # Or override with an explicit mapping
+    python scripts/renumber_items.py --remap "154:22,155:23,156:24" --apply
 
 DESIGN
 ------
-- Single transaction. Either every table updates atomically or nothing changes.
-- Pre-flight verifies source IDs exist and target IDs are free (or only inactive).
-- If a target ID is occupied by an INACTIVE item, the script offers to move it
-  aside to a high spare ID range (target + 9000) before renumbering.
-- FK constraints are dropped, updates run, FKs are re-created — all in one
-  transaction so a failure rolls back cleanly.
-- Idempotent: running twice with the same mapping after a successful run is a
-  no-op (source IDs no longer exist).
+- No hardcoded source/target IDs. Source IDs come from the database.
+- Idempotent: re-running after a successful apply is a no-op (no gaps left).
+- Source must be ACTIVE. Refuses to renumber inactive items (they're history).
+- Target ID conflicts: refuses if active item already there; auto-stashes if
+  inactive item is there.
 """
 
 from __future__ import annotations
@@ -77,19 +72,14 @@ _ENV_CANDIDATES = [
 ]
 DEFAULT_ENV = next((p for p in _ENV_CANDIDATES if p.exists()), BACKEND_DIR / ".env.development")
 
-DEFAULT_REMAP = {154: 22, 155: 23, 156: 24}
-
-# Tables that hold an item_id reference, with whether they have a real FK.
-# Order matters: update child rows before bumping items.id so we don't violate
-# the FK between the two UPDATEs (we drop FKs first, but listing children
-# first keeps the diagnostic output readable).
+# Tables that hold an item_id reference. (table, column, fk_name_or_None)
 ITEM_REF_TABLES = [
-    ("item_rates",         "item_id", "item_rates_item_id_fkey",         True),
-    ("ticket_items",       "item_id", "ticket_items_item_id_fkey",       True),
-    ("booking_items",      "item_id", None,                              False),
-    ("rate_change_logs",   "item_id", "rate_change_logs_item_id_fkey",   True),
-    ("item_rate_history",  "item_id", None,                              False),
-    ("parameter_master",   "item_id", "parameter_master_item_id_fkey",   True),
+    ("item_rates",         "item_id", "item_rates_item_id_fkey"),
+    ("ticket_items",       "item_id", "ticket_items_item_id_fkey"),
+    ("booking_items",      "item_id", None),
+    ("rate_change_logs",   "item_id", "rate_change_logs_item_id_fkey"),
+    ("item_rate_history",  "item_id", None),
+    ("parameter_master",   "item_id", "parameter_master_item_id_fkey"),
 ]
 
 # Audit-log tables that store *both* old_item_id and new_item_id.
@@ -99,9 +89,10 @@ ITEM_REF_AUDIT_TABLES = [
 ]
 
 
-def parse_remap(raw: str | None) -> dict[int, int]:
-    if not raw:
-        return dict(DEFAULT_REMAP)
+# --------------------------------------------------------------------------
+# Helpers
+# --------------------------------------------------------------------------
+def parse_explicit_remap(raw: str) -> dict[int, int]:
     out: dict[int, int] = {}
     for pair in raw.split(","):
         pair = pair.strip()
@@ -143,86 +134,160 @@ def header(title: str) -> None:
 
 
 # --------------------------------------------------------------------------
-# Diagnostics
+# Discover: read items table, identify gaps, propose remap
 # --------------------------------------------------------------------------
-async def diagnose(conn, remap: dict[int, int]) -> dict:
-    header("Pre-flight diagnostics")
+async def discover_items(conn) -> tuple[list[dict], list[dict], dict[int, int]]:
+    """Return (active_items, inactive_items, proposed_remap).
 
+    Auto-compact algorithm: walk active IDs ascending and remap each one to the
+    smallest target slot not occupied by another ACTIVE item. Inactive items
+    occupying target slots are ignored here — they get stashed at apply time.
+    """
+    rows = await conn.fetch(
+        "SELECT id, name, short_name, is_active FROM items ORDER BY id"
+    )
+    active   = [dict(r) for r in rows if r["is_active"]]
+    inactive = [dict(r) for r in rows if not r["is_active"]]
+
+    active_ids = sorted(r["id"] for r in active)
+    # Mutable: as we propose a remap, the source becomes free and the target is taken.
+    live = set(active_ids)
+
+    proposed: dict[int, int] = {}
+    next_target = 1
+    for src in active_ids:
+        # Advance next_target past any slots taken by *another* still-live active item.
+        while next_target in live and next_target != src:
+            next_target += 1
+        if src == next_target:
+            next_target += 1
+            continue
+        # src > next_target — propose remap to fill the gap.
+        proposed[src] = next_target
+        live.discard(src)
+        live.add(next_target)
+        next_target += 1
+
+    return active, inactive, proposed
+
+
+def print_discovery(active: list[dict], inactive: list[dict], proposed: dict[int, int]) -> None:
+    header("Discovered items in database")
+
+    print(f"\n  Active items: {len(active)}")
+    for r in active:
+        marker = ""
+        if r["id"] in proposed:
+            marker = f"  -> {proposed[r['id']]}"
+        print(f"    id={r['id']:4}  '{r['name']}'  short='{r['short_name']}'{marker}")
+
+    if inactive:
+        print(f"\n  Inactive items: {len(inactive)}")
+        for r in inactive:
+            print(f"    id={r['id']:4}  '{r['name']}'  (inactive)")
+    else:
+        print("\n  Inactive items: none")
+
+    if proposed:
+        print(f"\n  Proposed auto-compact remap ({len(proposed)} item(s)):")
+        for old, new in proposed.items():
+            print(f"    {old:4} -> {new}")
+    else:
+        print("\n  No gaps detected — active IDs are already consecutive from 1.")
+
+
+# --------------------------------------------------------------------------
+# Validate explicit/proposed remap against the database
+# --------------------------------------------------------------------------
+async def validate_remap(
+    conn,
+    remap: dict[int, int],
+    active: list[dict],
+    inactive: list[dict],
+) -> dict:
+    header("Validating remap against database")
+
+    active_by_id   = {r["id"]: r for r in active}
+    inactive_by_id = {r["id"]: r for r in inactive}
+
+    src_active   : list[dict] = []
+    src_missing  : list[int]  = []
+    src_inactive : list[dict] = []
+    dst_active   : list[dict] = []
+    dst_inactive : list[dict] = []
+
+    for old, new in remap.items():
+        if old in active_by_id:
+            src_active.append(active_by_id[old])
+        elif old in inactive_by_id:
+            src_inactive.append(inactive_by_id[old])
+        else:
+            src_missing.append(old)
+
+        if new in active_by_id and new != old:
+            dst_active.append(active_by_id[new])
+        elif new in inactive_by_id and new != old:
+            dst_inactive.append(inactive_by_id[new])
+
+    print(f"  Source IDs ACTIVE   : {len(src_active)}")
+    print(f"  Source IDs missing  : {len(src_missing)}  {src_missing if src_missing else ''}")
+    print(f"  Source IDs INACTIVE : {len(src_inactive)}")
+    print(f"  Target ACTIVE clash : {len(dst_active)}")
+    print(f"  Target INACTIVE     : {len(dst_inactive)}  (will be stashed)")
+
+    fatal: list[str] = []
+    if src_missing:
+        fatal.append(f"source IDs not found in items table: {src_missing}")
+    if src_inactive:
+        ids = [r["id"] for r in src_inactive]
+        fatal.append(f"refusing to renumber INACTIVE source IDs (history rows): {ids}")
+    if dst_active:
+        ids = [r["id"] for r in dst_active]
+        fatal.append(f"target IDs occupied by ACTIVE items: {ids}")
+
+    # Per-table reference counts for the source IDs (informational)
     src_ids = list(remap.keys())
-    dst_ids = list(remap.values())
-
-    src_rows = await conn.fetch(
-        "SELECT id, name, short_name, is_active FROM items "
-        "WHERE id = ANY($1::int[]) ORDER BY id",
-        src_ids,
-    )
-    dst_rows = await conn.fetch(
-        "SELECT id, name, short_name, is_active FROM items "
-        "WHERE id = ANY($1::int[]) ORDER BY id",
-        dst_ids,
-    )
-
-    print("\n  Source rows (will be renumbered):")
-    if not src_rows:
-        print("    (none found — script is a no-op)")
-    for r in src_rows:
-        new_id = remap[r["id"]]
-        flag = "ACTIVE" if r["is_active"] else "inactive"
-        print(f"    {r['id']:4} -> {new_id:3}  [{flag:8}]  '{r['name']}'")
-
-    print("\n  Target rows (must be free):")
-    if not dst_rows:
-        print("    (target IDs are free — clean renumber)")
-    blockers: list[dict] = []
-    for r in dst_rows:
-        flag = "ACTIVE" if r["is_active"] else "inactive"
-        blocker_kind = "BLOCKER (active)" if r["is_active"] else "stash needed"
-        print(f"    {r['id']:4}  [{flag:8}]  '{r['name']}'  -> {blocker_kind}")
-        blockers.append(dict(r))
-
-    # Per-table reference counts for the source IDs
-    print("\n  Reference counts in dependent tables:")
-    ref_counts: dict[str, int] = {}
-    for table, col, *_ in ITEM_REF_TABLES:
-        cnt = await conn.fetchval(
-            f"SELECT COUNT(*) FROM {table} WHERE {col} = ANY($1::int[])",
-            src_ids,
-        )
-        print(f"    {table:24} {col:14} : {cnt}")
-        ref_counts[table] = cnt
+    if src_ids:
+        print("\n  Reference counts for source IDs:")
+        for table, col, _ in ITEM_REF_TABLES:
+            cnt = await conn.fetchval(
+                f"SELECT COUNT(*) FROM {table} WHERE {col} = ANY($1::int[])",
+                src_ids,
+            )
+            print(f"    {table:24} {col:14} : {cnt}")
 
     return {
-        "src_present": [dict(r) for r in src_rows],
-        "dst_present": [dict(r) for r in dst_rows],
-        "blockers": [b for b in blockers if b["is_active"]],
-        "stash_needed": [b for b in blockers if not b["is_active"]],
-        "ref_counts": ref_counts,
+        "fatal": fatal,
+        "stash_needed": [r["id"] for r in dst_inactive],
     }
 
 
 # --------------------------------------------------------------------------
-# Stash (move existing inactive items at target IDs out of the way)
+# Stash inactive items at target IDs out to spare slots
 # --------------------------------------------------------------------------
 async def stash_inactive(conn, ids_to_stash: list[int], stash_offset: int) -> dict[int, int]:
-    """Move inactive items at target IDs to high spare IDs (id + offset)."""
     if not ids_to_stash:
         return {}
 
     print(f"\n  Stashing {len(ids_to_stash)} inactive item(s) by +{stash_offset}:")
     stash_map: dict[int, int] = {}
     for old in ids_to_stash:
-        new = old + stash_offset
-        # Verify the spare slot is free
-        clash = await conn.fetchval("SELECT 1 FROM items WHERE id = $1", new)
-        if clash:
-            sys.exit(f"ERROR: stash slot {new} is occupied — pick a different --stash-offset")
-        stash_map[old] = new
-        print(f"    {old:4} -> {new}")
+        candidate = old + stash_offset
+        # Find a truly empty slot
+        for _ in range(100):
+            clash = await conn.fetchval("SELECT 1 FROM items WHERE id = $1", candidate)
+            if not clash:
+                break
+            candidate += 1
+        else:
+            sys.exit(f"ERROR: could not find a free stash slot near {old + stash_offset}")
+        stash_map[old] = candidate
+        print(f"    {old} -> {candidate}")
     return stash_map
 
 
 # --------------------------------------------------------------------------
-# Apply (renumber) — runs inside a transaction
+# Apply the renumber inside a transaction
 # --------------------------------------------------------------------------
 async def apply_renumber(
     conn,
@@ -231,58 +296,47 @@ async def apply_renumber(
 ) -> None:
     header("Applying renumber (inside transaction)")
 
-    fk_constraints = [c for *_, c, has_fk in [(t, c, fk, has_fk) for t, c, fk, has_fk in ITEM_REF_TABLES] if has_fk]
-    fks = [(t, fk) for t, _c, fk, has_fk in ITEM_REF_TABLES if has_fk and fk]
+    fks = [(t, fk) for t, _c, fk in ITEM_REF_TABLES if fk]
 
-    # 1. Drop FKs that target items.id so we can update PK without cascade pain.
+    # 1. Drop FKs that target items.id so the PK update doesn't cascade-fail.
     for table, fk_name in fks:
-        # Use IF EXISTS in case names differ slightly across deployments.
         await conn.execute(f"ALTER TABLE {table} DROP CONSTRAINT IF EXISTS {fk_name}")
     print(f"  Dropped {len(fks)} FK constraint(s).")
 
-    # 2. Stash inactive items at target IDs to high spare IDs.
-    if stash_map:
-        for old, new in stash_map.items():
-            await conn.execute("UPDATE items SET id = $1 WHERE id = $2", new, old)
-            for table, col, *_ in ITEM_REF_TABLES:
-                await conn.execute(
-                    f"UPDATE {table} SET {col} = $1 WHERE {col} = $2",
-                    new, old,
-                )
-            for table, col in ITEM_REF_AUDIT_TABLES:
-                await conn.execute(
-                    f"UPDATE {table} SET {col} = $1 WHERE {col} = $2",
-                    new, old,
-                )
-        print(f"  Stashed {len(stash_map)} inactive item(s).")
-
-    # 3. Renumber: source -> target. Update items.id then every dependent table.
-    total_updates: dict[str, int] = {}
-    for old, new in remap.items():
+    async def move(old: int, new: int) -> dict[str, int]:
+        per: dict[str, int] = {}
         await conn.execute("UPDATE items SET id = $1 WHERE id = $2", new, old)
-        for table, col, *_ in ITEM_REF_TABLES:
+        for table, col, _ in ITEM_REF_TABLES:
             res = await conn.execute(
-                f"UPDATE {table} SET {col} = $1 WHERE {col} = $2",
-                new, old,
+                f"UPDATE {table} SET {col} = $1 WHERE {col} = $2", new, old,
             )
-            # asyncpg execute returns 'UPDATE n'
-            n = int(res.split()[-1]) if res.startswith("UPDATE") else 0
-            total_updates[table] = total_updates.get(table, 0) + n
+            per[table] = int(res.split()[-1]) if res.startswith("UPDATE") else 0
         for table, col in ITEM_REF_AUDIT_TABLES:
             res = await conn.execute(
-                f"UPDATE {table} SET {col} = $1 WHERE {col} = $2",
-                new, old,
+                f"UPDATE {table} SET {col} = $1 WHERE {col} = $2", new, old,
             )
-            n = int(res.split()[-1]) if res.startswith("UPDATE") else 0
-            key = f"{table}.{col}"
-            total_updates[key] = total_updates.get(key, 0) + n
+            per[f"{table}.{col}"] = int(res.split()[-1]) if res.startswith("UPDATE") else 0
+        return per
+
+    # 2. Stash any inactive items occupying target slots.
+    if stash_map:
+        for old, new in stash_map.items():
+            await move(old, new)
+        print(f"  Stashed {len(stash_map)} inactive item(s).")
+
+    # 3. Renumber sources to targets.
+    totals: dict[str, int] = {}
+    for old, new in remap.items():
+        per = await move(old, new)
+        for k, v in per.items():
+            totals[k] = totals.get(k, 0) + v
         print(f"  Renumbered item {old} -> {new}")
 
     print("\n  Per-table rows updated:")
-    for k, v in total_updates.items():
-        print(f"    {k:32} : {v}")
+    for k, v in totals.items():
+        print(f"    {k:36} : {v}")
 
-    # 4. Re-create FKs.
+    # 4. Re-create the FKs.
     for table, fk_name in fks:
         await conn.execute(
             f"ALTER TABLE {table} "
@@ -298,45 +352,62 @@ async def apply_renumber(
 async def async_main(args: argparse.Namespace) -> None:
     import asyncpg
 
-    remap = parse_remap(args.remap)
+    if args.remap and args.auto_compact:
+        sys.exit("ERROR: choose either --remap or --auto-compact, not both.")
+    if args.apply and args.dry_run:
+        sys.exit("ERROR: choose either --apply or --dry-run, not both.")
 
     print(f"\n{'='*60}")
-    mode = "DRY RUN" if args.dry_run else ("APPLY" if args.apply else "DIAGNOSTIC ONLY")
+    if args.apply:
+        mode = "APPLY (writes will commit)"
+    elif args.dry_run:
+        mode = "DRY RUN (transaction rolled back)"
+    else:
+        mode = "DIAGNOSTIC ONLY (read-only)"
     print(f"  Item Renumber  [{mode}]")
-    print(f"  Mapping: {remap}")
     print(f"  Env: {args.env}")
     print(f"{'='*60}")
-
-    if not args.dry_run and not args.apply:
-        print("\n  No --apply or --dry-run flag — running diagnostic only.")
-        print("  Re-run with --dry-run to preview the transaction,")
-        print("  or --apply to write changes.\n")
 
     db_url = load_database_url(Path(args.env))
     conn = await asyncpg.connect(db_url)
 
     try:
-        diag = await diagnose(conn, remap)
+        active, inactive, proposed = await discover_items(conn)
+        print_discovery(active, inactive, proposed)
 
-        if not diag["src_present"]:
-            print("\n  Nothing to do — source IDs not present. Exiting.")
+        # Decide which mapping to use
+        if args.remap:
+            remap = parse_explicit_remap(args.remap)
+            print(f"\n  Using explicit --remap ({len(remap)} pairs).")
+        elif args.auto_compact:
+            remap = proposed
+            print(f"\n  Using auto-compact remap ({len(remap)} pairs).")
+        else:
+            print("\n  No --remap or --auto-compact — diagnostic-only.")
+            print("  Re-run with --auto-compact --dry-run to preview the proposed transaction,")
+            print("  or with --remap \"OLD:NEW,...\" to provide an explicit mapping.\n")
             return
 
-        if diag["blockers"]:
-            print("\nERROR: target IDs are occupied by ACTIVE items. Aborting.")
-            for b in diag["blockers"]:
-                print(f"    id={b['id']} name='{b['name']}' is_active=TRUE")
+        if not remap:
+            print("  Nothing to renumber. Exiting.")
+            return
+
+        validation = await validate_remap(conn, remap, active, inactive)
+
+        if validation["fatal"]:
+            print("\nERROR: validation failed:")
+            for msg in validation["fatal"]:
+                print(f"  - {msg}")
             sys.exit(1)
 
-        stash_ids = [b["id"] for b in diag["stash_needed"]]
-        stash_map: dict[int, int] = {}
-
         if not args.apply and not args.dry_run:
-            return  # diagnostic-only mode
+            print("\n  Validation OK. Re-run with --dry-run or --apply to proceed.")
+            return
 
         async with conn.transaction():
-            if stash_ids:
-                stash_map = await stash_inactive(conn, stash_ids, args.stash_offset)
+            stash_map = await stash_inactive(
+                conn, validation["stash_needed"], args.stash_offset
+            )
             await apply_renumber(conn, remap, stash_map)
 
             if args.dry_run:
@@ -364,35 +435,36 @@ async def async_main(args: argparse.Namespace) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Renumber item IDs in items table and cascade through all FK references.",
+        description=(
+            "Compact item-ID gaps in the items table and cascade through every "
+            "FK reference. Discovers items from the database — no hardcoded IDs."
+        ),
     )
     parser.add_argument(
-        "--remap",
-        default=None,
-        help='Comma-separated old:new pairs, e.g. "154:22,155:23,156:24". '
-             f"Default: {','.join(f'{k}:{v}' for k, v in DEFAULT_REMAP.items())}",
+        "--auto-compact", action="store_true",
+        help="Use the auto-discovered remap that closes gaps in the active-ID sequence.",
+    )
+    parser.add_argument(
+        "--remap", default=None,
+        help='Explicit mapping, e.g. "154:22,155:23,156:24". Overrides --auto-compact.',
     )
     parser.add_argument(
         "--dry-run", action="store_true",
-        help="Run the full transaction then roll back. Shows what would change.",
+        help="Run the full transaction then roll back. Shows every UPDATE.",
     )
     parser.add_argument(
         "--apply", action="store_true",
-        help="Write changes for real. Without this and --dry-run, runs diagnostic only.",
+        help="Write changes for real.",
     )
     parser.add_argument(
         "--stash-offset", type=int, default=9000,
-        help="Offset added to inactive items at target IDs that need to be moved aside (default 9000).",
+        help="Offset added to inactive items occupying target IDs (default 9000).",
     )
     parser.add_argument(
         "--env", default=str(DEFAULT_ENV),
         help=f"Path to .env file with DATABASE_URL (default: {DEFAULT_ENV}).",
     )
     args = parser.parse_args()
-
-    if args.apply and args.dry_run:
-        sys.exit("ERROR: choose either --apply or --dry-run, not both.")
-
     asyncio.run(async_main(args))
 
 
