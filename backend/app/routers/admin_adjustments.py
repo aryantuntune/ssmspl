@@ -41,12 +41,26 @@ async def require_rollback_permission(
 @router.get("")
 async def list_adjustments(
     branch_id: int | None = Query(None),
-    limit: int = Query(50, ge=1, le=200),
+    status: str | None = Query(None, description="DRY_RUN | COMMITTED | IN_PROGRESS | FAILED | ROLLED_BACK"),
+    date_from: str | None = Query(None, description="ISO date YYYY-MM-DD; filters created_at >="),
+    date_to: str | None = Query(None, description="ISO date YYYY-MM-DD; filters created_at <= end-of-day"),
+    search: str | None = Query(None, description="Partial batch_id substring match (UUID text)"),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
     current_user=Depends(_admin_or_super),
 ):
-    """Recent adjustment log entries — visible to ADMIN + SUPER_ADMIN."""
-    return await admin_rollback_service.list_adjustments(db, branch_id=branch_id, limit=limit)
+    """Paginated adjustment log — visible to ADMIN + SUPER_ADMIN. All historical batches are retained."""
+    return await admin_rollback_service.list_adjustments(
+        db,
+        branch_id=branch_id,
+        status=status,
+        date_from=date_from,
+        date_to=date_to,
+        search=search,
+        offset=offset,
+        limit=limit,
+    )
 
 
 @router.get("/permissions")

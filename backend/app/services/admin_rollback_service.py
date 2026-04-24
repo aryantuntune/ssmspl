@@ -37,14 +37,57 @@ def _date_lock_hash(date_start: date, date_end: date) -> int:
 async def list_adjustments(
     db: AsyncSession,
     branch_id: int | None = None,
+    status: str | None = None,
+    date_from: str | None = None,   # filter on created_at date (ISO YYYY-MM-DD)
+    date_to: str | None = None,
+    search: str | None = None,      # partial match on batch_id (UUID substring)
+    offset: int = 0,
     limit: int = 50,
-) -> list[dict]:
-    """Return recent adjustment log entries (for history UI)."""
-    q = select(AdminAdjustmentsLog).order_by(AdminAdjustmentsLog.created_at.desc()).limit(limit)
+) -> dict:
+    """Return adjustment log entries with filtering + pagination.
+
+    All historical batches are always retained in admin_adjustments_log — this
+    endpoint just paginates through them. Rollback capability exists for every
+    COMMITTED or FAILED batch regardless of age.
+    """
+    from sqlalchemy import func as _func, cast as _cast, String as _String
+
+    base = select(AdminAdjustmentsLog)
+    count_base = select(_func.count()).select_from(AdminAdjustmentsLog)
+
+    where_conds = []
     if branch_id:
-        q = q.where(AdminAdjustmentsLog.branch_id == branch_id)
+        where_conds.append(AdminAdjustmentsLog.branch_id == branch_id)
+    if status:
+        where_conds.append(AdminAdjustmentsLog.status == status)
+    if date_from:
+        where_conds.append(AdminAdjustmentsLog.created_at >= date_from)
+    if date_to:
+        # inclusive end-of-day: add one day and use strict <
+        from datetime import datetime as _dt, timedelta as _td
+        try:
+            _next = _dt.fromisoformat(date_to) + _td(days=1)
+            where_conds.append(AdminAdjustmentsLog.created_at < _next)
+        except ValueError:
+            pass  # ignore malformed date_to silently
+    if search:
+        # batch_id is UUID; cast to text for substring match
+        where_conds.append(_cast(AdminAdjustmentsLog.id, _String).ilike(f"%{search}%"))
+
+    for c in where_conds:
+        base = base.where(c)
+        count_base = count_base.where(c)
+
+    total_res = await db.execute(count_base)
+    total = total_res.scalar_one()
+
+    q = (
+        base.order_by(AdminAdjustmentsLog.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+    )
     rows = (await db.execute(q)).scalars().all()
-    return [
+    adjustments = [
         {
             "batch_id": str(r.id),
             "branch_id": r.branch_id,
@@ -61,11 +104,16 @@ async def list_adjustments(
             "rolled_back_at": r.rolled_back_at.isoformat() if r.rolled_back_at else None,
             "rolled_back_by": str(r.rolled_back_by) if r.rolled_back_by else None,
             "error_message": r.error_message,
-            # Infer operation kind from plan_choice + details presence
             "operation_kind": _infer_kind(r),
         }
         for r in rows
     ]
+    return {
+        "adjustments": adjustments,
+        "total": total,
+        "offset": offset,
+        "limit": limit,
+    }
 
 
 def _infer_kind(log: AdminAdjustmentsLog) -> str:
