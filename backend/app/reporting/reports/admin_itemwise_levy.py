@@ -50,8 +50,11 @@ async def get_itemwise_levy_summary(
         key = (r.item_id, r.item_name, Decimal(str(r.levy)))
         pivot.setdefault(key, {})[r.branch_id] = int(r.quantity)
 
-    # Build rows: sort alphabetically by item_name, then by levy ascending
-    sorted_keys = sorted(pivot.keys(), key=lambda k: (k[1].upper(), k[2]))
+    # Build rows in item-master order (items.id ASC), with levy as tie-break
+    # for the rare case of the same item at multiple levies in the same
+    # range. This matches the canonical business order used across every
+    # report on both admin.carferry.online and the main site.
+    sorted_keys = sorted(pivot.keys(), key=lambda k: (k[0], k[2]))
     branch_ids = [b.id for b in branches]
 
     result_rows: list[dict] = []

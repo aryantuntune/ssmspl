@@ -122,6 +122,7 @@ class DateWiseAmountReport(BaseModel):
 
 class FerryWiseItemRow(BaseModel):
     departure: str  # time formatted as "7:30 am"
+    item_id: int | None = None
     item_name: str
     quantity: int
 
@@ -142,6 +143,7 @@ class BranchItemSummaryPaymentMode(BaseModel):
 # --- Item Wise Summary ---
 
 class ItemWiseSummaryRow(BaseModel):
+    item_id: int | None = None
     item_name: str
     rate: Decimal
     quantity: int
@@ -195,6 +197,7 @@ class VehicleWiseTicketReport(BaseModel):
 # --- Branch Item Summary ---
 
 class BranchItemSummaryRow(BaseModel):
+    item_id: int | None = None
     item_name: str
     rate: Decimal
     quantity: int

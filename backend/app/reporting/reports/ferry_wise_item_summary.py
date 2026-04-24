@@ -35,7 +35,7 @@ from app.reporting.sorting import sort_by_departure_then_item
 
 # departure is a time | None — not numeric, but listed in skip_sum for
 # explicit safety and documentation intent.
-_FERRY_SKIP_SUM = frozenset({"departure"})
+_FERRY_SKIP_SUM = frozenset({"departure", "item_id"})
 
 
 # ── Public entry point ────────────────────────────────────────────────────────
@@ -101,19 +101,21 @@ async def _query_pos(db: AsyncSession, filters: ReportFilters) -> list[dict]:
     q = (
         select(
             Ticket.departure,
+            Item.id.label("item_id"),
             Item.name.label("item_name"),
             func.sum(TicketItem.quantity).label("pos_quantity"),
         )
         .join(TicketItem, TicketItem.ticket_id == Ticket.id)
         .join(Item, TicketItem.item_id == Item.id)
         .where(TicketItem.is_cancelled == False)  # noqa: E712
-        .group_by(Ticket.departure, Item.name)
+        .group_by(Ticket.departure, Item.id, Item.name)
     )
     q = apply_pos_filters(q, filters)
     rows = (await db.execute(q)).all()
     return [
         {
             "departure": r.departure,
+            "item_id": int(r.item_id),
             "item_name": r.item_name,
             "pos_quantity": int(r.pos_quantity),
             "portal_quantity": 0,
@@ -132,19 +134,21 @@ async def _query_portal(db: AsyncSession, filters: ReportFilters) -> list[dict]:
     q = (
         select(
             Booking.departure,
+            Item.id.label("item_id"),
             Item.name.label("item_name"),
             func.sum(BookingItem.quantity).label("portal_quantity"),
         )
         .join(BookingItem, BookingItem.booking_id == Booking.id)
         .join(Item, BookingItem.item_id == Item.id)
         .where(BookingItem.is_cancelled == False)  # noqa: E712
-        .group_by(Booking.departure, Item.name)
+        .group_by(Booking.departure, Item.id, Item.name)
     )
     q = apply_portal_filters(q, filters)
     rows = (await db.execute(q)).all()
     return [
         {
             "departure": r.departure,
+            "item_id": int(r.item_id),
             "item_name": r.item_name,
             "portal_quantity": int(r.portal_quantity),
             "pos_quantity": 0,
@@ -180,11 +184,12 @@ def _build_ferry_wise_item_result(
     -------
     {"rows": list[dict], "total_quantity": int}
     """
-    # Step 1: Merge
+    # Step 1: Merge by (departure, item_id). skip_sum preserves item_id and
+    # departure from the first row rather than summing.
     merged = merge_by_key(
         pos_data,
         portal_data,
-        key_fn=lambda r: (r["departure"], r["item_name"]),
+        key_fn=lambda r: (r["departure"], r["item_id"]),
         skip_sum=_FERRY_SKIP_SUM,
     )
 
@@ -196,6 +201,7 @@ def _build_ferry_wise_item_result(
         rows.append(
             {
                 "departure": m["departure"],
+                "item_id": m["item_id"],
                 "item_name": m["item_name"],
                 "pos_quantity": pos_qty,
                 "portal_quantity": portal_qty,

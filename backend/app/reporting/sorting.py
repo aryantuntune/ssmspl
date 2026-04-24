@@ -21,26 +21,59 @@ def sort_by_date(data: list[dict], date_key: str = "date") -> list[dict]:
     return sorted(data, key=lambda r: r[date_key])
 
 
-def sort_by_item_name(data: list[dict], name_key: str = "item_name") -> list[dict]:
-    """
-    Sort rows alphabetically ascending by item name (case-insensitive).
+def sort_by_item_id(
+    data: list[dict],
+    id_key: str = "item_id",
+    name_key: str = "item_name",
+) -> list[dict]:
+    """Sort rows by the item master primary key ascending (the canonical
+    business order).
+
+    Rules
+    -----
+    * Primary: ``item_id`` ascending.
+    * Secondary (tie-break / stable output): ``item_name`` ascending —
+      only relevant when multiple rows share the same ``item_id``
+      (e.g. same item at different rates in the daily-charges report).
+    * Rows with a missing/None ``item_id`` are placed at the END, so items
+      that are not in the item master (orphans) don't push real items
+      down. They're still sorted among themselves by ``item_name``.
 
     Parameters
     ----------
     data     : List of row dicts.
-    name_key : Name of the item name field (default: ``"item_name"``).
+    id_key   : Name of the item id field (default: ``"item_id"``).
+    name_key : Name of the item name field used as tie-break (default:
+               ``"item_name"``).
     """
+    def key(r: dict):
+        iid = r.get(id_key)
+        missing = iid is None
+        return (
+            missing,                       # False (0) < True (1): real items first
+            iid if not missing else 0,
+            (r.get(name_key) or "").lower(),
+        )
+    return sorted(data, key=key)
+
+
+# DEPRECATED — kept only to avoid breaking external callers. Do NOT use in
+# new code; use sort_by_item_id. Alphabetical sorting is wrong for business
+# reports because it breaks the operator's expected item sequence.
+def sort_by_item_name(data: list[dict], name_key: str = "item_name") -> list[dict]:
     return sorted(data, key=lambda r: r[name_key].lower())
 
 
 def sort_by_departure_then_item(
     data: list[dict],
     departure_key: str = "departure",
-    item_key: str = "item_name",
+    id_key: str = "item_id",
+    name_key: str = "item_name",
 ) -> list[dict]:
     """
-    Sort rows by departure time ascending, nulls last, then by item name
-    ascending (case-insensitive).
+    Sort rows by departure time ascending (nulls last), then by the item
+    master primary key ascending (the canonical business order used
+    everywhere in the system). Item name is a tie-break only.
 
     Null-departure rows represent walk-in / open-schedule trips and always
     appear after all time-assigned ferry slots.
@@ -49,16 +82,21 @@ def sort_by_departure_then_item(
     ----------
     data          : List of row dicts.
     departure_key : Name of the departure field (default: ``"departure"``).
-    item_key      : Name of the item name field (default: ``"item_name"``).
+    id_key        : Name of the item id field (default: ``"item_id"``).
+    name_key      : Name of the item name field used as tie-break
+                    (default: ``"item_name"``).
     """
-    return sorted(
-        data,
-        key=lambda r: (
-            r[departure_key] is None,  # False (0) < True (1) → non-null sorts first
+    def key(r: dict):
+        iid = r.get(id_key)
+        missing = iid is None
+        return (
+            r[departure_key] is None,   # non-null departures first
             r[departure_key] or datetime.time(0, 0),
-            r[item_key].lower(),
-        ),
-    )
+            missing,                    # real items first, orphans last
+            iid if not missing else 0,
+            (r.get(name_key) or "").lower(),
+        )
+    return sorted(data, key=key)
 
 
 def sort_by_payment_mode(

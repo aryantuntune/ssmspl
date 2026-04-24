@@ -71,9 +71,12 @@ async def get_itemwise_daily_charges(
         for b in branches:
             if b.id not in by_branch:
                 continue
+            # Item-master order (items.id ASC), charges as tie-break so the
+            # same item at different rates groups together in deterministic
+            # order. Matches the canonical business order used everywhere.
             rows = sorted(
                 by_branch[b.id],
-                key=lambda r: (r["item_name"].upper(), r["_charges_raw"]),
+                key=lambda r: (r["item_id"], r["_charges_raw"]),
             )
             subtotal = sum((r["_amount_raw"] for r in rows), Decimal("0"))
             # Strip helper fields before emitting

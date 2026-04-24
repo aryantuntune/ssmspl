@@ -11,7 +11,7 @@ Foundation helpers used
   apply_pos_filters        → WHERE clauses for tickets / ticket_items
   apply_portal_filters     → WHERE clauses for bookings / booking_items
   merge_by_key(skip_sum)   → merge POS + Portal rows without doubling keys
-  sort_by_item_name        → alphabetical output ordering
+  sort_by_item_id          → item-master order (items.id ASC)
 
 Integrity check
 ---------------
@@ -36,10 +36,12 @@ from app.models.ticket import TicketItem
 from app.reporting.filters import ReportFilters, get_source_flags
 from app.reporting.merge import merge_by_key
 from app.reporting.query_helpers import apply_portal_filters, apply_pos_filters
-from app.reporting.sorting import sort_by_item_name
+from app.reporting.sorting import sort_by_item_id
 
-# Fields that are rates and must not be summed during merge
-_ITEM_SKIP_SUM = frozenset({"rate", "levy"})
+# Fields that are numeric but must not be summed during merge — these are
+# either rates (rate/levy) or identifiers (item_id) that happen to be integer
+# columns. If we didn't skip them the merge would do ``1 + 1 = 2``.
+_ITEM_SKIP_SUM = frozenset({"item_id", "rate", "levy"})
 
 
 # ── Public entry point ────────────────────────────────────────────────────────
@@ -113,6 +115,7 @@ async def _query_pos_items(db: AsyncSession, filters: ReportFilters) -> list[dic
     """
     q = (
         select(
+            Item.id.label("item_id"),
             Item.name.label("item_name"),
             TicketItem.rate,
             TicketItem.levy,
@@ -121,12 +124,13 @@ async def _query_pos_items(db: AsyncSession, filters: ReportFilters) -> list[dic
         .join(Ticket, TicketItem.ticket_id == Ticket.id)
         .join(Item, TicketItem.item_id == Item.id)
         .where(TicketItem.is_cancelled == False)  # noqa: E712
-        .group_by(Item.name, TicketItem.rate, TicketItem.levy)
+        .group_by(Item.id, Item.name, TicketItem.rate, TicketItem.levy)
     )
     q = apply_pos_filters(q, filters)
     rows = (await db.execute(q)).all()
     return [
         {
+            "item_id": int(r.item_id),
             "item_name": r.item_name,
             "rate": Decimal(str(r.rate)),
             "levy": Decimal(str(r.levy)),
@@ -146,6 +150,7 @@ async def _query_portal_items(db: AsyncSession, filters: ReportFilters) -> list[
     """
     q = (
         select(
+            Item.id.label("item_id"),
             Item.name.label("item_name"),
             BookingItem.rate,
             BookingItem.levy,
@@ -154,12 +159,13 @@ async def _query_portal_items(db: AsyncSession, filters: ReportFilters) -> list[
         .join(Booking, BookingItem.booking_id == Booking.id)
         .join(Item, BookingItem.item_id == Item.id)
         .where(BookingItem.is_cancelled == False)  # noqa: E712
-        .group_by(Item.name, BookingItem.rate, BookingItem.levy)
+        .group_by(Item.id, Item.name, BookingItem.rate, BookingItem.levy)
     )
     q = apply_portal_filters(q, filters)
     rows = (await db.execute(q)).all()
     return [
         {
+            "item_id": int(r.item_id),
             "item_name": r.item_name,
             "rate": Decimal(str(r.rate)),
             "levy": Decimal(str(r.levy)),
@@ -253,11 +259,13 @@ def _build_item_wise_summary_result(
     -------
     {"rows": list[dict], "grand_total": Decimal, "payment_mode_breakdown": list[dict]}
     """
-    # Step 1: Merge items — skip_sum preserves rate and levy as-is
+    # Step 1: Merge items — key by (item_id, rate, levy) so POS and Portal
+    # rows for the same item combine correctly. skip_sum preserves rate,
+    # levy, and item_id from the first row rather than summing them.
     merged_items = merge_by_key(
         pos_items,
         portal_items,
-        key_fn=lambda r: (r["item_name"], r["rate"], r["levy"]),
+        key_fn=lambda r: (r["item_id"], r["rate"], r["levy"]),
         skip_sum=_ITEM_SKIP_SUM,
     )
 
@@ -271,6 +279,7 @@ def _build_item_wise_summary_result(
         net_amount = effective_rate * quantity
         rows.append(
             {
+                "item_id": m["item_id"],
                 "item_name": m["item_name"],
                 "rate": effective_rate,
                 "quantity": quantity,
@@ -280,8 +289,10 @@ def _build_item_wise_summary_result(
             }
         )
 
-    # Step 3: Sort
-    rows = sort_by_item_name(rows)
+    # Step 3: Sort by item master id (canonical business order) — same
+    # rule used across every report on both admin.carferry.online and
+    # the main site.
+    rows = sort_by_item_id(rows)
 
     # Step 4: Grand total
     grand_total: Decimal = sum((r["net_amount"] for r in rows), Decimal("0"))
