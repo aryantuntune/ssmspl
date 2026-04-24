@@ -81,7 +81,8 @@ async def get_item_wise_summary(
         ],
     }
 
-    Rows are sorted alphabetically by item_name.
+    Rows are sorted by item master primary key (Item.id ASC) — the
+    canonical business order used everywhere in the system.
     Cancelled POS tickets/items and non-CONFIRMED Portal bookings/items are
     excluded.  An integrity check asserts that grand_total equals the sum of
     payment_mode_breakdown amounts.
@@ -242,7 +243,7 @@ def _build_item_wise_summary_result(
          effective_rate = rate + levy
          quantity       = pos_quantity + portal_quantity
          net_amount     = effective_rate * quantity
-    3. Sort item rows alphabetically by item_name.
+    3. Sort item rows by item master primary key (Item.id ASC).
     4. Compute grand_total = sum(net_amount).
     5. Merge POS + Portal payment rows by payment_mode_name and sum amounts.
     6. Integrity check: if both item rows and payment data exist,
