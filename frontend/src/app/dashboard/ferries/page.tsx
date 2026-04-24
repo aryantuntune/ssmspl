@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import api from "@/lib/api";
-import { Boat, BoatCreate, BoatUpdate } from "@/types";
+import { Boat, BoatCreate, BoatUpdate, Route } from "@/types";
 import DataTable, { Column } from "@/components/dashboard/DataTable";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -30,12 +30,19 @@ interface BoatFormData {
   name: string;
   no: string;
   is_active: boolean;
+  route_id: number | null;
 }
 
-const emptyForm: BoatFormData = { name: "", no: "", is_active: true };
+const emptyForm: BoatFormData = { name: "", no: "", is_active: true, route_id: null };
+
+const UNASSIGNED = "__unassigned__";
+
+const formatRouteLabel = (r: Route): string =>
+  `${r.branch_one_name ?? `Branch ${r.branch_id_one}`} - ${r.branch_two_name ?? `Branch ${r.branch_id_two}`}`;
 
 export default function FerriesPage() {
   const [boats, setBoats] = useState<Boat[]>([]);
+  const [routes, setRoutes] = useState<Route[]>([]);
   const [tableLoading, setTableLoading] = useState(false);
   const [error, setError] = useState("");
   const [formError, setFormError] = useState("");
@@ -48,6 +55,7 @@ export default function FerriesPage() {
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [routeFilter, setRouteFilter] = useState<string>("");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -55,6 +63,16 @@ export default function FerriesPage() {
   const [editingBoat, setEditingBoat] = useState<Boat | null>(null);
   const [form, setForm] = useState<BoatFormData>(emptyForm);
   const [submitting, setSubmitting] = useState(false);
+
+  // Routes are static lookup data (changes rarely) — fetch once on mount
+  useEffect(() => {
+    api
+      .get<Route[]>("/api/routes?limit=200&status=active&sort_by=id&sort_order=asc")
+      .then((resp) => setRoutes(resp.data))
+      .catch(() => {
+        // Non-fatal: dropdowns will fall back to "Unassigned" only
+      });
+  }, []);
 
   const fetchBoats = useCallback(async () => {
     abortRef.current?.abort();
@@ -77,8 +95,9 @@ export default function FerriesPage() {
         params.set("match_type", "contains");
       }
       if (statusFilter) params.set("status", statusFilter);
+      if (routeFilter) params.set("route_id", routeFilter);
 
-      const filterKeys = ["search", "search_column", "match_type", "status"];
+      const filterKeys = ["search", "search_column", "match_type", "status", "route_id"];
       const countParams = new URLSearchParams(
         Object.fromEntries([...params].filter(([k]) => filterKeys.includes(k)))
       );
@@ -96,7 +115,7 @@ export default function FerriesPage() {
     } finally {
       if (!controller.signal.aborted) setTableLoading(false);
     }
-  }, [page, pageSize, sortBy, sortOrder, search, statusFilter]);
+  }, [page, pageSize, sortBy, sortOrder, search, statusFilter, routeFilter]);
 
   useEffect(() => {
     fetchBoats();
@@ -111,7 +130,12 @@ export default function FerriesPage() {
 
   const openEditModal = (boat: Boat) => {
     setEditingBoat(boat);
-    setForm({ name: boat.name, no: boat.no, is_active: boat.is_active ?? true });
+    setForm({
+      name: boat.name,
+      no: boat.no,
+      is_active: boat.is_active ?? true,
+      route_id: boat.route_id,
+    });
     setFormError("");
     setShowModal(true);
   };
@@ -135,9 +159,14 @@ export default function FerriesPage() {
         if (form.no !== editingBoat.no) update.no = form.no;
         if (form.is_active !== (editingBoat.is_active ?? true))
           update.is_active = form.is_active;
+        if (form.route_id !== editingBoat.route_id) update.route_id = form.route_id;
         await api.patch(`/api/boats/${editingBoat.id}`, update);
       } else {
-        const create: BoatCreate = { name: form.name, no: form.no };
+        const create: BoatCreate = {
+          name: form.name,
+          no: form.no,
+          route_id: form.route_id,
+        };
         await api.post("/api/boats", create);
       }
       closeModal();
@@ -176,6 +205,17 @@ export default function FerriesPage() {
       render: (b) => <span className="font-medium">{b.name}</span>,
     },
     { key: "no", label: "Number", sortable: true },
+    {
+      key: "route_name",
+      label: "Operating Route",
+      sortable: false,
+      render: (b) =>
+        b.route_name ? (
+          <span>{b.route_name}</span>
+        ) : (
+          <span className="text-muted-foreground italic">Unassigned</span>
+        ),
+    },
     {
       key: "is_active",
       label: "Status",
@@ -246,8 +286,30 @@ export default function FerriesPage() {
               </div>
             </div>
             <div>
+              <Label className="mb-1.5 block">Route</Label>
+              <Select
+                value={routeFilter || "all"}
+                onValueChange={(v) => {
+                  setRouteFilter(v === "all" ? "" : v);
+                  setPage(1);
+                }}
+              >
+                <SelectTrigger className="w-full sm:w-[220px]">
+                  <SelectValue placeholder="All routes" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All routes</SelectItem>
+                  {routes.map((r) => (
+                    <SelectItem key={r.id} value={String(r.id)}>
+                      {formatRouteLabel(r)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
               <Label className="mb-1.5 block">Status</Label>
-              <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v === "all" ? "" : v); setPage(1); }}>
+              <Select value={statusFilter || "all"} onValueChange={(v) => { setStatusFilter(v === "all" ? "" : v); setPage(1); }}>
                 <SelectTrigger className="w-full sm:w-[120px]">
                   <SelectValue placeholder="All" />
                 </SelectTrigger>
@@ -258,7 +320,7 @@ export default function FerriesPage() {
                 </SelectContent>
               </Select>
             </div>
-            {(searchInput || statusFilter) && (
+            {(searchInput || statusFilter || routeFilter) && (
               <Button
                 variant="ghost"
                 size="sm"
@@ -266,6 +328,7 @@ export default function FerriesPage() {
                   setSearchInput("");
                   setSearch("");
                   setStatusFilter("");
+                  setRouteFilter("");
                   setPage(1);
                 }}
               >
@@ -322,6 +385,30 @@ export default function FerriesPage() {
                 placeholder="e.g. RTN-IV-03-00001 (10-30 chars)"
                 className="mt-1.5"
               />
+            </div>
+            <div>
+              <Label>Operating Route</Label>
+              <p className="text-xs text-muted-foreground mb-1.5">
+                Which route does this ferry serve? Leave unassigned if not yet allocated.
+              </p>
+              <Select
+                value={form.route_id === null ? UNASSIGNED : String(form.route_id)}
+                onValueChange={(v) =>
+                  setForm({ ...form, route_id: v === UNASSIGNED ? null : Number(v) })
+                }
+              >
+                <SelectTrigger className="mt-1.5">
+                  <SelectValue placeholder="Select route" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={UNASSIGNED}>Unassigned</SelectItem>
+                  {routes.map((r) => (
+                    <SelectItem key={r.id} value={String(r.id)}>
+                      {formatRouteLabel(r)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             {editingBoat && (
               <div className="flex items-center justify-between py-2">

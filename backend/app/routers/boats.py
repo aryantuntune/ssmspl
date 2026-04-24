@@ -28,7 +28,7 @@ _ferry_roles = require_roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANA
 async def list_boats(
     skip: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(5, ge=1, le=200, description="Maximum number of records to return"),
-    sort_by: str = Query("id", description="Column to sort by (id, name, no, is_active)"),
+    sort_by: str = Query("id", description="Column to sort by (id, name, no, is_active, route_id)"),
     sort_order: str = Query("asc", description="Sort direction (asc or desc)"),
     search: str | None = Query(None, description="Search by boat name or number (case-insensitive)"),
     search_column: str = Query("all", description="Column to search: all, name, or no"),
@@ -37,10 +37,14 @@ async def list_boats(
     id_op: str = Query("eq", description="ID comparison operator: eq, lt, gt, or between"),
     id_filter_end: int | None = Query(None, ge=1, description="Range end for between operator"),
     status: str | None = Query(None, description="Filter by status: active, inactive, or all (default all)"),
+    route_id: int | None = Query(None, ge=1, description="Filter by operating route ID"),
     db: AsyncSession = Depends(get_db),
     _=Depends(_ferry_read_roles),
 ):
-    return await boat_service.get_all_boats(db, skip, limit, sort_by, sort_order, search, status, search_column, match_type, id_filter, id_op, id_filter_end)
+    return await boat_service.get_all_boats(
+        db, skip, limit, sort_by, sort_order, search, status,
+        search_column, match_type, id_filter, id_op, id_filter_end, route_id,
+    )
 
 
 @router.get(
@@ -62,10 +66,14 @@ async def count_boats(
     id_op: str = Query("eq", description="ID comparison operator: eq, lt, gt, or between"),
     id_filter_end: int | None = Query(None, ge=1, description="Range end for between operator"),
     status: str | None = Query(None, description="Filter by status: active, inactive, or all (default all)"),
+    route_id: int | None = Query(None, ge=1, description="Filter by operating route ID"),
     db: AsyncSession = Depends(get_db),
     _=Depends(_ferry_read_roles),
 ):
-    return await boat_service.count_boats(db, search, status, search_column, match_type, id_filter, id_op, id_filter_end)
+    return await boat_service.count_boats(
+        db, search, status, search_column, match_type,
+        id_filter, id_op, id_filter_end, route_id,
+    )
 
 
 @router.post(

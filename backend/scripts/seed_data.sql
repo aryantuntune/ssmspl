@@ -73,21 +73,30 @@ ON CONFLICT (username) DO NOTHING;
 -- ============================================================
 -- 4. BOATS (12)
 -- ============================================================
-INSERT INTO boats (id, name, no, is_active)
+-- Source of truth: data/Ferry location details 30.03.2026.pdf
+-- route_id maps each vessel to its operating route corridor:
+--   VESAV-BAGMANDALE = route 2, VASAI-BHAYANDER = route 5,
+--   DABHOL-DHOPAVE = route 1, DIGHI-AGARDANDA = route 4,
+--   JAIGAD-TAVSAL = route 3, VIRAR-SAPHALE = route 7
+INSERT INTO boats (id, name, no, is_active, route_id)
 VALUES
-    (1,  'SHANTADURGA', 'RTN-IV-03-00001', TRUE),
-    (2,  'SONIA',       'RTN-IV-03-00007', TRUE),
-    (3,  'PRIYANKA',    'RTN-IV-08-00010', TRUE),
-    (4,  'SUPRIYA',     'RTN-IV-08-00011', TRUE),
-    (5,  'AISHWARYA',   'RTN-IV-08-00030', TRUE),
-    (6,  'AVANTIKA',    'RTN-IV-03-00082', TRUE),
-    (7,  'ISHWARI',     'RTN-IV-118',      TRUE),
-    (8,  'VAIBHAVI',    'RTN-IV-124',      TRUE),
-    (9,  'AAROHI',      'RTN-IV-125',      TRUE),
-    (10, 'GIRIJA',      'RTN-IV-136',      TRUE),
-    (11, 'JANHVI',      'RTN-IV-137',      TRUE),
-    (12, 'DEVIKA',      'RTN-IV-159',      TRUE)
-ON CONFLICT (name) DO NOTHING;
+    (1,  'SHANTADURGA', 'RTN-IV-03-00001', TRUE, 2),
+    (2,  'SONIA',       'RTN-IV-03-00007', TRUE, 5),
+    (3,  'PRIYANKA',    'RTN-IV-08-00010', TRUE, 1),
+    (4,  'SUPRIYA',     'RTN-IV-08-00011', TRUE, 1),
+    (5,  'AISHWARYA',   'RTN-IV-08-00030', TRUE, 4),
+    (6,  'AVANTIKA',    'RTN-IV-03-00082', TRUE, 2),
+    (7,  'ISHWARI',     'RTN-IV-118',      TRUE, 3),
+    (8,  'VAIBHAVI',    'RTN-IV-124',      TRUE, 5),
+    (9,  'AAROHI',      'RTN-IV-125',      TRUE, 7),
+    (10, 'GIRIJA',      'RTN-IV-136',      TRUE, 7),
+    (11, 'JANHVI',      'RTN-IV-137',      TRUE, 2),
+    (12, 'DEVIKA',      'RTN-IV-159',      TRUE, 1)
+ON CONFLICT (name) DO UPDATE SET
+    no         = EXCLUDED.no,
+    route_id   = EXCLUDED.route_id,
+    is_active  = EXCLUDED.is_active,
+    updated_at = NOW();
 
 -- ============================================================
 -- 5. ITEMS — V2 (21 items, per PDF "NEW ITEM ID & RATE")

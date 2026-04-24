@@ -520,6 +520,7 @@ async def get_ferry_wise_item_summary(
     q = (
         select(
             Ticket.departure,
+            Item.id.label("item_id"),
             Item.name.label("item_name"),
             func.coalesce(func.sum(
                 case((TicketItem.is_cancelled == False, TicketItem.quantity), else_=0)
@@ -530,8 +531,10 @@ async def get_ferry_wise_item_summary(
         .join(Item, Item.id == TicketItem.item_id)
         .where(Ticket.is_cancelled == False)
         .where(TicketItem.is_cancelled == False)
-        .group_by(Ticket.departure, Item.name)
-        .order_by(Ticket.departure, Item.name)
+        # Item-master order (Item.id ASC) — canonical business order used
+        # everywhere in the system. Never alphabetical.
+        .group_by(Ticket.departure, Item.id, Item.name)
+        .order_by(Ticket.departure, Item.id)
     )
     q = _apply_ticket_filters(q, report_date, report_date, branch_id, route_id)
     if payment_mode_id:
@@ -543,6 +546,7 @@ async def get_ferry_wise_item_summary(
     for r in result:
         rows.append({
             "departure": _format_departure_time(r.departure),
+            "item_id": int(r.item_id),
             "item_name": r.item_name,
             "quantity": int(r.quantity),
         })
@@ -573,6 +577,7 @@ async def get_item_wise_summary(
 ) -> dict:
     q = (
         select(
+            Item.id.label("item_id"),
             Item.name.label("item_name"),
             TicketItem.rate,
             TicketItem.levy,
@@ -585,8 +590,9 @@ async def get_item_wise_summary(
         .join(Item, Item.id == TicketItem.item_id)
         .where(Ticket.is_cancelled == False)
         .where(TicketItem.is_cancelled == False)
-        .group_by(Item.name, TicketItem.rate, TicketItem.levy)
-        .order_by(Item.name)
+        # Item-master order (Item.id ASC). Never alphabetical.
+        .group_by(Item.id, Item.name, TicketItem.rate, TicketItem.levy)
+        .order_by(Item.id, TicketItem.rate)
     )
     q = _apply_ticket_filters(q, date_from, date_to, branch_id, route_id)
     if payment_mode_id:
@@ -602,6 +608,7 @@ async def get_item_wise_summary(
         net = effective_rate * qty
         grand_total += net
         rows.append({
+            "item_id": int(r.item_id),
             "item_name": r.item_name,
             "rate": effective_rate,
             "quantity": qty,
@@ -719,6 +726,7 @@ async def get_vehicle_wise_tickets(
     branch_id: int | None = None,
     route_id: int | None = None,
     payment_mode_id: int | None = None,
+    boat_id: int | None = None,
 ) -> dict:
     q = (
         select(
@@ -746,6 +754,8 @@ async def get_vehicle_wise_tickets(
     q = _apply_ticket_filters(q, report_date, report_date, branch_id, route_id)
     if payment_mode_id:
         q = q.where(Ticket.payment_mode_id == payment_mode_id)
+    if boat_id:
+        q = q.where(Ticket.boat_id == boat_id)
 
     result = (await db.execute(q)).all()
 
@@ -796,6 +806,7 @@ async def get_branch_item_summary(
     # sum(net) == sum(payment mode amounts) == Ticket.net_amount total.
     q = (
         select(
+            Item.id.label("item_id"),
             Item.name.label("item_name"),
             TicketItem.rate,
             TicketItem.levy,
@@ -808,8 +819,9 @@ async def get_branch_item_summary(
         .join(Item, Item.id == TicketItem.item_id)
         .where(Ticket.is_cancelled == False)
         .where(TicketItem.is_cancelled == False)
-        .group_by(Item.name, TicketItem.rate, TicketItem.levy)
-        .order_by(Item.name)
+        # Item-master order (Item.id ASC). Never alphabetical.
+        .group_by(Item.id, Item.name, TicketItem.rate, TicketItem.levy)
+        .order_by(Item.id, TicketItem.rate)
     )
     q = _apply_ticket_filters(q, date_from, date_to, branch_id, route_id)
     if payment_mode_id:
@@ -825,6 +837,7 @@ async def get_branch_item_summary(
         net = effective_rate * qty
         grand_total += net
         rows.append({
+            "item_id": int(r.item_id),
             "item_name": r.item_name,
             "rate": effective_rate,
             "quantity": qty,

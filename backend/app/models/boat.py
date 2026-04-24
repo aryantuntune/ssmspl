@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Integer, String
+from sqlalchemy import Boolean, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -12,6 +12,9 @@ class Boat(AuditMixin, Base):
     name: Mapped[str] = mapped_column(String, unique=True, nullable=False)
     no: Mapped[str] = mapped_column(String, unique=True, nullable=False)
     is_active: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    route_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("routes.id"), nullable=True, index=True
+    )
 
     def __repr__(self) -> str:
         return f"<Boat id={self.id} name={self.name} no={self.no}>"

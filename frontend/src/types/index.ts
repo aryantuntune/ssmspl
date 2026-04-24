@@ -64,6 +64,8 @@ export interface Boat {
   name: string;
   no: string;
   is_active: boolean | null;
+  route_id: number | null;
+  route_name: string | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -71,12 +73,14 @@ export interface Boat {
 export interface BoatCreate {
   name: string;
   no: string;
+  route_id?: number | null;
 }
 
 export interface BoatUpdate {
   name?: string;
   no?: string;
   is_active?: boolean;
+  route_id?: number | null;
 }
 
 export interface Branch {

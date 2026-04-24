@@ -3,15 +3,64 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_
 
 from app.models.boat import Boat
+from app.models.branch import Branch
+from app.models.route import Route
 from app.schemas.boat import BoatCreate, BoatUpdate
 
 
-async def get_boat_by_id(db: AsyncSession, boat_id: int) -> Boat:
-    result = await db.execute(select(Boat).where(Boat.id == boat_id))
-    boat = result.scalar_one_or_none()
-    if not boat:
+def _serialize_boat(boat: Boat, branch_one_name: str | None, branch_two_name: str | None) -> dict:
+    if branch_one_name and branch_two_name:
+        route_name = f"{branch_one_name} - {branch_two_name}"
+    else:
+        route_name = None
+    return {
+        "id": boat.id,
+        "name": boat.name,
+        "no": boat.no,
+        "is_active": boat.is_active,
+        "route_id": boat.route_id,
+        "route_name": route_name,
+        "created_at": boat.created_at,
+        "updated_at": boat.updated_at,
+    }
+
+
+def _boat_with_route_query():
+    """Base SELECT that joins routes + branches so route_name can be rendered.
+
+    Outer joins are intentional so boats with a NULL route_id still appear.
+    """
+    BranchOne = Branch.__table__.alias("boat_branch_one")
+    BranchTwo = Branch.__table__.alias("boat_branch_two")
+    return (
+        select(
+            Boat,
+            BranchOne.c.name.label("branch_one_name"),
+            BranchTwo.c.name.label("branch_two_name"),
+        )
+        .outerjoin(Route, Route.id == Boat.route_id)
+        .outerjoin(BranchOne, BranchOne.c.id == Route.branch_id_one)
+        .outerjoin(BranchTwo, BranchTwo.c.id == Route.branch_id_two)
+    )
+
+
+async def get_boat_by_id(db: AsyncSession, boat_id: int) -> dict:
+    query = _boat_with_route_query().where(Boat.id == boat_id)
+    result = await db.execute(query)
+    row = result.one_or_none()
+    if not row:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Boat not found")
-    return boat
+    return _serialize_boat(row[0], row[1], row[2])
+
+
+async def _validate_route_exists(db: AsyncSession, route_id: int) -> None:
+    """Ensure the given route_id refers to an actual route, otherwise 404."""
+    result = await db.execute(select(Route.id).where(Route.id == route_id))
+    if not result.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Route ID {route_id} not found",
+        )
 
 
 def _apply_filters(
@@ -23,6 +72,7 @@ def _apply_filters(
     id_filter: int | None = None,
     id_op: str = "eq",
     id_filter_end: int | None = None,
+    route_id: int | None = None,
 ):
     if id_filter is not None:
         if id_op == "between" and id_filter_end is not None:
@@ -53,6 +103,10 @@ def _apply_filters(
         query = query.where(Boat.is_active == True)
     elif status == "inactive":
         query = query.where(or_(Boat.is_active == False, Boat.is_active.is_(None)))
+
+    if route_id is not None:
+        query = query.where(Boat.route_id == route_id)
+
     return query
 
 
@@ -60,14 +114,24 @@ async def count_boats(
     db: AsyncSession, search: str | None = None, status: str | None = None,
     search_column: str = "all", match_type: str = "contains",
     id_filter: int | None = None, id_op: str = "eq", id_filter_end: int | None = None,
+    route_id: int | None = None,
 ) -> int:
     query = select(func.count()).select_from(Boat)
-    query = _apply_filters(query, search, status, search_column, match_type, id_filter, id_op, id_filter_end)
+    query = _apply_filters(
+        query, search, status, search_column, match_type,
+        id_filter, id_op, id_filter_end, route_id,
+    )
     result = await db.execute(query)
     return result.scalar()
 
 
-SORTABLE_COLUMNS = {"id": Boat.id, "name": Boat.name, "no": Boat.no, "is_active": Boat.is_active}
+SORTABLE_COLUMNS = {
+    "id": Boat.id,
+    "name": Boat.name,
+    "no": Boat.no,
+    "is_active": Boat.is_active,
+    "route_id": Boat.route_id,
+}
 
 
 async def get_all_boats(
@@ -75,18 +139,22 @@ async def get_all_boats(
     search: str | None = None, status: str | None = None,
     search_column: str = "all", match_type: str = "contains",
     id_filter: int | None = None, id_op: str = "eq", id_filter_end: int | None = None,
-) -> list[Boat]:
+    route_id: int | None = None,
+) -> list[dict]:
     column = SORTABLE_COLUMNS.get(sort_by, Boat.id)
     order = column.desc() if sort_order == "desc" else column.asc()
-    query = select(Boat)
-    query = _apply_filters(query, search, status, search_column, match_type, id_filter, id_op, id_filter_end)
-    result = await db.execute(
-        query.order_by(order).offset(skip).limit(limit)
+
+    query = _boat_with_route_query()
+    query = _apply_filters(
+        query, search, status, search_column, match_type,
+        id_filter, id_op, id_filter_end, route_id,
     )
-    return list(result.scalars().all())
+    result = await db.execute(query.order_by(order).offset(skip).limit(limit))
+    rows = result.all()
+    return [_serialize_boat(row[0], row[1], row[2]) for row in rows]
 
 
-async def create_boat(db: AsyncSession, boat_in: BoatCreate) -> Boat:
+async def create_boat(db: AsyncSession, boat_in: BoatCreate) -> dict:
     # Check uniqueness of name and no
     existing = await db.execute(
         select(Boat).where(
@@ -99,6 +167,9 @@ async def create_boat(db: AsyncSession, boat_in: BoatCreate) -> Boat:
             detail="Boat name or number already exists",
         )
 
+    if boat_in.route_id is not None:
+        await _validate_route_exists(db, boat_in.route_id)
+
     # Get next id
     result = await db.execute(select(func.coalesce(func.max(Boat.id), 0)))
     next_id = result.scalar() + 1
@@ -108,15 +179,20 @@ async def create_boat(db: AsyncSession, boat_in: BoatCreate) -> Boat:
         name=boat_in.name,
         no=boat_in.no,
         is_active=True,
+        route_id=boat_in.route_id,
     )
     db.add(boat)
     await db.commit()
     await db.refresh(boat)
-    return boat
+    return await get_boat_by_id(db, boat.id)
 
 
-async def update_boat(db: AsyncSession, boat_id: int, boat_in: BoatUpdate) -> Boat:
-    boat = await get_boat_by_id(db, boat_id)
+async def update_boat(db: AsyncSession, boat_id: int, boat_in: BoatUpdate) -> dict:
+    result = await db.execute(select(Boat).where(Boat.id == boat_id))
+    boat = result.scalar_one_or_none()
+    if not boat:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Boat not found")
+
     update_data = boat_in.model_dump(exclude_unset=True)
 
     # Check uniqueness if name or no is being updated
@@ -136,8 +212,11 @@ async def update_boat(db: AsyncSession, boat_id: int, boat_in: BoatUpdate) -> Bo
                 detail="Boat name or number already exists",
             )
 
+    if "route_id" in update_data and update_data["route_id"] is not None:
+        await _validate_route_exists(db, update_data["route_id"])
+
     for field, value in update_data.items():
         setattr(boat, field, value)
     await db.commit()
     await db.refresh(boat)
-    return boat
+    return await get_boat_by_id(db, boat.id)

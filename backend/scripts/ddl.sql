@@ -99,7 +99,7 @@ CREATE TABLE IF NOT EXISTS boats (
     name                VARCHAR(30) NOT NULL UNIQUE,
     no                  VARCHAR(18) NOT NULL UNIQUE,
     is_active           BOOLEAN DEFAULT TRUE,
-    branch_id           INTEGER REFERENCES branches(id),
+    route_id            INTEGER REFERENCES routes(id),
     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at          TIMESTAMPTZ,
     created_by          UUID DEFAULT uuid_generate_v4(),
@@ -107,6 +107,7 @@ CREATE TABLE IF NOT EXISTS boats (
     CONSTRAINT boat_name_length CHECK (length(name) >= 5 AND length(name) <= 30),
     CONSTRAINT boat_no_length   CHECK (length(no) >= 10 AND length(no) <= 30)
 );
+CREATE INDEX IF NOT EXISTS ix_boats_route_id ON boats(route_id);
 
 -- Items table (ticket item types)
 CREATE TABLE IF NOT EXISTS items (
@@ -481,8 +482,14 @@ ALTER TABLE ticket_items ADD COLUMN IF NOT EXISTS vehicle_name VARCHAR(60);
 -- PATCH: Add booking_date to bookings
 ALTER TABLE bookings ADD COLUMN IF NOT EXISTS booking_date DATE;
 
--- PATCH: Add branch_id to boats
-ALTER TABLE boats ADD COLUMN IF NOT EXISTS branch_id INTEGER REFERENCES branches(id);
+-- PATCH: Replace boats.branch_id with boats.route_id
+-- A ferry operates between two ports (a route), not at a single branch.
+-- branch_id was added but never wired into the ORM/business logic, so this
+-- repurpose is non-destructive (verified on prod: 0 rows had branch_id set).
+ALTER TABLE boats DROP CONSTRAINT IF EXISTS boats_branch_id_fkey;
+ALTER TABLE boats DROP COLUMN IF EXISTS branch_id;
+ALTER TABLE boats ADD COLUMN IF NOT EXISTS route_id INTEGER REFERENCES routes(id);
+CREATE INDEX IF NOT EXISTS ix_boats_route_id ON boats(route_id);
 
 -- PATCH: Remove branch_id from item_rates (revert to route-only pricing)
 DROP INDEX IF EXISTS uq_item_rate_direction;
