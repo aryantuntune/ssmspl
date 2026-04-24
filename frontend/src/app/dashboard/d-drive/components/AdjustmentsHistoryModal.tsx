@@ -217,8 +217,7 @@ export default function AdjustmentsHistoryModal({ open, onClose, onRolledBack }:
                 <Input
                   placeholder="e.g. 9299aa43"
                   value={search}
-                  onChange={e => setSearch(e.target.value)}
-                  onKeyDown={e => e.key === "Enter" && applySearch()}
+                  onChange={e => { setSearch(e.target.value); setPage(1); }}
                   className="pl-9"
                 />
               </div>
