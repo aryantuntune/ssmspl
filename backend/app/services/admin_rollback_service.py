@@ -60,16 +60,25 @@ async def list_adjustments(
         where_conds.append(AdminAdjustmentsLog.branch_id == branch_id)
     if status:
         where_conds.append(AdminAdjustmentsLog.status == status)
-    if date_from:
-        where_conds.append(AdminAdjustmentsLog.created_at >= date_from)
-    if date_to:
-        # inclusive end-of-day: add one day and use strict <
-        from datetime import datetime as _dt, timedelta as _td
-        try:
-            _next = _dt.fromisoformat(date_to) + _td(days=1)
-            where_conds.append(AdminAdjustmentsLog.created_at < _next)
-        except ValueError:
-            pass  # ignore malformed date_to silently
+    # Timezone-aware day-boundary handling: created_at is timestamptz, so we must
+    # parse ISO date strings into UTC-aware datetime objects. Without tzinfo, asyncpg
+    # rejects raw strings AND PostgreSQL interprets naive datetimes in the server's
+    # local timezone, which can cause ±hours of drift at day boundaries.
+    if date_from or date_to:
+        from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+        if date_from:
+            try:
+                _df = _dt.fromisoformat(date_from).replace(tzinfo=_tz.utc)
+                where_conds.append(AdminAdjustmentsLog.created_at >= _df)
+            except ValueError:
+                pass
+        if date_to:
+            # inclusive end-of-day: add one day and use strict <
+            try:
+                _next = _dt.fromisoformat(date_to).replace(tzinfo=_tz.utc) + _td(days=1)
+                where_conds.append(AdminAdjustmentsLog.created_at < _next)
+            except ValueError:
+                pass
     if search:
         # batch_id is UUID; cast to text for substring match
         where_conds.append(_cast(AdminAdjustmentsLog.id, _String).ilike(f"%{search}%"))
