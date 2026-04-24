@@ -291,6 +291,8 @@ export interface Ticket {
   branch_name: string | null;
   route_name: string | null;
   payment_mode_name: string | null;
+  boat_id: number | null;
+  boat_name: string | null;
   items: TicketItem[] | null;
   ref_no: string | null;
   created_at?: string;

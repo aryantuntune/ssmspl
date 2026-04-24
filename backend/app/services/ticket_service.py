@@ -16,6 +16,7 @@ from app.models.item import Item
 from app.models.item_rate import ItemRate
 from app.models.payment_mode import PaymentMode
 from app.models.ferry_schedule import FerrySchedule
+from app.models.boat import Boat
 from app.models.company import Company
 from app.models.user import User
 from app.schemas.ticket import TicketCreate, TicketUpdate
@@ -70,6 +71,13 @@ async def _get_payment_mode_name(db: AsyncSession, pm_id: int) -> str | None:
     return result.scalar_one_or_none()
 
 
+async def _get_boat_name(db: AsyncSession, boat_id: int | None) -> str | None:
+    if boat_id is None:
+        return None
+    result = await db.execute(select(Boat.name).where(Boat.id == boat_id))
+    return result.scalar_one_or_none()
+
+
 async def _get_item_names(db: AsyncSession, item_id: int) -> tuple[str | None, str | None]:
     result = await db.execute(select(Item.name, Item.short_name).where(Item.id == item_id))
     row = result.one_or_none()
@@ -110,6 +118,7 @@ async def _enrich_ticket(db: AsyncSession, ticket: Ticket, include_items: bool =
     route_name = await _get_route_display_name(db, ticket.route_id)
     pm_name = await _get_payment_mode_name(db, ticket.payment_mode_id)
     created_by_username = await _get_username(db, ticket.created_by)
+    boat_name = await _get_boat_name(db, ticket.boat_id)
 
     data = {
         "id": ticket.id,
@@ -129,6 +138,8 @@ async def _enrich_ticket(db: AsyncSession, ticket: Ticket, include_items: bool =
         "branch_name": branch_name,
         "route_name": route_name,
         "payment_mode_name": pm_name,
+        "boat_id": ticket.boat_id,
+        "boat_name": boat_name,
         "verification_code": str(ticket.verification_code) if ticket.verification_code else None,
         "created_at": ticket.created_at,
         "created_by_username": created_by_username,
@@ -952,6 +963,24 @@ async def create_ticket(
                     # Departure matches a ferry schedule during off-hours → override
                     departure_time = now_ist
 
+    # Auto-derive boat_id from the matching schedule slot (branch + departure).
+    # Each ferry_schedules row owns the ferry that runs that slot, so the
+    # operator never picks a boat. Honour an explicit data.boat_id if the
+    # client supplied one (admin/import override). Off-hours tickets whose
+    # departure was overridden to current IST won't match a schedule and
+    # will simply leave boat_id NULL.
+    effective_boat_id = data.boat_id
+    if effective_boat_id is None and departure_time is not None:
+        boat_lookup = await db.execute(
+            select(FerrySchedule.boat_id)
+            .where(
+                FerrySchedule.branch_id == data.branch_id,
+                FerrySchedule.departure == departure_time,
+            )
+            .limit(1)
+        )
+        effective_boat_id = boat_lookup.scalar_one_or_none()
+
     ticket = Ticket(
         id=next_ticket_id,
         branch_id=data.branch_id,
@@ -966,7 +995,7 @@ async def create_ticket(
         net_amount=computed_net,
         status="CONFIRMED",
         verification_code=uuid_mod.uuid4(),
-        boat_id=data.boat_id,
+        boat_id=effective_boat_id,
         ref_no=data.ref_no,
         created_by=user_id,
         is_multi_ticket=is_multi_ticket,

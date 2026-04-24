@@ -508,6 +508,51 @@ VALUES
     )
 ON CONFLICT (id) DO NOTHING;
 
+-- ============================================================
+-- 9. FERRY SCHEDULE → BOAT ASSIGNMENT (rotation pattern)
+--
+-- Each route's ferries rotate through the schedule slots; branch B is
+-- offset by one slot so the two branches see different boats at the same
+-- relative slot (the boats are physically crossing on the route).
+-- Routes with a single boat assign that boat to every slot.
+-- Route 6 (AMBET ↔ MHAPRAL) has no boats per the official PDF, so its
+-- schedules stay NULL.
+-- ============================================================
+WITH route_boats(route_id, boats) AS (
+    VALUES
+        (1, ARRAY[3, 4, 12]::INTEGER[]),  -- DABHOL ↔ DHOPAVE: PRIYANKA, SUPRIYA, DEVIKA
+        (2, ARRAY[1, 6, 11]::INTEGER[]),  -- VESHVI ↔ BAGMANDALE: SHANTADURGA, AVANTIKA, JANHVI
+        (3, ARRAY[7]::INTEGER[]),         -- JAIGAD ↔ TAVSAL: ISHWARI
+        (4, ARRAY[5]::INTEGER[]),         -- AGARDANDA ↔ DIGHI: AISHWARYA
+        (5, ARRAY[2, 8]::INTEGER[]),      -- BHAYANDER ↔ VASAI: SONIA, VAIBHAVI
+        (7, ARRAY[9, 10]::INTEGER[])      -- VIRAR ↔ SAFALE: AAROHI, GIRIJA
+),
+ranked AS (
+    SELECT
+        fs.id AS schedule_id,
+        fs.branch_id,
+        r.id AS route_id,
+        r.branch_id_one,
+        ROW_NUMBER() OVER (PARTITION BY fs.branch_id ORDER BY fs.departure) AS slot
+    FROM ferry_schedules fs
+    JOIN routes r ON fs.branch_id IN (r.branch_id_one, r.branch_id_two)
+),
+assigned AS (
+    SELECT
+        ranked.schedule_id,
+        rb.boats[
+            ((ranked.slot - 1
+              + CASE WHEN ranked.branch_id = ranked.branch_id_one THEN 0 ELSE 1 END)
+             % array_length(rb.boats, 1)) + 1
+        ] AS boat_id
+    FROM ranked
+    JOIN route_boats rb ON rb.route_id = ranked.route_id
+)
+UPDATE ferry_schedules fs
+SET boat_id = a.boat_id
+FROM assigned a
+WHERE fs.id = a.schedule_id;
+
 COMMIT;
 
 -- ============================================================
@@ -520,6 +565,7 @@ SELECT 'Boats' AS entity, COUNT(*) AS total FROM boats;
 SELECT 'Items' AS entity, COUNT(*) AS total FROM items;
 SELECT 'Payment Modes' AS entity, COUNT(*) AS total FROM payment_modes;
 SELECT 'Ferry Schedules' AS entity, COUNT(*) AS total FROM ferry_schedules;
+SELECT 'Schedules with Boats' AS entity, COUNT(*) AS total FROM ferry_schedules WHERE boat_id IS NOT NULL;
 SELECT 'Item Rates' AS entity, COUNT(*) AS total FROM item_rates;
 SELECT r.id, b1.name AS branch_one, b2.name AS branch_two
   FROM routes r

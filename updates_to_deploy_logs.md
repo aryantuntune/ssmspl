@@ -2,6 +2,162 @@
 
 ---
 
+## Deployment Update — 2026-04-25 (Schedule-based ferry assignment: tickets auto-stamp boat_id)
+
+### Module
+
+Backend — FerrySchedule model, Ticket service (create + enrich), Ticket schema; Frontend — Ticket type, Ticketing & Multi-ticketing receipt builders; DDL; Seed
+
+### Changes
+
+**Feature — Ferries auto-assigned per schedule slot**
+
+Each row in `ferry_schedules` now owns the ferry that runs that slot via a new `boat_id` column. When a ticket is created (`POST /api/tickets`), the backend looks up the matching schedule by `(branch_id, departure)` and stamps `boat_id` on the new ticket — the operator never picks a ferry. This works for the Multi-ticketing flow too (it calls `create_ticket` per row).
+
+**Rotation pattern (per the route shuttle physics)**
+
+Each route's ferries cycle through that route's schedules in order, with branch B offset by one slot — so at the same relative slot, the two branches see different boats (the boats are physically crossing). Single-boat routes assign that one boat to every slot. Route 6 (AMBET ↔ MHAPRAL) has no boats per the official PDF, so its schedules stay NULL.
+
+| Route | Boats | Branch A pattern | Branch B pattern |
+|-------|-------|------------------|------------------|
+| 1 DABHOL ↔ DHOPAVE | PRIYANKA, SUPRIYA, DEVIKA | P, S, D, P, S, D… | S, D, P, S, D, P… |
+| 2 VESHVI ↔ BAGMANDALE | SHANTADURGA, AVANTIKA, JANHVI | Sh, A, J, Sh, A, J… | A, J, Sh, A, J, Sh… |
+| 3 JAIGAD ↔ TAVSAL | ISHWARI | I (every slot) | I (every slot) |
+| 4 AGARDANDA ↔ DIGHI | AISHWARYA | Ai (every slot) | Ai (every slot) |
+| 5 BHAYANDER ↔ VASAI | SONIA, VAIBHAVI | So, V, So, V… | V, So, V, So… |
+| 7 VIRAR ↔ SAFALE | AAROHI, GIRIJA | Aa, G, Aa, G… | G, Aa, G, Aa… |
+
+**Wired through to receipts**
+
+`_enrich_ticket` now returns `boat_id` and `boat_name` on every ticket response. Both `ticketing/page.tsx` and `multiticketing/page.tsx` populate `ferryName` in the `ReceiptData` they pass to `printReceipt`, so the "FERRY: <name>" line (added in the previous deploy) now actually shows up on every printed receipt for tickets booked during scheduled hours.
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `backend/app/models/ferry_schedule.py` | Added `boat_id` FK column with index |
+| `backend/app/services/ticket_service.py` | Added `_get_boat_name`; `_enrich_ticket` returns `boat_id`/`boat_name`; `create_ticket` derives `boat_id` from schedule |
+| `backend/app/schemas/ticket.py` | `TicketRead` exposes `boat_id` and `boat_name` |
+| `backend/scripts/ddl.sql` | `ferry_schedules.boat_id` + composite index `ix_ferry_schedules_branch_departure` (used on every ticket create) |
+| `backend/scripts/seed_data.sql` | Rotation backfill block populates `ferry_schedules.boat_id` for all 6 multi-port routes |
+| `backend/alembic/versions/n9d1e3f5a8b2_add_boat_id_to_ferry_schedules.py` | New migration |
+| `frontend/src/types/index.ts` | `Ticket` interface gets `boat_id` and `boat_name` |
+| `frontend/src/app/dashboard/ticketing/page.tsx` | `ferryName` populated in both `buildReceiptData` paths (reprint + new ticket) |
+| `frontend/src/app/dashboard/multiticketing/page.tsx` | Same — reprint + batch print paths |
+
+### VPS Deployment Steps
+
+```bash
+cd /var/www/ssmspl
+git pull origin main
+docker compose -f docker-compose.prod.yml up -d --build backend frontend
+docker compose -f docker-compose.prod.yml exec -T backend alembic upgrade head
+```
+
+### Schedule-boat backfill on production
+
+> Per VPS protocol, run the **PREVIEW** first, eyeball the row count + sample assignments, then run the UPDATE.
+
+**Step 1 — PREVIEW** (read-only, shows what would change):
+
+```bash
+docker compose -f docker-compose.prod.yml exec -T db psql -U ssmspl_user -d ssmspl_db_prod -c "
+WITH route_boats(route_id, boats) AS (
+    VALUES
+        (1, ARRAY[3, 4, 12]::INTEGER[]),
+        (2, ARRAY[1, 6, 11]::INTEGER[]),
+        (3, ARRAY[7]::INTEGER[]),
+        (4, ARRAY[5]::INTEGER[]),
+        (5, ARRAY[2, 8]::INTEGER[]),
+        (7, ARRAY[9, 10]::INTEGER[])
+),
+ranked AS (
+    SELECT fs.id AS schedule_id, fs.branch_id, fs.departure,
+           r.id AS route_id, r.branch_id_one,
+           ROW_NUMBER() OVER (PARTITION BY fs.branch_id ORDER BY fs.departure) AS slot
+    FROM ferry_schedules fs
+    JOIN routes r ON fs.branch_id IN (r.branch_id_one, r.branch_id_two)
+),
+assigned AS (
+    SELECT ranked.schedule_id, ranked.branch_id, ranked.departure, ranked.slot,
+           rb.boats[((ranked.slot - 1 + CASE WHEN ranked.branch_id = ranked.branch_id_one THEN 0 ELSE 1 END)
+                     % array_length(rb.boats, 1)) + 1] AS new_boat_id
+    FROM ranked JOIN route_boats rb ON rb.route_id = ranked.route_id
+)
+SELECT a.schedule_id, br.name AS branch, a.slot, a.departure,
+       b.name AS will_assign_boat
+FROM assigned a
+JOIN branches br ON br.id = a.branch_id
+JOIN boats b ON b.id = a.new_boat_id
+ORDER BY a.branch_id, a.slot
+LIMIT 30;
+"
+```
+
+Confirm the first 30 rows look correct (e.g. for DABHOL slot 1 you should see PRIYANKA, slot 2 SUPRIYA, slot 3 DEVIKA, slot 4 PRIYANKA again).
+
+**Step 2 — UPDATE** (irreversible, 0 of ~239 schedule rows already have boat_id set, so this fills them all):
+
+```bash
+docker compose -f docker-compose.prod.yml exec -T db psql -U ssmspl_user -d ssmspl_db_prod -c "
+WITH route_boats(route_id, boats) AS (
+    VALUES
+        (1, ARRAY[3, 4, 12]::INTEGER[]),
+        (2, ARRAY[1, 6, 11]::INTEGER[]),
+        (3, ARRAY[7]::INTEGER[]),
+        (4, ARRAY[5]::INTEGER[]),
+        (5, ARRAY[2, 8]::INTEGER[]),
+        (7, ARRAY[9, 10]::INTEGER[])
+),
+ranked AS (
+    SELECT fs.id AS schedule_id, fs.branch_id, r.id AS route_id, r.branch_id_one,
+           ROW_NUMBER() OVER (PARTITION BY fs.branch_id ORDER BY fs.departure) AS slot
+    FROM ferry_schedules fs
+    JOIN routes r ON fs.branch_id IN (r.branch_id_one, r.branch_id_two)
+),
+assigned AS (
+    SELECT ranked.schedule_id,
+           rb.boats[((ranked.slot - 1 + CASE WHEN ranked.branch_id = ranked.branch_id_one THEN 0 ELSE 1 END)
+                     % array_length(rb.boats, 1)) + 1] AS boat_id
+    FROM ranked JOIN route_boats rb ON rb.route_id = ranked.route_id
+)
+UPDATE ferry_schedules fs
+SET boat_id = a.boat_id
+FROM assigned a
+WHERE fs.id = a.schedule_id;
+"
+```
+
+**Step 3 — VERIFY** (post-update sanity check):
+
+```bash
+docker compose -f docker-compose.prod.yml exec -T db psql -U ssmspl_user -d ssmspl_db_prod -c "
+SELECT br.name AS branch, COUNT(*) AS schedules,
+       COUNT(fs.boat_id) AS with_boat,
+       string_agg(DISTINCT b.name, ', ' ORDER BY b.name) AS boats_used
+FROM ferry_schedules fs
+JOIN branches br ON br.id = fs.branch_id
+LEFT JOIN boats b ON b.id = fs.boat_id
+GROUP BY br.name
+ORDER BY br.name;
+"
+```
+
+Expect: AMBET and MHAPRAL show `with_boat = 0` (no boats per PDF), all other branches show `with_boat = schedules` and the right cast of vessels per route.
+
+### What now happens automatically
+
+- New tickets booked during scheduled hours auto-stamp `boat_id`
+- Receipts print "FERRY: <name>" line on those tickets
+- All existing reports (Ticket Details, Vehicle Wise) start showing real ferry names instead of empty cells
+- Off-hours tickets (departure stamped to current IST that doesn't match a schedule) leave `boat_id` NULL — receipts skip the ferry line for those
+
+### Future follow-up (not in this deploy)
+
+The Ferries master screen still doesn't expose schedule-boat editing. When a boat goes down for service or rotation needs to change, an admin currently has to UPDATE `ferry_schedules` directly in SQL. A grid editor on `/dashboard/ferries` (or a dedicated `/dashboard/schedules` page) is the logical next addition.
+
+---
+
 ## Deployment Update — 2026-04-24 (Ferry master: route assignment + ferry name on receipts)
 
 ### Module

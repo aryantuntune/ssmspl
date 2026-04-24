@@ -873,6 +873,7 @@ export default function TicketingPage() {
         createdBy: t.created_by_username || user?.username || "",
         paperWidth,
         paymentModeName: reprintPaymentLabel,
+        ferryName: t.boat_name,
       };
 
       // Await print — blocks until the print dialog closes or QZ Tray finishes
@@ -1113,6 +1114,7 @@ export default function TicketingPage() {
         createdBy: savedTicket.created_by_username || user?.username || "",
         paperWidth,
         paymentModeName: paymentModeLabel,
+        ferryName: savedTicket.boat_name,
       };
 
       // Fire print WITHOUT blocking — operator must be able to start next ticket
