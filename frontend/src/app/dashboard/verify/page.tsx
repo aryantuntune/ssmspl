@@ -46,6 +46,7 @@ import {
   Camera,
   CameraOff,
   RotateCcw,
+  Ship,
 } from "lucide-react";
 
 type SearchMode = "qr_scan" | "booking_no" | "ticket_no";
@@ -71,6 +72,7 @@ interface VerificationResult {
   items: VerificationItem[];
   checked_in_at?: string | null;
   verification_code?: string | null;
+  boat_name?: string | null;
 }
 
 interface Branch {
@@ -767,6 +769,17 @@ export default function VerifyPage() {
                   {result.departure || "-"}
                 </p>
               </div>
+              {result.boat_name && (
+                <div className="bg-muted/30 rounded-lg p-3">
+                  <div className="flex items-center gap-1.5 text-muted-foreground mb-1">
+                    <Ship className="h-3.5 w-3.5" />
+                    <span className="text-xs">Ferry</span>
+                  </div>
+                  <p className="text-sm font-semibold">
+                    {result.boat_name}
+                  </p>
+                </div>
+              )}
               <div className="bg-muted/30 rounded-lg p-3">
                 <div className="flex items-center gap-1.5 text-muted-foreground mb-1">
                   <IndianRupee className="h-3.5 w-3.5" />

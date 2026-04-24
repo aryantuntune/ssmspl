@@ -6,6 +6,7 @@ from sqlalchemy import select, func
 
 from app.models.ferry_schedule import FerrySchedule
 from app.models.branch import Branch
+from app.models.boat import Boat
 from app.schemas.ferry_schedule import FerryScheduleCreate, FerryScheduleUpdate
 
 
@@ -25,8 +26,13 @@ def _parse_time(s: str) -> datetime.time:
 
 async def get_schedule_by_id(db: AsyncSession, schedule_id: int) -> dict:
     result = await db.execute(
-        select(FerrySchedule, Branch.name.label("branch_name"))
+        select(
+            FerrySchedule,
+            Branch.name.label("branch_name"),
+            Boat.name.label("boat_name"),
+        )
         .join(Branch, Branch.id == FerrySchedule.branch_id)
+        .outerjoin(Boat, Boat.id == FerrySchedule.boat_id)
         .where(FerrySchedule.id == schedule_id)
     )
     row = result.one_or_none()
@@ -39,6 +45,8 @@ async def get_schedule_by_id(db: AsyncSession, schedule_id: int) -> dict:
         "branch_id": schedule.branch_id,
         "departure": _format_time(schedule.departure),
         "branch_name": row[1],
+        "boat_id": schedule.boat_id,
+        "boat_name": row[2],
     }
 
 
@@ -98,8 +106,13 @@ async def get_all_schedules(
     order = column.desc() if sort_order == "desc" else column.asc()
 
     query = (
-        select(FerrySchedule, Branch.name.label("branch_name"))
+        select(
+            FerrySchedule,
+            Branch.name.label("branch_name"),
+            Boat.name.label("boat_name"),
+        )
         .join(Branch, Branch.id == FerrySchedule.branch_id)
+        .outerjoin(Boat, Boat.id == FerrySchedule.boat_id)
     )
     query = _apply_filters(query, branch_filter, id_filter, id_op, id_filter_end, branch_ids)
     result = await db.execute(query.order_by(order).offset(skip).limit(limit))
@@ -110,6 +123,8 @@ async def get_all_schedules(
             "branch_id": row[0].branch_id,
             "departure": _format_time(row[0].departure),
             "branch_name": row[1],
+            "boat_id": row[0].boat_id,
+            "boat_name": row[2],
         }
         for row in rows
     ]
@@ -139,9 +154,20 @@ async def _check_duplicate(db: AsyncSession, branch_id: int, departure: datetime
         )
 
 
+async def _validate_boat(db: AsyncSession, boat_id: int):
+    result = await db.execute(select(Boat.id).where(Boat.id == boat_id))
+    if not result.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Boat ID not found: {boat_id}",
+        )
+
+
 async def create_schedule(db: AsyncSession, schedule_in: FerryScheduleCreate) -> dict:
     departure_time = _parse_time(schedule_in.departure)
     await _validate_branch(db, schedule_in.branch_id)
+    if schedule_in.boat_id is not None:
+        await _validate_boat(db, schedule_in.boat_id)
     await _check_duplicate(db, schedule_in.branch_id, departure_time)
 
     # Get next id
@@ -152,6 +178,7 @@ async def create_schedule(db: AsyncSession, schedule_in: FerryScheduleCreate) ->
         id=next_id,
         branch_id=schedule_in.branch_id,
         departure=departure_time,
+        boat_id=schedule_in.boat_id,
     )
     db.add(schedule)
     await db.commit()
@@ -173,6 +200,9 @@ async def update_schedule(db: AsyncSession, schedule_id: int, schedule_in: Ferry
     if "branch_id" in update_data:
         await _validate_branch(db, new_branch_id)
 
+    if "boat_id" in update_data and update_data["boat_id"] is not None:
+        await _validate_boat(db, update_data["boat_id"])
+
     if "branch_id" in update_data or "departure" in update_data:
         await _check_duplicate(db, new_branch_id, new_departure, exclude_id=schedule_id)
 
@@ -180,6 +210,8 @@ async def update_schedule(db: AsyncSession, schedule_id: int, schedule_in: Ferry
         schedule.branch_id = new_branch_id
     if "departure" in update_data:
         schedule.departure = new_departure
+    if "boat_id" in update_data:
+        schedule.boat_id = update_data["boat_id"]
 
     await db.commit()
     await db.refresh(schedule)
