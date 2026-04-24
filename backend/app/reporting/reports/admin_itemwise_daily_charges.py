@@ -60,7 +60,8 @@ async def get_itemwise_daily_charges(
         )
 
     # Build output: dates sorted ascending, within each date branches in route
-    # order. Within a branch, rows sorted by item_name then by charges.
+    # order. Within a branch, rows sorted by item_id (items.id ASC) then by
+    # charges — the canonical business order.
     date_sections: list[dict] = []
     grand_total = Decimal("0")
 
