@@ -1,9 +1,12 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Undo2, Loader2, AlertTriangle } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Undo2, Loader2, AlertTriangle, Search, X } from "lucide-react";
 import api from "@/lib/api";
 import { useDashboardUser } from "@/components/dashboard/DashboardUserContext";
 
@@ -46,31 +49,69 @@ const KIND_COLORS: Record<string, string> = {
   UNKNOWN: "bg-muted text-muted-foreground",
 };
 
+const PAGE_SIZE = 50;
+
+interface ListResponse {
+  adjustments: Adjustment[];
+  total: number;
+  offset: number;
+  limit: number;
+}
+
 export default function AdjustmentsHistoryModal({ open, onClose, onRolledBack }: Props) {
   const user = useDashboardUser();
   const [items, setItems] = useState<Adjustment[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [rollingBackId, setRollingBackId] = useState<string | null>(null);
   const [confirmTarget, setConfirmTarget] = useState<Adjustment | null>(null);
-  // Server-authoritative: whether the current viewer is allowed to rollback.
-  // SUPER_ADMIN always true; ADMIN only if "Admin Rollback Access" toggle is ON.
   const [canRollback, setCanRollback] = useState(false);
 
-  const load = () => {
+  // Filters
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [search, setSearch] = useState("");
+
+  const load = useCallback((pageOverride?: number) => {
+    const p = pageOverride ?? page;
     setLoading(true);
-    api.get<Adjustment[]>("/api/admin/d-drive/adjustments", { params: { limit: 100 } })
-      .then(r => setItems(r.data))
+    setError("");
+    const params: Record<string, string | number> = {
+      offset: (p - 1) * PAGE_SIZE,
+      limit: PAGE_SIZE,
+    };
+    if (statusFilter !== "all") params.status = statusFilter;
+    if (dateFrom) params.date_from = dateFrom;
+    if (dateTo) params.date_to = dateTo;
+    if (search.trim()) params.search = search.trim();
+
+    api.get<ListResponse>("/api/admin/d-drive/adjustments", { params })
+      .then(r => { setItems(r.data.adjustments); setTotal(r.data.total); })
       .catch(() => setError("Could not load adjustment history"))
       .finally(() => setLoading(false));
+  }, [page, statusFilter, dateFrom, dateTo, search]);
+
+  // One-time permission check on open
+  useEffect(() => {
+    if (!open) return;
     api.get<{ can_rollback: boolean }>("/api/admin/d-drive/adjustments/permissions")
       .then(r => setCanRollback(r.data.can_rollback))
-      .catch(() => setCanRollback(user?.role === "SUPER_ADMIN"));  // fallback: hard role check
-  };
+      .catch(() => setCanRollback(user?.role === "SUPER_ADMIN"));
+  }, [open, user]);
 
+  // Reload whenever filters/page change
   useEffect(() => {
     if (open) load();
-  }, [open]);
+  }, [open, load]);
+
+  const clearFilters = () => {
+    setStatusFilter("all"); setDateFrom(""); setDateTo(""); setSearch(""); setPage(1);
+  };
+  const applySearch = () => { setPage(1); };
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   const handleRollback = async (adj: Adjustment) => {
     setRollingBackId(adj.batch_id);
@@ -140,14 +181,63 @@ export default function AdjustmentsHistoryModal({ open, onClose, onRolledBack }:
         <DialogHeader className="px-6 pt-6 pb-3 border-b">
           <DialogTitle>Adjustment History</DialogTitle>
           <p className="text-xs text-muted-foreground">
-            All recent reconciliation operations. SUPER_ADMIN can roll back COMMITTED batches.
+            All historical reconciliation operations are retained. Use filters + pagination to find any past batch.
           </p>
         </DialogHeader>
+
+        {/* Filter bar */}
+        <div className="px-6 py-3 border-b grid grid-cols-5 gap-3 items-end bg-muted/20">
+          <div className="space-y-1">
+            <Label className="text-xs">From (created)</Label>
+            <Input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setPage(1); }} />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">To (created)</Label>
+            <Input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setPage(1); }} />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Status</Label>
+            <Select value={statusFilter} onValueChange={v => { setStatusFilter(v); setPage(1); }}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All</SelectItem>
+                <SelectItem value="COMMITTED">COMMITTED</SelectItem>
+                <SelectItem value="FAILED">FAILED</SelectItem>
+                <SelectItem value="ROLLED_BACK">ROLLED_BACK</SelectItem>
+                <SelectItem value="DRY_RUN">DRY_RUN</SelectItem>
+                <SelectItem value="IN_PROGRESS">IN_PROGRESS</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1 col-span-2">
+            <Label className="text-xs">Batch ID search (substring)</Label>
+            <div className="relative flex gap-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  placeholder="e.g. 9299aa43"
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && applySearch()}
+                  className="pl-9"
+                />
+              </div>
+              <Button size="sm" variant="outline" onClick={applySearch}>Go</Button>
+              {(dateFrom || dateTo || search || statusFilter !== "all") && (
+                <Button size="sm" variant="outline" onClick={clearFilters} title="Clear all filters">
+                  <X className="w-4 h-4" />
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
 
         {loading ? (
           <div className="py-10 text-center text-muted-foreground">Loading…</div>
         ) : items.length === 0 ? (
-          <div className="py-10 text-center text-muted-foreground">No adjustments yet.</div>
+          <div className="py-10 text-center text-muted-foreground">
+            {total === 0 ? "No adjustments match these filters." : "End of results."}
+          </div>
         ) : (
           <div className="flex-1 overflow-auto">
             <table className="w-full text-sm">
@@ -208,9 +298,40 @@ export default function AdjustmentsHistoryModal({ open, onClose, onRolledBack }:
 
         {error && <p className="px-6 py-2 text-sm text-destructive border-t">{error}</p>}
 
-        <div className="px-6 py-3 border-t flex justify-end gap-2 bg-card">
-          <Button variant="outline" onClick={load} disabled={loading}>Refresh</Button>
-          <Button variant="outline" onClick={onClose}>Close</Button>
+        <div className="px-6 py-3 border-t flex items-center justify-between gap-2 bg-card flex-wrap">
+          <div className="text-xs text-muted-foreground">
+            {total > 0 ? (
+              <>
+                Showing <strong>{(page - 1) * PAGE_SIZE + 1}</strong>–
+                <strong>{Math.min(page * PAGE_SIZE, total)}</strong> of{" "}
+                <strong>{total.toLocaleString()}</strong>
+                {(dateFrom || dateTo || search || statusFilter !== "all") && " (filtered)"}
+              </>
+            ) : (
+              "No results"
+            )}
+          </div>
+          <div className="flex gap-2 items-center">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={loading || page <= 1}
+            >
+              ← Prev
+            </Button>
+            <span className="text-xs text-muted-foreground">Page {page} of {totalPages}</span>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              disabled={loading || page >= totalPages}
+            >
+              Next →
+            </Button>
+            <Button variant="outline" onClick={() => load()} disabled={loading}>Refresh</Button>
+            <Button variant="outline" onClick={onClose}>Close</Button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>
