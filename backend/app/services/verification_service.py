@@ -12,6 +12,7 @@ from app.models.ticket import Ticket, TicketItem
 from app.models.item import Item
 from app.models.branch import Branch
 from app.models.route import Route
+from app.models.boat import Boat
 from app.models.user import User
 from app.core.data_cutoff import is_before_cutoff
 from app.core.rbac import UserRole
@@ -164,6 +165,11 @@ async def _build_ticket_result(db: AsyncSession, ticket: Ticket) -> dict:
     route_name = await _get_route_display_name(db, ticket.route_id)
     branch_name = await _get_branch_name(db, ticket.branch_id)
 
+    boat_name = None
+    if ticket.boat_id is not None:
+        boat_result = await db.execute(select(Boat.name).where(Boat.id == ticket.boat_id))
+        boat_name = boat_result.scalar_one_or_none()
+
     return {
         "source": "ticket",
         "id": ticket.id,
@@ -178,6 +184,7 @@ async def _build_ticket_result(db: AsyncSession, ticket: Ticket) -> dict:
         "items": items,
         "checked_in_at": ticket.checked_in_at,
         "verification_code": str(ticket.verification_code) if ticket.verification_code else None,
+        "boat_name": boat_name,
     }
 
 

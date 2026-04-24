@@ -25,6 +25,7 @@ class VerificationResult(BaseModel):
     items: list[VerificationItemDetail] = []
     checked_in_at: datetime.datetime | None = None
     verification_code: str | None = Field(None, description="Booking/ticket verification code (for check-in)")
+    boat_name: str | None = Field(None, description="Assigned ferry name when verifying a ticket (null for bookings or unassigned tickets)")
 
 
 class CheckInRequest(BaseModel):
