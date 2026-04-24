@@ -9,7 +9,7 @@
 # Usage (from /var/www/ssmspl on Server 1):
 #   bash scripts/deploy_report_sorting_to_prod.sh
 #
-# Rollback (within 24h): the script keeps a backup at /root/.report_sort_backup_<TS>/
+# Rollback (within 24h): the script keeps a backup at $HOME/.report_sort_backup_<TS>/
 # ─────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
@@ -17,7 +17,7 @@ REPO_DIR="${REPO_DIR:-/var/www/ssmspl}"
 COMPOSE="docker compose -f docker-compose.prod.yml"
 BRANCH="origin/feature/report-sorting"
 TS="$(date +%Y%m%d_%H%M%S)"
-BACKUP_DIR="/root/.report_sort_backup_${TS}"
+BACKUP_DIR="${HOME:-/tmp}/.report_sort_backup_${TS}"
 
 FILES=(
     "backend/app/reporting/reports/ferry_wise_item_summary.py"
