@@ -18,8 +18,10 @@ if settings.SYNC_DATABASE_URL:
         settings.SYNC_DATABASE_URL,
         echo=False,
         pool_pre_ping=True,
-        pool_size=2,
-        max_overflow=2,
+        # Frontend sync-check runs up to 4 workers concurrently. Pool size 4 + overflow 4
+        # gives 2 slots of headroom so a duplicate tab or leftover session never starves workers.
+        pool_size=4,
+        max_overflow=4,
         pool_recycle=300,
         pool_timeout=15,
     )
