@@ -24,6 +24,7 @@ FILES=(
     "backend/app/reporting/reports/item_wise_summary.py"
     "backend/app/reporting/sorting.py"
     "backend/app/schemas/report.py"
+    "backend/app/services/report_service.py"
 )
 
 cd "$REPO_DIR"
