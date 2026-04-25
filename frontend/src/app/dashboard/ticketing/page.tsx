@@ -58,7 +58,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Download, Lock, Plus, Printer, Settings2 } from "lucide-react";
+import { Download, Eye, Lock, Pencil, Plus, Printer, Settings2 } from "lucide-react";
 import {
   printReceipt,
   ReceiptData,
@@ -404,16 +404,27 @@ export default function TicketingPage() {
     }
   }, [showModal]);
 
-  // Amount recalculation
-  useEffect(() => {
-    const total = formItems
+  // Pure amount computation. Used both by the display useEffect and at
+  // submit time, so the value sent to the backend is always derived from
+  // the exact items being sent (no useEffect-lag where amount can be one
+  // render behind formItems / formDiscount).
+  const computeAmounts = (
+    items: typeof formItems,
+    discount: number,
+  ): { amount: number; netAmount: number } => {
+    const total = items
       .filter((fi) => !fi.is_cancelled)
       .reduce((sum, fi) => sum + fi.quantity * (fi.rate + fi.levy), 0);
-    const amt = Math.round(total * 100) / 100;
-    const disc = formDiscount || 0;
-    const net = Math.round((amt - disc) * 100) / 100;
-    setFormAmount(amt);
-    setFormNetAmount(net);
+    const amount = Math.round(total * 100) / 100;
+    const netAmount = Math.round((amount - (discount || 0)) * 100) / 100;
+    return { amount, netAmount };
+  };
+
+  // Amount recalculation (display only)
+  useEffect(() => {
+    const { amount, netAmount } = computeAmounts(formItems, formDiscount);
+    setFormAmount(amount);
+    setFormNetAmount(netAmount);
   }, [formItems, formDiscount]);
 
   const fetchTickets = useCallback(async () => {
@@ -976,8 +987,11 @@ export default function TicketingPage() {
           update.payment_mode_id = formPaymentModeId;
         if ((formDiscount || 0) !== (editingTicket.discount || 0))
           update.discount = formDiscount || 0;
-        update.amount = formAmount;
-        update.net_amount = formNetAmount;
+        // Compute inline so the amount matches the items array being sent —
+        // formAmount/formNetAmount in state can be one render behind formItems.
+        const { amount, netAmount } = computeAmounts(formItems, formDiscount || 0);
+        update.amount = amount;
+        update.net_amount = netAmount;
         update.items = formItems.map((fi): TicketItemUpdate => ({
           id: fi.id,
           item_id: fi.item_id,
@@ -1050,6 +1064,12 @@ export default function TicketingPage() {
       const activeItems = formItems.filter((fi) => !fi.is_cancelled);
       // Safety net: if departure is empty (off-hours edge case), stamp current time
       const effectiveDeparture = formDeparture || `${String(new Date().getHours()).padStart(2, "0")}:${String(new Date().getMinutes()).padStart(2, "0")}`;
+      // Compute inline so the amount matches the items array being sent —
+      // formAmount/formNetAmount in state can be one render behind formItems.
+      const { amount: createAmount, netAmount: createNetAmount } = computeAmounts(
+        formItems,
+        formDiscount || 0,
+      );
       const create: TicketCreate = {
         branch_id: formBranchId,
         ticket_date: formTicketDate,
@@ -1058,8 +1078,8 @@ export default function TicketingPage() {
         payment_mode_id: formConfirmPaymentModeId,
         ref_no: formRefNo.trim() || null,
         discount: formDiscount || 0,
-        amount: formAmount,
-        net_amount: formNetAmount,
+        amount: createAmount,
+        net_amount: createNetAmount,
         items: activeItems.map((fi): TicketItemCreate => ({
           item_id: fi.item_id,
           rate: fi.rate,
@@ -1286,6 +1306,11 @@ export default function TicketingPage() {
       render: (ticket) => <span className="font-medium">{ticket.net_amount.toFixed(2)}</span>,
     },
     {
+      key: "payment_mode_name",
+      label: "Payment Mode",
+      render: (ticket) => ticket.payment_mode_name || "—",
+    },
+    {
       key: "is_cancelled",
       label: "Status",
       sortable: true,
@@ -1298,31 +1323,49 @@ export default function TicketingPage() {
     {
       key: "actions",
       label: "Actions",
-      className: "text-right",
-      render: (ticket) => (
-        <div className="flex justify-end gap-1">
-          <Button variant="ghost" size="sm" onClick={() => handleView(ticket)}>
-            View
-          </Button>
-          {!ticket.is_cancelled &&
-            ["SUPER_ADMIN", "ADMIN", "MANAGER"].includes(user?.role || "") && (
+      className: "text-right whitespace-nowrap",
+      render: (ticket) => {
+        const canReprint =
+          !ticket.is_cancelled &&
+          ["SUPER_ADMIN", "ADMIN", "MANAGER"].includes(user?.role || "");
+        const canEdit = ["SUPER_ADMIN", "ADMIN"].includes(user?.role || "");
+        return (
+          <div className="flex justify-end items-center gap-1">
             <Button
               variant="ghost"
-              size="sm"
-              onClick={() => handleReprint(ticket)}
-              disabled={reprintingId !== null}
-              title="Reprint ticket"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => handleView(ticket)}
+              title="View ticket"
             >
-              <Printer className={`h-4 w-4 ${reprintingId === ticket.id ? "animate-pulse" : ""}`} />
+              <Eye className="h-4 w-4" />
             </Button>
-          )}
-          {["SUPER_ADMIN", "ADMIN"].includes(user?.role || "") && (
-            <Button variant="ghost" size="sm" onClick={() => handleEdit(ticket)}>
-              Edit
-            </Button>
-          )}
-        </div>
-      ),
+            {canReprint && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => handleReprint(ticket)}
+                disabled={reprintingId !== null}
+                title="Reprint ticket"
+              >
+                <Printer className={`h-4 w-4 ${reprintingId === ticket.id ? "animate-pulse" : ""}`} />
+              </Button>
+            )}
+            {canEdit && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => handleEdit(ticket)}
+                title="Edit ticket"
+              >
+                <Pencil className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
+        );
+      },
     },
   ];
 
