@@ -387,17 +387,38 @@ def generate_itemwise_levy_pdf(data: dict) -> BytesIO:
 
     # Column widths sized to fit the actual data, calibrated to A4 portrait
     # usable width ≈18.6cm (page 21cm − 2×1.2cm margin).
+    PAGE_W_CM = 18.6
     item_w_cm = 6.4
     levy_w_cm = 1.5
     qty_w_cm = 1.9
-    # Branch columns flex to fit their names.
+    amount_w_cm_min = 2.8
+    item_w_cm_min = 4.5
+
+    # Branch columns flex to fit their names (1.9–3.0cm each).
     branch_widths_cm = [_branch_col_width_cm(b["name"]) for b in branches]
+
     used_cm = item_w_cm + levy_w_cm + sum(branch_widths_cm) + qty_w_cm
-    amount_w_cm = max(2.8, 18.6 - used_cm)
-    # If even the minimum amount column doesn't fit, shrink the item column
-    # rather than overflow the page.
-    if used_cm + amount_w_cm > 18.6:
-        item_w_cm = max(4.5, 18.6 - (levy_w_cm + sum(branch_widths_cm) + qty_w_cm + amount_w_cm))
+    amount_w_cm = max(amount_w_cm_min, PAGE_W_CM - used_cm)
+
+    # If item + branches + fixed cols still overflow, shrink item to its
+    # floor before giving up.
+    if used_cm + amount_w_cm > PAGE_W_CM:
+        item_w_cm = max(
+            item_w_cm_min,
+            PAGE_W_CM - (levy_w_cm + sum(branch_widths_cm) + qty_w_cm + amount_w_cm),
+        )
+
+    # Final guard: if even with item floored we'd overflow the page (only
+    # possible with >2 branches today; the current schema allows exactly 2),
+    # proportionally shrink the branch columns to their minimum so the table
+    # never extends past the right margin. This trades layout density for
+    # correctness — the printer would clip otherwise.
+    final_used = item_w_cm + levy_w_cm + sum(branch_widths_cm) + qty_w_cm + amount_w_cm
+    if final_used > PAGE_W_CM and branch_widths_cm:
+        excess = final_used - PAGE_W_CM
+        per_branch_shrink = excess / len(branch_widths_cm)
+        branch_widths_cm = [max(1.4, w - per_branch_shrink) for w in branch_widths_cm]
+
     col_widths = (
         [item_w_cm * cm, levy_w_cm * cm]
         + [w * cm for w in branch_widths_cm]

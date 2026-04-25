@@ -38,26 +38,31 @@ _ACTION_BY_FORMAT = {
 }
 
 
-# Translation table: drop characters that are unsafe in HTTP filenames or
-# look ugly in a downloaded file. Spaces become underscores; "+" becomes
-# a hyphen so "VIRAR + SAFALE" becomes "VIRAR-SAFALE".
-_FILENAME_BAD = str.maketrans({
-    " ": "_", "+": "-", "/": "-", "\\": "-", ":": "-",
-    "?": "", "*": "", '"': "", "<": "", ">": "", "|": "",
-})
+import re
+
+# Characters that are illegal or ugly in HTTP filenames.
+_FILENAME_STRIP_RE = re.compile(r'[\s+/\\:?*"<>|]+')
 
 
 def _build_filename(report_label: str, route_label: str,
                     date_from: datetime.date, date_to: datetime.date,
                     ext: str) -> str:
-    """Human-readable download name.
+    """Human-readable, ASCII-safe download name.
 
     Example:
-        Itemwise-Levy_VIRAR-SAFALE_01-Apr-2026_to_25-Apr-2026.pdf
+        "VIRAR + SAFALE"  ->  Itemwise-Levy_VIRAR-SAFALE_01-Apr-2026_to_25-Apr-2026.pdf
 
-    Falls back to a date-only stem if the route label is missing.
+    RFC 6266 requires the ``filename`` parameter in Content-Disposition
+    to be ASCII. If the route label contains non-ASCII characters (e.g.
+    Devanagari for translated branch names), they're stripped here so the
+    HTTP header parses cleanly across browsers. Falls back to a date-only
+    stem if the route label is missing or strips to nothing.
     """
-    route = (route_label or "").strip().translate(_FILENAME_BAD)
+    # Strip non-ASCII first so we don't preserve garbage codepoints.
+    ascii_only = (route_label or "").encode("ascii", errors="ignore").decode("ascii")
+    # Collapse any run of whitespace / + / / / \ / : / ? / * / " / < / > / |
+    # into a single hyphen — turns "VIRAR + SAFALE" into "VIRAR-SAFALE".
+    route = _FILENAME_STRIP_RE.sub("-", ascii_only).strip("-_")
     df = date_from.strftime("%d-%b-%Y")
     dt = date_to.strftime("%d-%b-%Y")
     parts = [report_label, route, f"{df}_to_{dt}"] if route else [report_label, f"{df}_to_{dt}"]
