@@ -72,24 +72,37 @@ export default function DataTable<T extends Record<string, any>>({
         <Table className="min-w-[600px]">
           <TableHeader>
             <TableRow className="bg-muted/50">
-              {columns.map((col) => (
-                <TableHead
-                  key={col.key}
-                  className={cn("font-semibold", col.className, col.sortable && "cursor-pointer select-none")}
-                  onClick={() => col.sortable && onSort?.(col.key)}
-                >
-                  <div className="flex items-center gap-1">
-                    {col.label}
-                    {col.sortable && (
-                      sortBy === col.key ? (
-                        sortOrder === "asc" ? <ArrowUp className="h-3.5 w-3.5" /> : <ArrowDown className="h-3.5 w-3.5" />
-                      ) : (
-                        <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground/50" />
-                      )
-                    )}
-                  </div>
-                </TableHead>
-              ))}
+              {columns.map((col) => {
+                // The inner flex container ignores text-align on its parent <th>,
+                // so we mirror text-right / text-center as justify-end / justify-center
+                // on the flex itself — keeps headers aligned with their data cells.
+                const isRight  = col.className?.includes("text-right");
+                const isCenter = col.className?.includes("text-center");
+                return (
+                  <TableHead
+                    key={col.key}
+                    className={cn("font-semibold", col.className, col.sortable && "cursor-pointer select-none")}
+                    onClick={() => col.sortable && onSort?.(col.key)}
+                  >
+                    <div
+                      className={cn(
+                        "flex items-center gap-1",
+                        isRight && "justify-end",
+                        isCenter && "justify-center",
+                      )}
+                    >
+                      {col.label}
+                      {col.sortable && (
+                        sortBy === col.key ? (
+                          sortOrder === "asc" ? <ArrowUp className="h-3.5 w-3.5" /> : <ArrowDown className="h-3.5 w-3.5" />
+                        ) : (
+                          <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground/50" />
+                        )
+                      )}
+                    </div>
+                  </TableHead>
+                );
+              })}
             </TableRow>
           </TableHeader>
           <TableBody>
