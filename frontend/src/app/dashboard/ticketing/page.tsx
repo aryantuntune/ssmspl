@@ -1253,67 +1253,75 @@ export default function TicketingPage() {
       key: "id",
       label: "ID",
       sortable: true,
+      className: "text-center",
       render: (ticket) => <span className="text-muted-foreground">{ticket.id}</span>,
     },
     {
       key: "ticket_no",
       label: "Ticket No",
       sortable: true,
+      className: "text-center",
       render: (ticket) => <span className="font-medium">{ticket.ticket_no}</span>,
     },
     {
       key: "branch_id",
       label: "Branch",
       sortable: true,
+      className: "text-center",
       render: (ticket) => ticket.branch_name || ticket.branch_id,
     },
     {
       key: "route_id",
       label: "Route",
       sortable: true,
+      className: "text-center",
       render: (ticket) => ticket.route_name || ticket.route_id,
     },
     {
       key: "ticket_date",
       label: "Date",
       sortable: true,
+      className: "text-center",
     },
     {
       key: "departure",
       label: "Departure",
       sortable: true,
+      className: "text-center",
       render: (ticket) => ticket.departure || "-",
     },
     {
       key: "amount",
       label: "Amount",
       sortable: true,
-      className: "text-right",
+      className: "text-center",
       render: (ticket) => ticket.amount.toFixed(2),
     },
     {
       key: "discount",
       label: "Discount",
       sortable: true,
-      className: "text-right",
+      className: "text-center",
       render: (ticket) => (ticket.discount || 0).toFixed(2),
     },
     {
       key: "net_amount",
       label: "Net Amount",
       sortable: true,
-      className: "text-right",
+      className: "text-center",
       render: (ticket) => <span className="font-medium">{ticket.net_amount.toFixed(2)}</span>,
     },
     {
       key: "payment_mode_name",
       label: "Payment Mode",
+      className: "text-center",
       render: (ticket) => ticket.payment_mode_name || "—",
     },
     {
       key: "is_cancelled",
       label: "Status",
       sortable: true,
+      className: "text-center",
       render: (ticket) => (
         <Badge variant={ticket.is_cancelled ? "destructive" : "default"}>
           {ticket.is_cancelled ? "Cancelled" : "Active"}
@@ -1323,14 +1331,14 @@ export default function TicketingPage() {
     {
       key: "actions",
       label: "Actions",
-      className: "text-right whitespace-nowrap",
+      className: "text-center whitespace-nowrap",
       render: (ticket) => {
         const canReprint =
           !ticket.is_cancelled &&
           ["SUPER_ADMIN", "ADMIN", "MANAGER"].includes(user?.role || "");
         const canEdit = ["SUPER_ADMIN", "ADMIN"].includes(user?.role || "");
         return (
-          <div className="flex justify-end items-center gap-1">
+          <div className="flex justify-center items-center gap-1">
             <Button
               variant="ghost"
               size="icon"
