@@ -461,21 +461,22 @@ export default function MultiTicketingPage() {
   const canCancel = user.role === "SUPER_ADMIN";
   const canReprint = user.role === "SUPER_ADMIN" || user.role === "ADMIN" || user.role === "MANAGER";
   const multiTicketColumns: Column<Ticket>[] = [
-    { key: "id", label: "ID", sortable: true },
-    { key: "ticket_no", label: "Ticket No", sortable: true },
-    { key: "branch_name", label: "Branch" },
-    { key: "departure", label: "Departure", sortable: true },
+    { key: "id", label: "ID", sortable: true, className: "text-center" },
+    { key: "ticket_no", label: "Ticket No", sortable: true, className: "text-center" },
+    { key: "branch_name", label: "Branch", className: "text-center" },
+    { key: "departure", label: "Departure", sortable: true, className: "text-center" },
     {
       key: "net_amount",
       label: "Net Amount",
       sortable: true,
-      className: "text-right",
+      className: "text-center",
       render: (row) => `${Number(row.net_amount).toFixed(2)}`,
     },
-    { key: "payment_mode_name", label: "Payment Mode" },
+    { key: "payment_mode_name", label: "Payment Mode", className: "text-center" },
     {
       key: "status",
       label: "Status",
+      className: "text-center",
       render: (row) =>
         row.is_cancelled
           ? "\u274C Cancelled"
@@ -485,6 +486,7 @@ export default function MultiTicketingPage() {
       key: "created_at",
       label: "Created At",
       sortable: true,
+      className: "text-center",
       render: (row) => {
         if (!row.created_at) return "\u2014";
         const d = new Date(row.created_at);
@@ -494,8 +496,9 @@ export default function MultiTicketingPage() {
     ...((canReprint || canCancel || canEdit) ? [{
       key: "actions",
       label: "Actions",
+      className: "text-center whitespace-nowrap",
       render: (row: Ticket) => (
-        <div className="flex items-center gap-1">
+        <div className="flex justify-center items-center gap-1">
           {canEdit && !row.is_cancelled && (
             <Button
               variant="ghost"
