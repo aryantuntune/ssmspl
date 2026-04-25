@@ -144,6 +144,35 @@ def _wrap_num(value: str) -> Paragraph:
     return Paragraph(value or "", _cell_num_style())
 
 
+def _cell_header_style(align: str = TA_CENTER) -> ParagraphStyle:
+    """Header-cell style — bold, white on navy, wraps inside the cell.
+    Plain-string header cells overflow into adjacent columns when the
+    text is wider than the column (e.g. branch name "BAGMANDALE" in a
+    1.9cm column). Wrapping in a Paragraph fixes that."""
+    return ParagraphStyle(
+        "AdminCellHeader",
+        fontName=FONT_BOLD,
+        fontSize=9,
+        leading=11,
+        textColor=_COLOR_HEADER_FG,
+        alignment=align,
+        wordWrap="CJK",
+    )
+
+
+def _wrap_header(value: str, align: str = TA_CENTER) -> Paragraph:
+    return Paragraph(value or "", _cell_header_style(align))
+
+
+def _branch_col_width_cm(branch_name: str, minimum_cm: float = 1.9) -> float:
+    """Compute branch column width that comfortably fits the longest name.
+    9pt bold text uses ~0.18cm per char; add 0.4cm padding for header
+    background. Caps at 3.0cm so a single very long name doesn't push the
+    other columns off the page."""
+    needed = len(branch_name or "") * 0.18 + 0.4
+    return min(3.0, max(minimum_cm, needed))
+
+
 # ── Styles ───────────────────────────────────────────────────────────────────
 
 
@@ -323,11 +352,20 @@ def generate_itemwise_levy_pdf(data: dict) -> BytesIO:
     elements: list = _header_block(data, "Itemwise Levy Summary")
 
     branches = data["branches"]
-    headers = ["Item"] + ["Levy"] + [b["name"] for b in branches] + ["Quantity", "Amount"]
+    # Headers wrapped in Paragraphs — long branch names ("BAGMANDALE", 10
+    # chars) would otherwise spill into the next column. Numeric headers
+    # right-align so they sit directly above the right-aligned data.
+    headers: list = [
+        _wrap_header("Item", TA_LEFT),
+        _wrap_header("Levy", TA_RIGHT),
+    ]
+    for b in branches:
+        headers.append(_wrap_header(b["name"], TA_RIGHT))
+    headers += [_wrap_header("Quantity", TA_RIGHT), _wrap_header("Amount", TA_RIGHT)]
     body: list = [headers]
 
-    # Only the Item column needs wrapping (names up to ~43 chars). Numeric
-    # columns stay as plain strings so TableStyle can control their font.
+    # Only the Item column needs wrapping in body rows. Numeric columns
+    # stay as plain strings so TableStyle controls their font.
     for row in data["rows"]:
         line: list = [
             _wrap_text(row["item_name"]),
@@ -347,17 +385,22 @@ def generate_itemwise_levy_pdf(data: dict) -> BytesIO:
     )
     body.append(total_line)
 
-    # Column widths calibrated to A4 portrait (usable ≈17.6cm).
-    # Give Item extra room — most cluttered column, has 40-char names.
-    item_w_cm = 6.8
+    # Column widths sized to fit the actual data, calibrated to A4 portrait
+    # usable width ≈18.6cm (page 21cm − 2×1.2cm margin).
+    item_w_cm = 6.4
     levy_w_cm = 1.5
-    branch_w_cm = 1.9
     qty_w_cm = 1.9
-    used_cm = item_w_cm + levy_w_cm + branch_w_cm * len(branches) + qty_w_cm
-    amount_w_cm = max(3.2, 17.6 - used_cm)
+    # Branch columns flex to fit their names.
+    branch_widths_cm = [_branch_col_width_cm(b["name"]) for b in branches]
+    used_cm = item_w_cm + levy_w_cm + sum(branch_widths_cm) + qty_w_cm
+    amount_w_cm = max(2.8, 18.6 - used_cm)
+    # If even the minimum amount column doesn't fit, shrink the item column
+    # rather than overflow the page.
+    if used_cm + amount_w_cm > 18.6:
+        item_w_cm = max(4.5, 18.6 - (levy_w_cm + sum(branch_widths_cm) + qty_w_cm + amount_w_cm))
     col_widths = (
         [item_w_cm * cm, levy_w_cm * cm]
-        + [branch_w_cm * cm] * len(branches)
+        + [w * cm for w in branch_widths_cm]
         + [qty_w_cm * cm, amount_w_cm * cm]
     )
 
@@ -424,8 +467,13 @@ def generate_date_branch_summary_pdf(data: dict) -> BytesIO:
     )
 
     cols = data["columns"]
-    headers = ["Date"] + [c["label"] for c in cols] + ["Total"]
-    body: list[list[str]] = [headers]
+    # Paragraph-wrapped headers so long branch labels (e.g. "BAGMANDALE-CASH")
+    # don't spill into the next column. Numeric columns right-align.
+    headers: list = [_wrap_header("Date", TA_LEFT)]
+    for c in cols:
+        headers.append(_wrap_header(c["label"], TA_RIGHT))
+    headers.append(_wrap_header("Total", TA_RIGHT))
+    body: list = [headers]
 
     for row in data["rows"]:
         line = [_fmt_date_long(row["date"])]
@@ -486,9 +534,18 @@ def generate_itemwise_daily_charges_pdf(data: dict) -> BytesIO:
         block: list = []
         block.append(Paragraph(_fmt_date_long(ds["date"]), s["DateBand"]))
 
+        # All sub-tables on this page use ONE shared column width vector so
+        # the day-total strip and branch tables align edge-to-edge.
+        # Sums to ≈18.6cm (A4 portrait usable width).
+        sub_col_widths = [9.2 * cm, 2.6 * cm, 2.7 * cm, 4.1 * cm]
         for bs in ds["branches"]:
             block.append(Paragraph(bs["branch_name"], s["BranchLabel"]))
-            headers = ["Item", "Charges", "Quantity", "Amount"]
+            headers: list = [
+                _wrap_header("Item", TA_LEFT),
+                _wrap_header("Charges", TA_RIGHT),
+                _wrap_header("Quantity", TA_RIGHT),
+                _wrap_header("Amount", TA_RIGHT),
+            ]
             rows: list = [headers]
             for r in bs["rows"]:
                 rows.append(
@@ -502,8 +559,7 @@ def generate_itemwise_daily_charges_pdf(data: dict) -> BytesIO:
             # Branch subtotal row
             rows.append(["Subtotal", "", "", fmt_currency(bs["subtotal"])])
 
-            col_widths = [9.2 * cm, 2.6 * cm, 2.4 * cm, 3.2 * cm]
-            tbl = Table(rows, colWidths=col_widths, repeatRows=1)
+            tbl = Table(rows, colWidths=sub_col_widths, repeatRows=1, hAlign="LEFT")
             tbl.setStyle(
                 _base_table_style(
                     n_cols=4,
@@ -515,10 +571,12 @@ def generate_itemwise_daily_charges_pdf(data: dict) -> BytesIO:
             block.append(tbl)
             block.append(Spacer(1, 2 * mm))
 
-        # Day total strip
+        # Day total strip — first 3 cells span the label, last cell shows
+        # the amount. Same column widths as the body tables → edges line up.
         day_total = Table(
-            [[f"Total for {_fmt_date_long(ds['date'])}", fmt_currency(ds["day_total"])]],
-            colWidths=[13.6 * cm, 4.0 * cm],
+            [[f"Total for {_fmt_date_long(ds['date'])}", "", "", fmt_currency(ds["day_total"])]],
+            colWidths=sub_col_widths,
+            hAlign="LEFT",
         )
         day_total.setStyle(
             TableStyle(
@@ -527,8 +585,11 @@ def generate_itemwise_daily_charges_pdf(data: dict) -> BytesIO:
                     ("FONTSIZE", (0, 0), (-1, 0), 10),
                     ("TEXTCOLOR", (0, 0), (-1, 0), _COLOR_TEXT),
                     ("BACKGROUND", (0, 0), (-1, 0), _COLOR_TOTAL_BG),
+                    # Span the label across the first 3 columns (Item, Charges, Quantity)
+                    # so the amount lands in the same column as the body table's Amount.
+                    ("SPAN", (0, 0), (2, 0)),
                     ("ALIGN", (0, 0), (0, 0), "LEFT"),
-                    ("ALIGN", (1, 0), (1, 0), "RIGHT"),
+                    ("ALIGN", (3, 0), (3, 0), "RIGHT"),
                     ("LINEABOVE", (0, 0), (-1, 0), 1.0, _COLOR_RULE_DARK),
                     ("LINEBELOW", (0, 0), (-1, 0), 0.5, _COLOR_RULE_DARK),
                     ("TOPPADDING", (0, 0), (-1, 0), 7),
@@ -546,22 +607,24 @@ def generate_itemwise_daily_charges_pdf(data: dict) -> BytesIO:
             # Repeat the report header on each new page for a clean stitch
             elements.extend(_header_block(data, "Itemwise Daily Collection Charges Summary"))
 
-    # Grand total
+    # Grand total — same column widths as the body tables for clean
+    # vertical alignment of the amount column.
     if date_sections:
         elements.append(Spacer(1, 6 * mm))
         grand = Table(
-            [["GRAND TOTAL", fmt_currency(data["grand_total"])]],
-            colWidths=[13.6 * cm, 4.0 * cm],
+            [["GRAND TOTAL", "", "", fmt_currency(data["grand_total"])]],
+            colWidths=sub_col_widths,
+            hAlign="LEFT",
         )
         grand.setStyle(
             TableStyle(
                 [
                     ("FONTNAME", (0, 0), (-1, 0), FONT_BOLD),
                     ("FONTSIZE", (0, 0), (-1, 0), 12),
-                    ("TEXTCOLOR", (0, 0), (0, 0), _COLOR_TEXT),
-                    ("TEXTCOLOR", (1, 0), (1, 0), _COLOR_TEXT),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), _COLOR_TEXT),
+                    ("SPAN", (0, 0), (2, 0)),
                     ("ALIGN", (0, 0), (0, 0), "LEFT"),
-                    ("ALIGN", (1, 0), (1, 0), "RIGHT"),
+                    ("ALIGN", (3, 0), (3, 0), "RIGHT"),
                     ("LINEABOVE", (0, 0), (-1, 0), 1.5, _COLOR_RULE_DARK),
                     ("LINEBELOW", (0, 0), (-1, 0), 1.5, _COLOR_RULE_DARK),
                     ("TOPPADDING", (0, 0), (-1, 0), 9),

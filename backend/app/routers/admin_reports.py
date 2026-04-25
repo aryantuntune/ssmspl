@@ -38,6 +38,32 @@ _ACTION_BY_FORMAT = {
 }
 
 
+# Translation table: drop characters that are unsafe in HTTP filenames or
+# look ugly in a downloaded file. Spaces become underscores; "+" becomes
+# a hyphen so "VIRAR + SAFALE" becomes "VIRAR-SAFALE".
+_FILENAME_BAD = str.maketrans({
+    " ": "_", "+": "-", "/": "-", "\\": "-", ":": "-",
+    "?": "", "*": "", '"': "", "<": "", ">": "", "|": "",
+})
+
+
+def _build_filename(report_label: str, route_label: str,
+                    date_from: datetime.date, date_to: datetime.date,
+                    ext: str) -> str:
+    """Human-readable download name.
+
+    Example:
+        Itemwise-Levy_VIRAR-SAFALE_01-Apr-2026_to_25-Apr-2026.pdf
+
+    Falls back to a date-only stem if the route label is missing.
+    """
+    route = (route_label or "").strip().translate(_FILENAME_BAD)
+    df = date_from.strftime("%d-%b-%Y")
+    dt = date_to.strftime("%d-%b-%Y")
+    parts = [report_label, route, f"{df}_to_{dt}"] if route else [report_label, f"{df}_to_{dt}"]
+    return "_".join(parts) + f".{ext}"
+
+
 def _log(bg: BackgroundTasks, user: User, report_type: str, fmt: str, **filters):
     bg.add_task(
         log_activity,
@@ -96,14 +122,11 @@ async def itemwise_levy_summary_pdf(
     )
     _log(background_tasks, current_user, "itemwise_levy_summary", "pdf",
          date_from=date_from, date_to=date_to, route_id=route_id)
+    fname = _build_filename("Itemwise-Levy", data.get("route_label", ""), date_from, date_to, "pdf")
     return StreamingResponse(
         admin_pdf_service.generate_itemwise_levy_pdf(data),
         media_type="application/pdf",
-        headers={
-            "Content-Disposition": (
-                f"attachment; filename=itemwise_levy_summary_{date_from}_{date_to}.pdf"
-            )
-        },
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
     )
 
 
@@ -126,14 +149,11 @@ async def itemwise_levy_summary_xlsx(
     )
     _log(background_tasks, current_user, "itemwise_levy_summary", "xlsx",
          date_from=date_from, date_to=date_to, route_id=route_id)
+    fname = _build_filename("Itemwise-Levy", data.get("route_label", ""), date_from, date_to, "xlsx")
     return StreamingResponse(
         admin_xlsx_service.generate_itemwise_levy_xlsx(data),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={
-            "Content-Disposition": (
-                f"attachment; filename=itemwise_levy_summary_{date_from}_{date_to}.xlsx"
-            )
-        },
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
     )
 
 
@@ -181,14 +201,11 @@ async def date_branch_summary_pdf(
     )
     _log(background_tasks, current_user, "date_branch_summary", "pdf",
          date_from=date_from, date_to=date_to, route_id=route_id)
+    fname = _build_filename("Date-Branch-Summary", data.get("route_label", ""), date_from, date_to, "pdf")
     return StreamingResponse(
         admin_pdf_service.generate_date_branch_summary_pdf(data),
         media_type="application/pdf",
-        headers={
-            "Content-Disposition": (
-                f"attachment; filename=date_branch_summary_{date_from}_{date_to}.pdf"
-            )
-        },
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
     )
 
 
@@ -211,14 +228,11 @@ async def date_branch_summary_xlsx(
     )
     _log(background_tasks, current_user, "date_branch_summary", "xlsx",
          date_from=date_from, date_to=date_to, route_id=route_id)
+    fname = _build_filename("Date-Branch-Summary", data.get("route_label", ""), date_from, date_to, "xlsx")
     return StreamingResponse(
         admin_xlsx_service.generate_date_branch_summary_xlsx(data),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={
-            "Content-Disposition": (
-                f"attachment; filename=date_branch_summary_{date_from}_{date_to}.xlsx"
-            )
-        },
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
     )
 
 
@@ -266,14 +280,11 @@ async def itemwise_daily_charges_pdf(
     )
     _log(background_tasks, current_user, "itemwise_daily_charges", "pdf",
          date_from=date_from, date_to=date_to, route_id=route_id)
+    fname = _build_filename("Daily-Charges", data.get("route_label", ""), date_from, date_to, "pdf")
     return StreamingResponse(
         admin_pdf_service.generate_itemwise_daily_charges_pdf(data),
         media_type="application/pdf",
-        headers={
-            "Content-Disposition": (
-                f"attachment; filename=itemwise_daily_charges_{date_from}_{date_to}.pdf"
-            )
-        },
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
     )
 
 
@@ -296,12 +307,9 @@ async def itemwise_daily_charges_xlsx(
     )
     _log(background_tasks, current_user, "itemwise_daily_charges", "xlsx",
          date_from=date_from, date_to=date_to, route_id=route_id)
+    fname = _build_filename("Daily-Charges", data.get("route_label", ""), date_from, date_to, "xlsx")
     return StreamingResponse(
         admin_xlsx_service.generate_itemwise_daily_charges_xlsx(data),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={
-            "Content-Disposition": (
-                f"attachment; filename=itemwise_daily_charges_{date_from}_{date_to}.xlsx"
-            )
-        },
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
     )

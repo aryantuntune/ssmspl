@@ -229,10 +229,16 @@ export default function AdminReportsPage() {
         params: { date_from: dateFrom, date_to: dateTo, route_id: Number(routeId) },
         responseType: "blob",
       });
-      const url = window.URL.createObjectURL(new Blob([res.data]));
+      // Prefer the human-readable filename the server sends via
+      // Content-Disposition (e.g. Itemwise-Levy_VIRAR-SAFALE_01-Apr-2026_to_25-Apr-2026.pdf).
+      // Fall back to a basic name if the header isn't readable (e.g. CORS).
+      const cd = (res.headers as Record<string, string | undefined>)["content-disposition"] || "";
+      const match = cd.match(/filename\*?=(?:UTF-8'')?"?([^";]+)"?/i);
+      const serverName = match ? decodeURIComponent(match[1]) : "";
       const a = document.createElement("a");
+      const url = window.URL.createObjectURL(new Blob([res.data]));
       a.href = url;
-      a.download = `${current.key}_${dateFrom}_${dateTo}.${kind}`;
+      a.download = serverName || `${current.key}_${dateFrom}_${dateTo}.${kind}`;
       document.body.appendChild(a);
       a.click();
       a.remove();
