@@ -248,41 +248,54 @@ async def select_branch(
     },
 )
 async def me(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    menu = list(ROLE_MENU_ITEMS.get(current_user.role, []))
+    # CRITICAL: snapshot every scalar BEFORE any further await db.* calls.
+    # Otherwise SQLAlchemy may expire the User instance after a commit/flush
+    # and the next attribute read triggers a lazy load → MissingGreenlet.
+    snap_id = current_user.id
+    snap_email = current_user.email
+    snap_username = current_user.username
+    snap_full_name = current_user.full_name
+    snap_mobile = current_user.mobile_number
+    snap_role = current_user.role
+    snap_route_id = current_user.route_id
+    snap_active = current_user.is_active
+    snap_verified = current_user.is_verified
+    snap_last_login = current_user.last_login
+    snap_created = current_user.created_at
+    snap_updated = current_user.updated_at
+    snap_active_branch = current_user.active_branch_id
+
+    menu = list(ROLE_MENU_ITEMS.get(snap_role, []))
 
     # "Admin Reports" is scoped to the admin subdomain only — hide it on the main portal.
     if not settings.ADMIN_PORTAL_MODE:
         menu = [item for item in menu if item != "Admin Reports"]
 
     # Admin portal: filter menu for non-SUPER_ADMIN users based on screen toggles
-    if settings.ADMIN_PORTAL_MODE and current_user.role != UserRole.SUPER_ADMIN:
+    if settings.ADMIN_PORTAL_MODE and snap_role != UserRole.SUPER_ADMIN:
         enabled = await admin_screen_service.get_enabled_screens(db)
         menu = [item for item in menu if item in enabled]
 
-    route_name = await _resolve_route_name(db, current_user.route_id)
-    route_branches = await _resolve_route_branches(db, current_user.route_id)
+    route_name = await _resolve_route_name(db, snap_route_id)
+    route_branches = await _resolve_route_branches(db, snap_route_id)
 
-    # Build response from already-loaded scalar attributes only.
-    # Avoid UserMeResponse.model_validate(current_user) — that causes pydantic
-    # to read every attribute, which can trigger SQLAlchemy lazy-loads outside
-    # an async context and raise MissingGreenlet intermittently.
     return UserMeResponse(
-        id=current_user.id,
-        email=current_user.email,
-        username=current_user.username,
-        full_name=current_user.full_name,
-        mobile_number=current_user.mobile_number,
-        role=current_user.role,
-        route_id=current_user.route_id,
-        is_active=current_user.is_active,
-        is_verified=current_user.is_verified,
-        last_login=current_user.last_login,
-        created_at=current_user.created_at,
-        updated_at=current_user.updated_at,
+        id=snap_id,
+        email=snap_email,
+        username=snap_username,
+        full_name=snap_full_name,
+        mobile_number=snap_mobile,
+        role=snap_role,
+        route_id=snap_route_id,
+        is_active=snap_active,
+        is_verified=snap_verified,
+        last_login=snap_last_login,
+        created_at=snap_created,
+        updated_at=snap_updated,
         menu_items=menu,
         route_name=route_name,
         route_branches=route_branches,
-        active_branch_id=current_user.active_branch_id,
+        active_branch_id=snap_active_branch,
     )
 
 
