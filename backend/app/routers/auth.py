@@ -261,11 +261,29 @@ async def me(current_user: User = Depends(get_current_user), db: AsyncSession = 
 
     route_name = await _resolve_route_name(db, current_user.route_id)
     route_branches = await _resolve_route_branches(db, current_user.route_id)
-    data = UserMeResponse.model_validate(current_user)
-    data.menu_items = menu
-    data.route_name = route_name
-    data.route_branches = route_branches
-    return data
+
+    # Build response from already-loaded scalar attributes only.
+    # Avoid UserMeResponse.model_validate(current_user) — that causes pydantic
+    # to read every attribute, which can trigger SQLAlchemy lazy-loads outside
+    # an async context and raise MissingGreenlet intermittently.
+    return UserMeResponse(
+        id=current_user.id,
+        email=current_user.email,
+        username=current_user.username,
+        full_name=current_user.full_name,
+        mobile_number=current_user.mobile_number,
+        role=current_user.role,
+        route_id=current_user.route_id,
+        is_active=current_user.is_active,
+        is_verified=current_user.is_verified,
+        last_login=current_user.last_login,
+        created_at=current_user.created_at,
+        updated_at=current_user.updated_at,
+        menu_items=menu,
+        route_name=route_name,
+        route_branches=route_branches,
+        active_branch_id=current_user.active_branch_id,
+    )
 
 
 @router.post(
