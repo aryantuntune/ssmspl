@@ -112,17 +112,48 @@ export interface DailyChargesData {
   integrity_warning?: IntegrityWarning | null;
 }
 
+export interface MonthBranchRow {
+  month: string;
+  month_label: string;
+  cells: Record<string, string>;
+  total: string;
+}
+
+export interface MonthBranchData {
+  route_label: string;
+  date_from: string;
+  date_to: string;
+  branches: { id: number; name: string }[];
+  columns: DateBranchColumn[];
+  rows: MonthBranchRow[];
+  column_totals: Record<string, string>;
+  grand_total: string;
+  integrity_warning?: IntegrityWarning | null;
+}
+
 // ── Config ──
 
-type TabKey = "itemwise-levy" | "date-branch" | "daily-charges";
+type TabKey = "itemwise-levy" | "date-branch" | "daily-charges" | "month-branch";
 
-const REPORTS: { key: TabKey; label: string; endpoint: string; pdf: string; xlsx: string }[] = [
+interface ReportConfig {
+  key: TabKey;
+  label: string;
+  endpoint: string;
+  pdf: string;
+  xlsx: string;
+  // route-based reports take a single route_id; month-branch is cross-route
+  // and takes an optional branch_ids list instead.
+  filterMode: "route" | "branches";
+}
+
+const REPORTS: ReportConfig[] = [
   {
     key: "itemwise-levy",
     label: "Itemwise Levy Summary",
     endpoint: "/api/reports/admin/itemwise-levy-summary",
     pdf: "/api/reports/admin/itemwise-levy-summary/pdf",
     xlsx: "/api/reports/admin/itemwise-levy-summary/xlsx",
+    filterMode: "route",
   },
   {
     key: "date-branch",
@@ -130,6 +161,7 @@ const REPORTS: { key: TabKey; label: string; endpoint: string; pdf: string; xlsx
     endpoint: "/api/reports/admin/date-branch-summary",
     pdf: "/api/reports/admin/date-branch-summary/pdf",
     xlsx: "/api/reports/admin/date-branch-summary/xlsx",
+    filterMode: "route",
   },
   {
     key: "daily-charges",
@@ -137,6 +169,15 @@ const REPORTS: { key: TabKey; label: string; endpoint: string; pdf: string; xlsx
     endpoint: "/api/reports/admin/itemwise-daily-charges",
     pdf: "/api/reports/admin/itemwise-daily-charges/pdf",
     xlsx: "/api/reports/admin/itemwise-daily-charges/xlsx",
+    filterMode: "route",
+  },
+  {
+    key: "month-branch",
+    label: "Month-Wise Branch Summary (Cash + GPay)",
+    endpoint: "/api/reports/admin/month-branch-summary",
+    pdf: "/api/reports/admin/month-branch-summary/pdf",
+    xlsx: "/api/reports/admin/month-branch-summary/xlsx",
+    filterMode: "branches",
   },
 ];
 
@@ -160,19 +201,23 @@ function routeLabel(r: Route): string {
 
 // ── Page ──
 
+interface BranchRef { id: number; name: string }
+
 export default function AdminReportsPage() {
   const [tab, setTab] = useState<TabKey>("itemwise-levy");
   const [dateFrom, setDateFrom] = useState(firstOfMonth());
   const [dateTo, setDateTo] = useState(today());
   const [routeId, setRouteId] = useState("");
   const [routes, setRoutes] = useState<Route[]>([]);
+  const [branches, setBranches] = useState<BranchRef[]>([]);
+  const [selectedBranchIds, setSelectedBranchIds] = useState<number[]>([]);
   const [loading, setLoading] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [downloadingXlsx, setDownloadingXlsx] = useState(false);
   const [error, setError] = useState("");
-  const [data, setData] = useState<ItemwiseLevyData | DateBranchData | DailyChargesData | null>(
-    null
-  );
+  const [data, setData] = useState<
+    ItemwiseLevyData | DateBranchData | DailyChargesData | MonthBranchData | null
+  >(null);
   const [generated, setGenerated] = useState(false);
 
   const current = useMemo(() => REPORTS.find((r) => r.key === tab)!, [tab]);
@@ -186,22 +231,49 @@ export default function AdminReportsPage() {
     }
   }, []);
 
+  const loadBranches = useCallback(async () => {
+    try {
+      const res = await api.get<BranchRef[]>("/api/branches?limit=200&status=active&sort_by=name&sort_order=asc");
+      setBranches(res.data);
+      // Default: all branches selected so the report has data even before
+      // the user touches the filter.
+      setSelectedBranchIds(res.data.map((b) => b.id));
+    } catch {
+      // silently ignore
+    }
+  }, []);
+
   useEffect(() => {
     loadRoutes();
-  }, [loadRoutes]);
+    loadBranches();
+  }, [loadRoutes, loadBranches]);
+
+  const buildParams = useCallback(() => {
+    if (current.filterMode === "branches") {
+      return {
+        date_from: dateFrom,
+        date_to: dateTo,
+        // axios serialises arrays as repeated params (branch_ids=1&branch_ids=2…)
+        branch_ids: selectedBranchIds.length ? selectedBranchIds : undefined,
+      };
+    }
+    return { date_from: dateFrom, date_to: dateTo, route_id: Number(routeId) };
+  }, [current.filterMode, dateFrom, dateTo, routeId, selectedBranchIds]);
 
   const runReport = async () => {
-    if (!routeId) {
+    if (current.filterMode === "route" && !routeId) {
       setError("Please select a route.");
+      return;
+    }
+    if (current.filterMode === "branches" && selectedBranchIds.length === 0) {
+      setError("Please select at least one branch.");
       return;
     }
     setError("");
     setLoading(true);
     setGenerated(false);
     try {
-      const res = await api.get(current.endpoint, {
-        params: { date_from: dateFrom, date_to: dateTo, route_id: Number(routeId) },
-      });
+      const res = await api.get(current.endpoint, { params: buildParams() });
       setData(res.data);
       setGenerated(true);
     } catch (err) {
@@ -216,8 +288,12 @@ export default function AdminReportsPage() {
   };
 
   const download = async (kind: "pdf" | "xlsx") => {
-    if (!routeId) {
+    if (current.filterMode === "route" && !routeId) {
       setError("Please select a route.");
+      return;
+    }
+    if (current.filterMode === "branches" && selectedBranchIds.length === 0) {
+      setError("Please select at least one branch.");
       return;
     }
     setError("");
@@ -226,7 +302,7 @@ export default function AdminReportsPage() {
     setter(true);
     try {
       const res = await api.get(endpoint, {
-        params: { date_from: dateFrom, date_to: dateTo, route_id: Number(routeId) },
+        params: buildParams(),
         responseType: "blob",
       });
       // Prefer the human-readable filename the server sends via
@@ -270,7 +346,7 @@ export default function AdminReportsPage() {
       </div>
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as TabKey)}>
-        <TabsList className="grid grid-cols-3">
+        <TabsList className="grid grid-cols-4">
           {REPORTS.map((r) => (
             <TabsTrigger key={r.key} value={r.key}>
               {r.label}
@@ -299,21 +375,29 @@ export default function AdminReportsPage() {
                   onChange={(e) => setDateTo(e.target.value)}
                 />
               </div>
-              <div>
-                <Label htmlFor="route">Route</Label>
-                <Select value={routeId} onValueChange={setRouteId}>
-                  <SelectTrigger id="route">
-                    <SelectValue placeholder="Select route" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {routes.map((r) => (
-                      <SelectItem key={r.id} value={String(r.id)}>
-                        {routeLabel(r)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              {current.filterMode === "route" ? (
+                <div>
+                  <Label htmlFor="route">Route</Label>
+                  <Select value={routeId} onValueChange={setRouteId}>
+                    <SelectTrigger id="route">
+                      <SelectValue placeholder="Select route" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {routes.map((r) => (
+                        <SelectItem key={r.id} value={String(r.id)}>
+                          {routeLabel(r)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : (
+                <BranchMultiSelect
+                  branches={branches}
+                  selectedIds={selectedBranchIds}
+                  onChange={setSelectedBranchIds}
+                />
+              )}
               <div className="flex items-end gap-2">
                 <Button onClick={runReport} disabled={loading}>
                   {loading ? (
@@ -374,6 +458,11 @@ export default function AdminReportsPage() {
             <ItemwiseDailyChargesReport data={data as DailyChargesData} />
           )}
         </TabsContent>
+        <TabsContent value="month-branch" className="mt-4">
+          {generated && tab === "month-branch" && data && (
+            <MonthBranchSummaryReport data={data as MonthBranchData} />
+          )}
+        </TabsContent>
       </Tabs>
     </div>
   );
@@ -384,3 +473,158 @@ export default function AdminReportsPage() {
 // adjustment engine writes to the structured log. We intentionally do not
 // render it in the admin UI — it's surfaced via server logs / JSON API
 // for engineers, not as an end-user banner.
+
+
+// ── Branch multi-select (popover-style) ──────────────────────────────────────
+
+function BranchMultiSelect({
+  branches,
+  selectedIds,
+  onChange,
+}: {
+  branches: BranchRef[];
+  selectedIds: number[];
+  onChange: (ids: number[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const allSelected = selectedIds.length === branches.length && branches.length > 0;
+  const summary = allSelected
+    ? `All ${branches.length} branches`
+    : selectedIds.length === 0
+      ? "Select branches"
+      : selectedIds.length === 1
+        ? branches.find((b) => b.id === selectedIds[0])?.name ?? "1 branch"
+        : `${selectedIds.length} branches`;
+
+  const toggle = (id: number) => {
+    if (selectedIds.includes(id)) onChange(selectedIds.filter((x) => x !== id));
+    else onChange([...selectedIds, id]);
+  };
+
+  return (
+    <div className="relative">
+      <Label htmlFor="branches">Branches</Label>
+      <button
+        id="branches"
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full mt-2 flex items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm hover:bg-accent"
+      >
+        <span className="truncate text-left">{summary}</span>
+        <span className="ml-2 opacity-50">▾</span>
+      </button>
+      {open && (
+        <div className="absolute z-20 mt-1 w-full max-h-72 overflow-auto rounded-md border bg-popover shadow-md">
+          <button
+            type="button"
+            onClick={() =>
+              onChange(allSelected ? [] : branches.map((b) => b.id))
+            }
+            className="w-full px-3 py-2 text-left text-sm font-medium hover:bg-accent border-b"
+          >
+            {allSelected ? "Clear all" : "Select all"}
+          </button>
+          {branches.map((b) => (
+            <label
+              key={b.id}
+              className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-accent cursor-pointer"
+            >
+              <input
+                type="checkbox"
+                checked={selectedIds.includes(b.id)}
+                onChange={() => toggle(b.id)}
+                className="rounded"
+              />
+              <span>{b.name}</span>
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+// ── Month-Wise Branch Summary preview ────────────────────────────────────────
+
+function MonthBranchSummaryReport({ data }: { data: MonthBranchData }) {
+  function fmt(v: string | number): string {
+    const n = typeof v === "string" ? Number(v) : v;
+    if (Number.isNaN(n)) return String(v);
+    return n.toLocaleString("en-IN", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  }
+  const hasData = data.rows.some((r) =>
+    Object.values(r.cells).some((v) => Number(v) > 0)
+  );
+  return (
+    <div className="rounded-md border bg-card p-6">
+      <div className="text-center mb-4">
+        <h2 className="text-base font-bold">
+          SUVARNADURGA SHIPPING &amp; MARINE SERVICES PVT.LTD.
+        </h2>
+        <p className="text-sm font-semibold">{data.route_label}</p>
+        <p className="text-xs text-gray-600">
+          Month-Wise Branch Summary — Cash &amp; GPay
+        </p>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b-2">
+              <th className="text-left p-2">Month</th>
+              {data.columns.map((c) => (
+                <th key={c.key} className="text-right p-2 whitespace-nowrap">
+                  {c.label}
+                </th>
+              ))}
+              <th className="text-right p-2">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {!hasData ? (
+              <tr>
+                <td
+                  colSpan={2 + data.columns.length}
+                  className="text-center text-gray-500 p-4"
+                >
+                  No data for the selected range.
+                </td>
+              </tr>
+            ) : (
+              data.rows.map((r) => (
+                <tr key={r.month} className="border-b">
+                  <td className="p-2">{r.month_label}</td>
+                  {data.columns.map((c) => {
+                    const v = Number(r.cells[c.key] ?? 0);
+                    return (
+                      <td key={c.key} className="text-right p-2 whitespace-nowrap">
+                        {v > 0 ? `₹${fmt(v)}` : ""}
+                      </td>
+                    );
+                  })}
+                  <td className="text-right p-2 font-semibold whitespace-nowrap">
+                    ₹{fmt(r.total)}
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+          <tfoot>
+            <tr className="font-semibold border-t-2">
+              <td className="p-2">Total</td>
+              {data.columns.map((c) => (
+                <td key={c.key} className="text-right p-2 whitespace-nowrap">
+                  ₹{fmt(data.column_totals[c.key] ?? "0")}
+                </td>
+              ))}
+              <td className="text-right p-2">₹{fmt(data.grand_total)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  );
+}

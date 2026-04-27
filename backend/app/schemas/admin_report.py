@@ -123,3 +123,25 @@ class ItemwiseDailyChargesReport(BaseModel):
     dates: list[DailyDateSection]
     grand_total: str
     integrity_warning: IntegrityWarning | None = None
+
+
+# ── Report D: Month-Wise Branch Summary (cross-route) ────────────────────────
+
+
+class MonthBranchRow(BaseModel):
+    month: str = Field(..., description="ISO month identifier 'YYYY-MM'")
+    month_label: str = Field(..., description="Display label 'MM-YYYY'")
+    cells: dict[str, str]
+    total: str
+
+
+class MonthBranchSummaryReport(BaseModel):
+    route_label: str
+    date_from: datetime.date
+    date_to: datetime.date
+    branches: list[BranchRef]
+    columns: list[DateBranchColumn]
+    rows: list[MonthBranchRow]
+    column_totals: dict[str, str]
+    grand_total: str
+    integrity_warning: IntegrityWarning | None = None

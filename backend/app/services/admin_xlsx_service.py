@@ -446,3 +446,74 @@ def generate_itemwise_daily_charges_xlsx(data: dict) -> BytesIO:
     wb.save(buf)
     buf.seek(0)
     return buf
+
+
+# ── Report D: Month-Wise Branch Summary ──────────────────────────────────────
+
+
+def generate_month_branch_summary_xlsx(data: dict) -> BytesIO:
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Month-Branch Summary"
+    ws.sheet_view.showGridLines = False
+    f = _fonts()
+
+    cols = data["columns"]
+    col_span = 2 + len(cols)  # Month + mode cols + Total
+    next_row = _write_title_block(
+        ws, data, "Month-Wise Branch Summary  —  Cash & GPay", col_span
+    )
+
+    header = ["Month"] + [c["label"] for c in cols] + ["Total"]
+    for i, h in enumerate(header, start=1):
+        ws.cell(row=next_row, column=i, value=h)
+    _style_header_row(ws, next_row, col_span)
+    header_row = next_row
+    first_body = next_row + 1
+    next_row = first_body
+
+    for row in data["rows"]:
+        # Month label is "MM-YYYY" — keep as plain text, not a date object,
+        # because Excel's date format would mis-render it as a day.
+        mc = ws.cell(row=next_row, column=1, value=row["month_label"])
+        mc.alignment = _LEFT
+        mc.font = f["body"]
+
+        for j, c in enumerate(cols, start=2):
+            val = _to_number(row["cells"].get(c["key"], "0"))
+            cell = ws.cell(row=next_row, column=j, value=val if val else None)
+            cell.number_format = _CUR_FMT
+            cell.alignment = _RIGHT
+            cell.font = f["body"]
+
+        tot = ws.cell(row=next_row, column=col_span, value=_to_number(row["total"]))
+        tot.number_format = _CUR_FMT
+        tot.alignment = _RIGHT
+        tot.font = f["body"]
+        next_row += 1
+
+    last_body = next_row - 1
+    if last_body >= first_body:
+        _apply_zebra(ws, first_body, last_body, col_span)
+
+    # Total row
+    ws.cell(row=next_row, column=1, value="Total").alignment = _LEFT
+    for j, c in enumerate(cols, start=2):
+        cell = ws.cell(
+            row=next_row, column=j,
+            value=_to_number(data["column_totals"].get(c["key"], "0")),
+        )
+        cell.number_format = _CUR_FMT
+        cell.alignment = _RIGHT
+    gt = ws.cell(row=next_row, column=col_span, value=_to_number(data["grand_total"]))
+    gt.number_format = _CUR_FMT
+    gt.alignment = _RIGHT
+    _style_total_row(ws, next_row, col_span)
+
+    ws.freeze_panes = ws.cell(row=header_row + 1, column=2).coordinate
+    _autosize(ws, [12] + [16] * len(cols) + [18])
+
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf
