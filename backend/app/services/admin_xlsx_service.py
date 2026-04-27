@@ -277,7 +277,7 @@ def generate_date_branch_summary_xlsx(data: dict) -> BytesIO:
     cols = data["columns"]
     col_span = 2 + len(cols)  # Date + mode cols + Total
     next_row = _write_title_block(
-        ws, data, "Date-Wise Branch Summary  —  Cash & GPay", col_span
+        ws, data, "Date-Wise Branch Summary  —  Cash & UPI", col_span
     )
 
     header = ["Date"] + [c["label"] for c in cols] + ["Total"]
@@ -461,7 +461,7 @@ def generate_month_branch_summary_xlsx(data: dict) -> BytesIO:
     cols = data["columns"]
     col_span = 2 + len(cols)  # Month + mode cols + Total
     next_row = _write_title_block(
-        ws, data, "Month-Wise Branch Summary  —  Cash & GPay", col_span
+        ws, data, "Month-Wise Branch Summary  —  Cash & UPI", col_span
     )
 
     header = ["Month"] + [c["label"] for c in cols] + ["Total"]

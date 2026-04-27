@@ -157,7 +157,7 @@ const REPORTS: ReportConfig[] = [
   },
   {
     key: "date-branch",
-    label: "Date-Wise Branch Summary (Cash + GPay)",
+    label: "Date-Wise Branch Summary (Cash + UPI)",
     endpoint: "/api/reports/admin/date-branch-summary",
     pdf: "/api/reports/admin/date-branch-summary/pdf",
     xlsx: "/api/reports/admin/date-branch-summary/xlsx",
@@ -173,7 +173,7 @@ const REPORTS: ReportConfig[] = [
   },
   {
     key: "month-branch",
-    label: "Month-Wise Branch Summary (Cash + GPay)",
+    label: "Month-Wise Branch Summary (Cash + UPI)",
     endpoint: "/api/reports/admin/month-branch-summary",
     pdf: "/api/reports/admin/month-branch-summary/pdf",
     xlsx: "/api/reports/admin/month-branch-summary/xlsx",
@@ -589,7 +589,7 @@ function MonthBranchSummaryReport({ data }: { data: MonthBranchData }) {
         </h2>
         <p className="text-sm font-semibold">{data.route_label}</p>
         <p className="text-xs text-gray-600">
-          Month-Wise Branch Summary — Cash &amp; GPay
+          Month-Wise Branch Summary — Cash &amp; UPI
         </p>
       </div>
       <div className="overflow-x-auto">

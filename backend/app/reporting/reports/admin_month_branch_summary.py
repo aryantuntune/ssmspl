@@ -1,5 +1,5 @@
 """
-Admin Report D — Month-Wise Branch Amount Summary (Cash + GPay only).
+Admin Report D — Month-Wise Branch Amount Summary (Cash + UPI only).
 
 POS-only. Grid of net_amount totals: rows = months, columns = {branch}-{mode}.
 Cross-route — spans every branch the caller selects, regardless of route.
@@ -12,8 +12,8 @@ Query scope (always):
     - branch_id IN (:branch_ids)             # if filter provided
 
 Output columns are built in alphabetical-by-branch-name order to match the
-legacy Excel: AGARDANDA-CASH, AGARDANDA-GPay, DABHOL-CASH, DABHOL-GPay, …
-Within each branch the CASH column precedes GPay.
+legacy Excel: AGARDANDA-CASH, AGARDANDA-UPI, DABHOL-CASH, DABHOL-UPI, …
+Within each branch the CASH column precedes UPI.
 """
 from __future__ import annotations
 
@@ -130,7 +130,7 @@ async def _query_month_branch_mode(
 
 
 def _build_columns(branches: list[Branch]) -> list[dict]:
-    """For each branch (in name-sorted order) emit a CASH then GPay column."""
+    """For each branch (in name-sorted order) emit a CASH then UPI column."""
     cols: list[dict] = []
     for b in branches:
         cols.append({
@@ -138,8 +138,8 @@ def _build_columns(branches: list[Branch]) -> list[dict]:
             "branch_id": b.id, "mode": "CASH",
         })
         cols.append({
-            "key": f"{b.id}-GPay", "label": f"{b.name}-GPay",
-            "branch_id": b.id, "mode": "GPay",
+            "key": f"{b.id}-UPI", "label": f"{b.name}-UPI",
+            "branch_id": b.id, "mode": "UPI",
         })
     return cols
 

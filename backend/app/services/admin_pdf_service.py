@@ -484,7 +484,7 @@ def generate_date_branch_summary_pdf(data: dict) -> BytesIO:
     buf = BytesIO()
     doc = _build_doc(buf, landscape_mode=True)
     elements: list = _header_block(
-        data, "Date-Wise Branch Summary  —  Cash & GPay"
+        data, "Date-Wise Branch Summary  —  Cash & UPI"
     )
 
     cols = data["columns"]
@@ -666,7 +666,7 @@ def generate_itemwise_daily_charges_pdf(data: dict) -> BytesIO:
 
 
 def generate_month_branch_summary_pdf(data: dict) -> BytesIO:
-    """Landscape A4. Columns: Month | <branch>-CASH | <branch>-GPay … | Total.
+    """Landscape A4. Columns: Month | <branch>-CASH | <branch>-UPI … | Total.
 
     Mirrors the legacy Excel layout in
     ``data/Report_format/Month Wise Branch Amount Summary Mar 26.xls``.
@@ -678,7 +678,7 @@ def generate_month_branch_summary_pdf(data: dict) -> BytesIO:
     buf = BytesIO()
     doc = _build_doc(buf, landscape_mode=True)
     elements: list = _header_block(
-        data, "Month-Wise Branch Summary  —  Cash & GPay (all amounts in ₹)"
+        data, "Month-Wise Branch Summary  —  Cash & UPI (all amounts in ₹)"
     )
 
     cols = data["columns"]

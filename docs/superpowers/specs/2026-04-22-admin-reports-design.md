@@ -9,7 +9,7 @@
 Build three production-grade, POS-only reports that reflect the current database state and exactly match the client PDFs in `docs/admin_reports/`:
 
 - **Report A — Itemwise Levy Summary** — matches `L_Mar 26 Bhynder.pdf`
-- **Report B — Date Wise Branch Summary (Cash + GPay)** — matches `Vasai Bhynder Mar 26 Cash Memo & GPay.pdf`
+- **Report B — Date Wise Branch Summary (Cash + UPI)** — matches `Vasai Bhynder Mar 26 Cash Memo & GPay.pdf` (legacy filename — our column header uses "UPI" since that's the mode name in the new system)
 - **Report C — Itemwise Daily Collection Charges Summary** — matches `Aud_Mar 26 B.pdf`
 
 All three are read-only aggregations. They must reconcile to the rupee against `tickets.net_amount`.
@@ -19,7 +19,7 @@ All three are read-only aggregations. They must reconcile to the rupee against `
 | Decision | Choice | Rationale |
 |---|---|---|
 | Placement | New "Admin Reports" section, visible only when `NEXT_PUBLIC_ADMIN_PORTAL === "true"` | Keeps the main portal unchanged |
-| Data source | POS only (`tickets` + `ticket_items`) | PDF titles say Cash + GPay; spec lists only these tables |
+| Data source | POS only (`tickets` + `ticket_items`) | Legacy PDF titles say Cash + GPay; our column header uses UPI since that's the mode name in the new system |
 | Access | SUPER_ADMIN + ADMIN (granted via `AdminUserAccess`) | Statutory reports; `ADMIN_PORTAL_MODE` gate already enforces grants |
 | Route selector | Required; one route at a time | PDFs show one route pair (e.g. "VASAI + BHAYANDER") |
 | Historical edits | Always reflect current state | Adjustment logs and backup tables are ignored |
@@ -107,11 +107,11 @@ GROUP BY i.id, i.name, ti.levy, b.id, b.name;
 }
 ```
 
-## 5. Report B — Date Wise Branch Summary (Cash + GPay)
+## 5. Report B — Date Wise Branch Summary (Cash + UPI)
 
 ### 5.1 Purpose
 
-"Per-date revenue grid: rows = dates, columns = `{branch}-{mode}` where mode ∈ {CASH, GPay}."
+"Per-date revenue grid: rows = dates, columns = `{branch}-{mode}` where mode ∈ {CASH, UPI}."
 
 ### 5.2 Endpoint
 
@@ -142,7 +142,7 @@ GROUP BY t.ticket_date, t.branch_id, b.name, t.payment_mode_id, pm.description;
 
 ### 5.4 Python post-processing
 
-1. Build columns in order: for each branch on the route (sorted by `branch_id_one` then `branch_id_two` of the route), append two column keys: `{branch_id}-CASH`, `{branch_id}-GPay`. Labels use branch name (e.g. `BHAYANDER-CASH`). UPI → `GPay`.
+1. Build columns in order: for each branch on the route (sorted by `branch_id_one` then `branch_id_two` of the route), append two column keys: `{branch_id}-CASH`, `{branch_id}-UPI`. Labels use branch name (e.g. `BHAYANDER-CASH`).
 2. Build a row for every date in `[date_from, date_to]` (inclusive); missing dates render as `"0.00"` cells.
 3. `total` per row = sum of its cells.
 4. `column_totals[key] = Σ cells[key]` across rows.
@@ -236,7 +236,7 @@ Three generators in `app/services/admin_pdf_service.py`, reusing `reportlab` pat
 
 - **Report A** — portrait A4. Columns: `Items | Levy | <branch1> | <branch2> | Quantity | Amount`. Totals row shows grand total. Bottom "Summary:" block lists per-branch totals and the grand total.
 
-- **Report B** — landscape A4. Columns: `Date | <BRANCH>-CASH | <BRANCH>-GPay | … | Total`. Last row "Total" shows column totals + grand total.
+- **Report B** — landscape A4. Columns: `Date | <BRANCH>-CASH | <BRANCH>-UPI | … | Total`. Last row "Total" shows column totals + grand total.
 
 - **Report C** — portrait A4. One section per date: date header + per-branch sub-tables (Item / Charges / Quantity / Amount) + branch subtotal + route day-total. Page break between dates.
 

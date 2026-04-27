@@ -63,14 +63,14 @@ class ItemwiseLevyReport(BaseModel):
     integrity_warning: IntegrityWarning | None = None
 
 
-# ── Report B: Date-Wise Branch Summary (Cash + GPay) ──────────────────────────
+# ── Report B: Date-Wise Branch Summary (Cash + UPI) ──────────────────────────
 
 
 class DateBranchColumn(BaseModel):
     key: str = Field(..., description="Stable column identifier (e.g. '202-CASH')")
     label: str = Field(..., description="Human label (e.g. 'BHAYANDER-CASH')")
     branch_id: int
-    mode: str = Field(..., description="CASH or GPay")
+    mode: str = Field(..., description="CASH or UPI")
 
 
 class DateBranchRow(BaseModel):
