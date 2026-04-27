@@ -77,12 +77,13 @@ async def _fetch_branches(
     db: AsyncSession, branch_ids: list[int] | None
 ) -> list[Branch]:
     """Return branches matching the filter (or all active branches if no
-    filter), sorted by name to match the legacy Excel column order.
+    filter), sorted by id ascending — branches are typically created in
+    route pairs, so id order maps to natural route order in the output.
     """
     q = select(Branch).where(Branch.is_active == True)  # noqa: E712
     if branch_ids:
         q = q.where(Branch.id.in_(branch_ids))
-    q = q.order_by(Branch.name)
+    q = q.order_by(Branch.id)
     return list((await db.execute(q)).scalars().all())
 
 

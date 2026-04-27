@@ -5,6 +5,25 @@ import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
 const api = axios.create({
   headers: { "Content-Type": "application/json" },
   withCredentials: true,
+  // Serialise array params in "repeat" form (?branch_ids=1&branch_ids=2)
+  // because FastAPI's `list[int] = Query(...)` reads repeated keys.
+  // axios v1's default produces `branch_ids[]=1&branch_ids[]=2` which
+  // FastAPI silently ignores — selected branches would be dropped and
+  // the report would silently include all branches instead.
+  paramsSerializer: {
+    serialize: (params) => {
+      const sp = new URLSearchParams();
+      for (const [k, v] of Object.entries(params)) {
+        if (v === null || v === undefined) continue;
+        if (Array.isArray(v)) {
+          for (const item of v) sp.append(k, String(item));
+        } else {
+          sp.append(k, String(v));
+        }
+      }
+      return sp.toString();
+    },
+  },
 });
 
 let isRefreshing = false;

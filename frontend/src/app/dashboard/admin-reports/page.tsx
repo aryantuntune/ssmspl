@@ -149,7 +149,7 @@ interface ReportConfig {
 const REPORTS: ReportConfig[] = [
   {
     key: "itemwise-levy",
-    label: "Itemwise Levy Summary",
+    label: "Itemwise Levy",
     endpoint: "/api/reports/admin/itemwise-levy-summary",
     pdf: "/api/reports/admin/itemwise-levy-summary/pdf",
     xlsx: "/api/reports/admin/itemwise-levy-summary/xlsx",
@@ -157,7 +157,7 @@ const REPORTS: ReportConfig[] = [
   },
   {
     key: "date-branch",
-    label: "Date-Wise Branch Summary (Cash + UPI)",
+    label: "Date-Wise Branch",
     endpoint: "/api/reports/admin/date-branch-summary",
     pdf: "/api/reports/admin/date-branch-summary/pdf",
     xlsx: "/api/reports/admin/date-branch-summary/xlsx",
@@ -165,7 +165,7 @@ const REPORTS: ReportConfig[] = [
   },
   {
     key: "daily-charges",
-    label: "Itemwise Daily Collection Charges Summary",
+    label: "Daily Charges",
     endpoint: "/api/reports/admin/itemwise-daily-charges",
     pdf: "/api/reports/admin/itemwise-daily-charges/pdf",
     xlsx: "/api/reports/admin/itemwise-daily-charges/xlsx",
@@ -173,7 +173,7 @@ const REPORTS: ReportConfig[] = [
   },
   {
     key: "month-branch",
-    label: "Month-Wise Branch Summary (Cash + UPI)",
+    label: "Month-Wise Branch",
     endpoint: "/api/reports/admin/month-branch-summary",
     pdf: "/api/reports/admin/month-branch-summary/pdf",
     xlsx: "/api/reports/admin/month-branch-summary/xlsx",
@@ -320,9 +320,24 @@ export default function AdminReportsPage() {
       a.remove();
       window.URL.revokeObjectURL(url);
     } catch (err) {
-      const detail =
-        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
-        `Failed to download ${kind.toUpperCase()}.`;
+      // For blob responses, the error body is a Blob, not parsed JSON.
+      // Read it as text and try to extract the detail field so the user
+      // sees the real backend error (e.g. validation/integrity messages)
+      // instead of a generic "Failed to download".
+      let detail = `Failed to download ${kind.toUpperCase()}.`;
+      const errResp = (err as { response?: { data?: unknown } })?.response;
+      const body = errResp?.data;
+      if (body instanceof Blob) {
+        try {
+          const text = await body.text();
+          const parsed = JSON.parse(text);
+          if (parsed?.detail) detail = String(parsed.detail);
+        } catch {
+          /* keep generic */
+        }
+      } else if (body && typeof body === "object" && "detail" in body) {
+        detail = String((body as { detail: unknown }).detail);
+      }
       setError(detail);
     } finally {
       setter(false);
