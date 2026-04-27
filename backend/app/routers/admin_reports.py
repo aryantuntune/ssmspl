@@ -8,8 +8,9 @@ Endpoint-level RBAC here restricts to SUPER_ADMIN and ADMIN.
 from __future__ import annotations
 
 import datetime
+import re
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -39,8 +40,6 @@ _ACTION_BY_FORMAT = {
 }
 
 
-import re
-
 # Characters that are illegal or ugly in HTTP filenames.
 _FILENAME_STRIP_RE = re.compile(r'[\s+/\\:?*"<>|]+')
 
@@ -68,6 +67,21 @@ def _build_filename(report_label: str, route_label: str,
     dt = date_to.strftime("%d-%b-%Y")
     parts = [report_label, route, f"{df}_to_{dt}"] if route else [report_label, f"{df}_to_{dt}"]
     return "_".join(parts) + f".{ext}"
+
+
+def _validate_range(date_from: datetime.date, date_to: datetime.date) -> None:
+    """Raise 422 if the date range is reversed.
+
+    Without this guard, a reversed range silently returns an empty
+    report — confusing to admins ("the data is missing!") and trivially
+    avoidable. Applied uniformly to every admin endpoint that takes a
+    date range.
+    """
+    if date_from > date_to:
+        raise HTTPException(
+            status_code=422,
+            detail=f"date_from ({date_from}) must be on or before date_to ({date_to}).",
+        )
 
 
 def _log(bg: BackgroundTasks, user: User, report_type: str, fmt: str, **filters):
@@ -102,6 +116,7 @@ async def itemwise_levy_summary(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(_admin_roles),
 ):
+    _validate_range(date_from, date_to)
     _log(background_tasks, current_user, "itemwise_levy_summary", "json",
          date_from=date_from, date_to=date_to, route_id=route_id)
     return await admin_report_service.run_itemwise_levy_summary(
@@ -123,6 +138,7 @@ async def itemwise_levy_summary_pdf(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(_admin_roles),
 ):
+    _validate_range(date_from, date_to)
     data = await admin_report_service.run_itemwise_levy_summary(
         db, date_from, date_to, route_id
     )
@@ -150,6 +166,7 @@ async def itemwise_levy_summary_xlsx(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(_admin_roles),
 ):
+    _validate_range(date_from, date_to)
     data = await admin_report_service.run_itemwise_levy_summary(
         db, date_from, date_to, route_id
     )
@@ -181,6 +198,7 @@ async def date_branch_summary(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(_admin_roles),
 ):
+    _validate_range(date_from, date_to)
     _log(background_tasks, current_user, "date_branch_summary", "json",
          date_from=date_from, date_to=date_to, route_id=route_id)
     return await admin_report_service.run_date_branch_summary(
@@ -202,6 +220,7 @@ async def date_branch_summary_pdf(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(_admin_roles),
 ):
+    _validate_range(date_from, date_to)
     data = await admin_report_service.run_date_branch_summary(
         db, date_from, date_to, route_id
     )
@@ -229,6 +248,7 @@ async def date_branch_summary_xlsx(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(_admin_roles),
 ):
+    _validate_range(date_from, date_to)
     data = await admin_report_service.run_date_branch_summary(
         db, date_from, date_to, route_id
     )
@@ -260,6 +280,7 @@ async def itemwise_daily_charges(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(_admin_roles),
 ):
+    _validate_range(date_from, date_to)
     _log(background_tasks, current_user, "itemwise_daily_charges", "json",
          date_from=date_from, date_to=date_to, route_id=route_id)
     return await admin_report_service.run_itemwise_daily_charges(
@@ -281,6 +302,7 @@ async def itemwise_daily_charges_pdf(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(_admin_roles),
 ):
+    _validate_range(date_from, date_to)
     data = await admin_report_service.run_itemwise_daily_charges(
         db, date_from, date_to, route_id
     )
@@ -308,6 +330,7 @@ async def itemwise_daily_charges_xlsx(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(_admin_roles),
 ):
+    _validate_range(date_from, date_to)
     data = await admin_report_service.run_itemwise_daily_charges(
         db, date_from, date_to, route_id
     )
@@ -340,6 +363,7 @@ async def month_branch_summary(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(_admin_roles),
 ):
+    _validate_range(date_from, date_to)
     _log(background_tasks, current_user, "month_branch_summary", "json",
          date_from=date_from, date_to=date_to,
          branch_ids=",".join(str(i) for i in (branch_ids or [])))
@@ -362,6 +386,7 @@ async def month_branch_summary_pdf(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(_admin_roles),
 ):
+    _validate_range(date_from, date_to)
     data = await admin_report_service.run_month_branch_summary(
         db, date_from, date_to, branch_ids
     )
@@ -390,6 +415,7 @@ async def month_branch_summary_xlsx(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(_admin_roles),
 ):
+    _validate_range(date_from, date_to)
     data = await admin_report_service.run_month_branch_summary(
         db, date_from, date_to, branch_ids
     )

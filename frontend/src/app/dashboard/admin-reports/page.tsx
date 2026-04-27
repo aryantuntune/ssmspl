@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Download, FileSpreadsheet, Loader2 } from "lucide-react";
 
 import api from "@/lib/api";
@@ -487,6 +487,28 @@ function BranchMultiSelect({
   onChange: (ids: number[]) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
+
+  // Close on outside click and Escape — matches the rest of the dashboard
+  // popovers and unblocks keyboard-only users.
+  useEffect(() => {
+    if (!open) return;
+    const onClick = (e: MouseEvent) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onClick);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onClick);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
   const allSelected = selectedIds.length === branches.length && branches.length > 0;
   const summary = allSelected
     ? `All ${branches.length} branches`
@@ -502,7 +524,7 @@ function BranchMultiSelect({
   };
 
   return (
-    <div className="relative">
+    <div className="relative" ref={wrapperRef}>
       <Label htmlFor="branches">Branches</Label>
       <button
         id="branches"
