@@ -199,6 +199,19 @@ export default function MultiTicketingPage() {
   const [listSortOrder, setListSortOrder] = useState<"asc" | "desc">("desc");
   const [listDateFrom, setListDateFrom] = useState(() => formatDateYYYYMMDD(new Date()));
   const [listDateTo, setListDateTo] = useState(() => formatDateYYYYMMDD(new Date()));
+  const [listDateMode, setListDateMode] = useState<"single" | "range">(() => {
+    if (typeof window === "undefined") return "single";
+    const saved = localStorage.getItem("ssmspl_multiticketing_date_mode");
+    return saved === "range" ? "range" : "single";
+  });
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("ssmspl_multiticketing_date_mode", listDateMode);
+    }
+    if (listDateMode === "single") {
+      setListDateTo(listDateFrom);
+    }
+  }, [listDateMode, listDateFrom]);
 
   // Print/save refs
   const saveRef = useRef<HTMLButtonElement>(null);
@@ -1385,23 +1398,69 @@ export default function MultiTicketingPage() {
               {(user.role === "SUPER_ADMIN" || user.role === "ADMIN") && (
                 <>
                   <div>
-                    <Label className="text-xs text-muted-foreground mb-1 block">Date From</Label>
-                    <Input
-                      type="date"
-                      value={listDateFrom}
-                      onChange={(e) => { setListDateFrom(e.target.value); setListPage(1); }}
-                      className="w-[150px]"
-                    />
+                    <Label className="text-xs text-muted-foreground mb-1 block">Date Mode</Label>
+                    <div className="inline-flex rounded-md border border-input bg-background h-10 p-0.5">
+                      <button
+                        type="button"
+                        onClick={() => { setListDateMode("single"); setListPage(1); }}
+                        className={`px-3 text-xs font-medium rounded-sm transition-colors ${
+                          listDateMode === "single"
+                            ? "bg-primary text-primary-foreground"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        Single
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setListDateMode("range"); setListPage(1); }}
+                        className={`px-3 text-xs font-medium rounded-sm transition-colors ${
+                          listDateMode === "range"
+                            ? "bg-primary text-primary-foreground"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        Range
+                      </button>
+                    </div>
                   </div>
-                  <div>
-                    <Label className="text-xs text-muted-foreground mb-1 block">Date To</Label>
-                    <Input
-                      type="date"
-                      value={listDateTo}
-                      onChange={(e) => { setListDateTo(e.target.value); setListPage(1); }}
-                      className="w-[150px]"
-                    />
-                  </div>
+                  {listDateMode === "single" ? (
+                    <div>
+                      <Label className="text-xs text-muted-foreground mb-1 block">Date</Label>
+                      <Input
+                        type="date"
+                        value={listDateFrom}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setListDateFrom(val);
+                          setListDateTo(val);
+                          setListPage(1);
+                        }}
+                        className="w-[150px]"
+                      />
+                    </div>
+                  ) : (
+                    <>
+                      <div>
+                        <Label className="text-xs text-muted-foreground mb-1 block">Date From</Label>
+                        <Input
+                          type="date"
+                          value={listDateFrom}
+                          onChange={(e) => { setListDateFrom(e.target.value); setListPage(1); }}
+                          className="w-[150px]"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-xs text-muted-foreground mb-1 block">Date To</Label>
+                        <Input
+                          type="date"
+                          value={listDateTo}
+                          onChange={(e) => { setListDateTo(e.target.value); setListPage(1); }}
+                          className="w-[150px]"
+                        />
+                      </div>
+                    </>
+                  )}
                 </>
               )}
               <Button variant="outline" size="sm" onClick={fetchMultiTickets} disabled={listLoading}>
