@@ -139,7 +139,7 @@ export default function SyncCheckModal({ open, onClose, branches, defaultDateSta
   const focusedBatch = focusedDay ? batches.find(b => b.date === focusedDay) : null;
 
   return (
-    <Dialog open={open} onOpenChange={v => !v && onClose()}>
+    <Dialog open={open} onOpenChange={v => { if (!v) { cancelRef.current = true; setRunning(false); onClose(); } }}>
       <DialogContent className="!max-w-[92vw] w-[92vw] !max-h-[92vh] overflow-hidden flex flex-col p-0">
         <DialogHeader className="px-6 pt-6 pb-3 border-b">
           <DialogTitle>Sync Check — ssmspl_admin vs ssmspl_sync</DialogTitle>

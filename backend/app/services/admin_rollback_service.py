@@ -325,7 +325,12 @@ async def rollback(
                 else None
             )
             amount_val = float(od["amount"]) if od.get("amount") is not None else 0.0
-            discount_val = float(od["discount"]) if od.get("discount") is not None else None
+            discount_raw = od.get("discount")
+            discount_val = (
+                float(discount_raw)
+                if (discount_raw is not None and discount_raw != "None")
+                else None
+            )
             net_amount_val = float(od["net_amount"]) if od.get("net_amount") is not None else 0.0
 
             await db.execute(

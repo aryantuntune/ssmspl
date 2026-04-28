@@ -844,7 +844,20 @@ async def commit(
         log.total_items_affected = len(update_ops) + len(insert_ops)
         await db.flush()
 
-    except HTTPException:
+    except HTTPException as http_exc:
+        # Reset IN_PROGRESS to FAILED so the batch isn't permanently stuck.
+        # The CAS-style WHERE clause is a no-op if a guard already set status
+        # elsewhere (defensive — same pattern as the deletion engine).
+        async with AsyncSessionLocal() as log_session:
+            async with log_session.begin():
+                await log_session.execute(
+                    update(AdminAdjustmentsLog)
+                    .where(
+                        AdminAdjustmentsLog.id == batch_id,
+                        AdminAdjustmentsLog.status == "IN_PROGRESS",
+                    )
+                    .values(status="FAILED", error_message=f"Commit aborted: {http_exc.detail}"[:2000])
+                )
         raise
 
     except Exception as exc:

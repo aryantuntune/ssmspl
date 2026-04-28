@@ -1157,10 +1157,20 @@ async def commit(
         log.total_items_affected = len(item_ids)
         await db.flush()
 
-    except HTTPException:
-        # Intentional 4xx/5xx from guards (staleness 409, skip-all 400, etc.)
-        # do NOT mark the log as FAILED — the caller can retry or the batch has
-        # already been reverted to DRY_RUN by the raising guard itself.
+    except HTTPException as http_exc:
+        # Reset IN_PROGRESS to FAILED so the batch isn't permanently stuck.
+        # The CAS-style WHERE clause ensures we only flip if status is still IN_PROGRESS;
+        # if a guard already set it to DRY_RUN (e.g., skip-all), this is a no-op.
+        async with AsyncSessionLocal() as log_session:
+            async with log_session.begin():
+                await log_session.execute(
+                    update(AdminAdjustmentsLog)
+                    .where(
+                        AdminAdjustmentsLog.id == batch_id,
+                        AdminAdjustmentsLog.status == "IN_PROGRESS",
+                    )
+                    .values(status="FAILED", error_message=f"Commit aborted: {http_exc.detail}"[:2000])
+                )
         raise
 
     except Exception as exc:

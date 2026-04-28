@@ -89,7 +89,15 @@ export default function AdjustmentsHistoryModal({ open, onClose, onRolledBack }:
     if (search.trim()) params.search = search.trim();
 
     api.get<ListResponse>("/api/admin/d-drive/adjustments", { params })
-      .then(r => { setItems(r.data.adjustments); setTotal(r.data.total); })
+      .then(r => {
+        setItems(r.data.adjustments);
+        setTotal(r.data.total);
+        // Pagination overflow: if user is on a page that no longer exists
+        // (e.g., after a refresh that shrank the result set), bounce to page 1.
+        if (r.data.total > 0 && (p - 1) * PAGE_SIZE >= r.data.total) {
+          setPage(1);
+        }
+      })
       .catch(() => setError("Could not load adjustment history"))
       .finally(() => setLoading(false));
   }, [page, statusFilter, dateFrom, dateTo, search]);
