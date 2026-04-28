@@ -870,6 +870,7 @@ async def get_all_tickets(
     id_filter_end: int | None = None,
     ticket_no_filter: int | None = None,
     is_multi_ticket: bool | None = None,
+    include_items: bool = False,
 ) -> list[dict]:
     column = SORTABLE_COLUMNS.get(sort_by, Ticket.id)
     order = column.desc() if sort_order == "desc" else column.asc()
@@ -879,7 +880,50 @@ async def get_all_tickets(
     result = await db.execute(query.order_by(order).offset(skip).limit(limit))
     tickets = result.scalars().all()
 
-    return [await _enrich_ticket(db, t, include_items=False) for t in tickets]
+    enriched = [await _enrich_ticket(db, t, include_items=False) for t in tickets]
+    if not include_items or not tickets:
+        return enriched
+
+    # Batch-load items + item-name lookups so we don't N+1 across the page.
+    ticket_ids = [t.id for t in tickets]
+    items_result = await db.execute(
+        select(TicketItem).where(TicketItem.ticket_id.in_(ticket_ids))
+    )
+    all_items = items_result.scalars().all()
+
+    item_ids = list({ti.item_id for ti in all_items})
+    name_map: dict[int, tuple[str | None, str | None]] = {}
+    if item_ids:
+        names_result = await db.execute(
+            select(Item.id, Item.name, Item.short_name).where(Item.id.in_(item_ids))
+        )
+        for row_id, row_name, row_short in names_result.all():
+            name_map[row_id] = (row_name, row_short)
+
+    items_by_ticket: dict[int, list[dict]] = {}
+    for ti in all_items:
+        rate = float(ti.rate) if ti.rate is not None else 0
+        levy = float(ti.levy) if ti.levy is not None else 0
+        quantity = ti.quantity or 0
+        item_name, item_short_name = name_map.get(ti.item_id, (None, None))
+        items_by_ticket.setdefault(ti.ticket_id, []).append({
+            "id": ti.id,
+            "ticket_id": ti.ticket_id,
+            "item_id": ti.item_id,
+            "rate": rate,
+            "levy": levy,
+            "quantity": quantity,
+            "vehicle_no": ti.vehicle_no,
+            "vehicle_name": ti.vehicle_name,
+            "is_cancelled": ti.is_cancelled,
+            "amount": _round2(quantity * (rate + levy)),
+            "item_name": item_name,
+            "item_short_name": item_short_name,
+        })
+
+    for data in enriched:
+        data["items"] = items_by_ticket.get(data["id"], [])
+    return enriched
 
 
 async def get_ticket_by_id(db: AsyncSession, ticket_id: int) -> dict:

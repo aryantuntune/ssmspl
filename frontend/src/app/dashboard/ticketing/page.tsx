@@ -467,6 +467,7 @@ export default function TicketingPage() {
         if (idOp === "between" && idFilterEnd) params.set("id_filter_end", idFilterEnd);
       }
       params.set("is_multi_ticket", "false");
+      params.set("include_items", "true");
 
       const filterKeys = [
         "branch_filter",
@@ -1296,6 +1297,12 @@ export default function TicketingPage() {
       label: "Date",
       sortable: true,
       className: "text-center",
+      render: (ticket) => {
+        const d = ticket.ticket_date;
+        if (!d) return "—";
+        const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d);
+        return m ? `${m[3]}-${m[2]}-${m[1]}` : d;
+      },
     },
     {
       key: "departure",
