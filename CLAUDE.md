@@ -6,6 +6,32 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 SSMSPL (Suvarnadurga Shipping & Marine Services Pvt. Ltd.) — Ferry Boat Ticketing System. Full-stack monorepo with a FastAPI async backend and Next.js frontend communicating via REST API.
 
+## Branch Workflow (READ BEFORE COMMITTING)
+
+This single repo is deployed twice. Two long-lived branches map 1:1 to the two servers — never delete them, never use them for short-lived work:
+
+| Branch | Deploys to | Purpose |
+|--------|-----------|---------|
+| `main` | Server 1 — `carferry.online` (production, cashier-facing) | Only commits safe for live cashier use |
+| `admin` | Server 2 — `admin.carferry.online` (admin portal, internal) | `main` + admin-only features layered on top |
+
+**Rules:**
+
+1. **Shared work** (bug fixes, features both servers should get) → commit to `main`. Then `git checkout admin && git merge main` (almost always a fast-forward) and push.
+2. **Admin-only work** (anything that should never touch prod, e.g. admin-portal-only screens, OCC version column, admin DDL patches) → commit to `admin` directly. Never to `main`.
+3. **Commit messages MUST start with `[prod]`, `[admin]`, or `[both]`** so the target is unmistakable in `git log`. Example:
+   - `[both] fix(tickets): null-safe discount handling`
+   - `[admin] feat(tickets): editable date + optimistic locking`
+   - `[prod] fix(receipt): correct thermal print width`
+4. **No more short-lived `feature/*` branches doing double-duty.** If you need a working branch, fine, but it must merge into either `main` or `admin` — not both.
+5. **Each deploy gets a tag**: `prod-vN` / `admin-vN` (or date-based). Baselines from the two-branch migration: `prod-baseline-2026-04-29` and `admin-baseline-2026-04-29`.
+
+**Architecture supports this**: `ADMIN_PORTAL_MODE=true` env var on Server 2 already gates admin-only backend behavior; `NEXT_PUBLIC_ADMIN_PORTAL=true` gates the frontend route middleware. The branch split is for *code* the two servers shouldn't share, not for the shared codebase.
+
+**Server 1 is a git checkout** at `/var/www/ssmspl/` and pulls `main`. **Server 2 is a tar-synced folder** at `/var/www/ssmspl-admin/` (no `.git/`); its deploys come from a tar of the `admin` branch worktree.
+
+
+
 ## Development Commands
 
 ### Backend (Python 3.12 / FastAPI)
