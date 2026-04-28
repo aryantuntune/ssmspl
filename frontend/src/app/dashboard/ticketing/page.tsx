@@ -517,7 +517,10 @@ export default function TicketingPage() {
     }
   }, []);
 
-  // Fetch dropdown data + tickets on mount (user already available from DashboardShell)
+  // Load dropdown data once on mount. Kept separate from the ticket-fetch
+  // effect below — fetchTickets rebuilds whenever any of its 13 filter deps
+  // changes, and bundling the dropdown loads here caused every sort/page/
+  // filter change to re-fetch all four dropdown lists.
   useEffect(() => {
     Promise.all([
       api.get<Branch[]>("/api/branches?limit=200&status=active"),
@@ -530,6 +533,10 @@ export default function TicketingPage() {
       setItems(itemRes.data);
       setPaymentModes(pmRes.data);
     }).catch(() => { /* dropdown load failure is non-fatal */ });
+  }, []);
+
+  // Re-fetch tickets whenever any filter / sort / page state changes.
+  useEffect(() => {
     fetchTickets();
   }, [fetchTickets]);
 
