@@ -429,6 +429,7 @@ export default function MultiTicketingPage() {
   const [editingTicket, setEditingTicket] = useState<Ticket | null>(null);
   const [editBranchId, setEditBranchId] = useState<number>(0);
   const [editRouteId, setEditRouteId] = useState<number>(0);
+  const [editTicketDate, setEditTicketDate] = useState<string>("");
   const [editRoutes, setEditRoutes] = useState<Route[]>([]);
   const [editBranches, setEditBranches] = useState<Branch[]>([]);
   const [editSubmitting, setEditSubmitting] = useState(false);
@@ -437,6 +438,7 @@ export default function MultiTicketingPage() {
     setEditingTicket(ticket);
     setEditBranchId(ticket.branch_id);
     setEditRouteId(ticket.route_id);
+    setEditTicketDate(ticket.ticket_date);
     try {
       const [routesRes, branchesRes] = await Promise.all([
         api.get<Route[]>("/api/routes?limit=200"),
@@ -449,13 +451,15 @@ export default function MultiTicketingPage() {
 
   const handleEditSave = async () => {
     if (!editingTicket) return;
-    const payload: Record<string, number> = {};
+    const payload: Record<string, number | string | undefined> = {};
     if (editBranchId !== editingTicket.branch_id) payload.branch_id = editBranchId;
     if (editRouteId !== editingTicket.route_id) payload.route_id = editRouteId;
+    if (editTicketDate && editTicketDate !== editingTicket.ticket_date) payload.ticket_date = editTicketDate;
     if (Object.keys(payload).length === 0) {
       setEditingTicket(null);
       return;
     }
+    payload.version = editingTicket.version;
     setEditSubmitting(true);
     try {
       await api.patch(`/api/tickets/${editingTicket.id}`, payload);
@@ -1502,6 +1506,15 @@ export default function MultiTicketingPage() {
           {editingTicket && (
             <div className="space-y-4">
               <div>
+                <Label>Ticket Date</Label>
+                <Input
+                  type="date"
+                  value={editTicketDate}
+                  onChange={(e) => setEditTicketDate(e.target.value)}
+                  className="mt-1"
+                />
+              </div>
+              <div>
                 <Label>Branch (Operating From)</Label>
                 <select
                   value={editBranchId}
@@ -1535,7 +1548,7 @@ export default function MultiTicketingPage() {
             <Button variant="outline" onClick={() => setEditingTicket(null)} disabled={editSubmitting}>
               Cancel
             </Button>
-            <Button onClick={handleEditSave} disabled={editSubmitting || !editBranchId || !editRouteId}>
+            <Button onClick={handleEditSave} disabled={editSubmitting || !editBranchId || !editRouteId || !editTicketDate}>
               {editSubmitting ? "Saving..." : "Save"}
             </Button>
           </DialogFooter>

@@ -399,11 +399,27 @@ async def update_ticket(
     if needs_route_scope(current_user) and current_user.route_id:
         if existing.get("route_id") != current_user.route_id:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Ticket not in your assigned route")
+    if body.ticket_date is not None and is_before_cutoff(body.ticket_date, current_user.role):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cannot set ticket date before data cutoff")
+    # Reject ambiguous request: cancel and edit-date in one call. Prior behavior silently dropped
+    # the date change because the cancel branch returns early — making the API lie to the caller.
+    if body.is_cancelled and body.ticket_date is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot cancel and change ticket date in the same request.",
+        )
+    old_date = existing.get("ticket_date")
     result = await ticket_service.update_ticket(db, ticket_id, body)
     if body.is_cancelled:
         background_tasks.add_task(
             log_activity, current_user.active_session_id, current_user.id,
             ActivityAction.TICKET_CANCEL,
             {"ticket_id": str(ticket_id)},
+        )
+    elif body.ticket_date is not None and body.ticket_date != old_date:
+        background_tasks.add_task(
+            log_activity, current_user.active_session_id, current_user.id,
+            ActivityAction.TICKET_DATE_EDIT,
+            {"ticket_id": str(ticket_id), "old_date": str(old_date), "new_date": str(body.ticket_date)},
         )
     return result

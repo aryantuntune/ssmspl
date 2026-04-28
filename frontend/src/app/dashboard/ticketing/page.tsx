@@ -1001,7 +1001,8 @@ export default function TicketingPage() {
       // Edit mode: save directly
       setSubmitting(true);
       try {
-        const update: TicketUpdate = {};
+        const update: TicketUpdate = { version: editingTicket.version };
+        if (formTicketDate !== editingTicket.ticket_date) update.ticket_date = formTicketDate;
         if (formDeparture !== (editingTicket.departure || ""))
           update.departure = formDeparture || null;
         if (formRouteId !== editingTicket.route_id) update.route_id = formRouteId;

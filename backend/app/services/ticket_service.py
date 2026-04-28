@@ -134,6 +134,7 @@ async def _enrich_ticket(db: AsyncSession, ticket: Ticket, include_items: bool =
         "created_by_username": created_by_username,
         "is_multi_ticket": ticket.is_multi_ticket,
         "generated_at": ticket.generated_at,
+        "version": ticket.version,
     }
 
     if include_items:
@@ -1048,10 +1049,24 @@ async def update_ticket(db: AsyncSession, ticket_id: int, data: TicketUpdate) ->
     if not ticket:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ticket not found")
 
+    # Optimistic concurrency check — only enforced when client sends the version it loaded.
+    # Skipped for callers that don't send version (e.g. the cancel-only flow), which are
+    # already protected by the is_cancelled guard below.
+    if data.version is not None and data.version != ticket.version:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This ticket was modified by someone else after you opened it. Refresh and try again.",
+        )
+
     if ticket.is_cancelled:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot update a cancelled ticket")
 
     update_data = data.model_dump(exclude_unset=True)
+    update_data.pop("version", None)  # not a column we setattr; consumed above
+
+    # Drop explicit nulls for NOT NULL columns — would otherwise hit IntegrityError on flush.
+    if update_data.get("ticket_date") is None and "ticket_date" in update_data:
+        update_data.pop("ticket_date")
 
     if update_data.get("is_cancelled") is True:
         ticket.is_cancelled = True
@@ -1063,6 +1078,7 @@ async def update_ticket(db: AsyncSession, ticket_id: int, data: TicketUpdate) ->
         )
         for ti in items_result.scalars().all():
             ti.is_cancelled = True
+        ticket.version = (ticket.version or 0) + 1
         await db.flush()
         await db.refresh(ticket)
         return await _enrich_ticket(db, ticket, include_items=True)
@@ -1087,9 +1103,29 @@ async def update_ticket(db: AsyncSession, ticket_id: int, data: TicketUpdate) ->
     elif "departure" in update_data:
         ticket.departure = None
 
-    for field in ("branch_id", "route_id", "payment_mode_id", "discount"):
+    for field in ("branch_id", "ticket_date", "route_id", "payment_mode_id", "discount"):
         if field in update_data:
             setattr(ticket, field, update_data[field])
+
+    # Collision check: ticket_no must remain unique within (branch_id, ticket_date) once we
+    # allow date or branch edits. No DB constraint enforces this, so we check explicitly.
+    if "ticket_date" in update_data or "branch_id" in update_data:
+        collision = await db.execute(
+            select(Ticket.id).where(
+                Ticket.branch_id == ticket.branch_id,
+                Ticket.ticket_date == ticket.ticket_date,
+                Ticket.ticket_no == ticket.ticket_no,
+                Ticket.id != ticket.id,
+            ).limit(1)
+        )
+        if collision.scalar_one_or_none() is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    f"Ticket #{ticket.ticket_no} already exists for branch {ticket.branch_id} "
+                    f"on {ticket.ticket_date}. Pick a different date or branch."
+                ),
+            )
 
     if "items" in update_data and data.items is not None:
         active_update_items = [i for i in data.items if not i.is_cancelled]
@@ -1143,6 +1179,7 @@ async def update_ticket(db: AsyncSession, ticket_id: int, data: TicketUpdate) ->
         if "net_amount" in update_data:
             _cross_check_amounts(current_amount, ticket.net_amount, update_data.get("amount", current_amount), update_data["net_amount"])
 
+    ticket.version = (ticket.version or 0) + 1
     await db.flush()
     await db.refresh(ticket)
     return await _enrich_ticket(db, ticket, include_items=True)

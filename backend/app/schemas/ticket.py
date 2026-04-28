@@ -87,6 +87,7 @@ class TicketCreate(BaseModel):
 
 class TicketUpdate(BaseModel):
     branch_id: int | None = Field(None, description="Updated branch ID (admin only)")
+    ticket_date: date | None = Field(None, description="Updated ticket date")
     departure: str | None = Field(None, description="Updated departure time HH:MM")
     route_id: int | None = Field(None, description="Updated route ID")
     payment_mode_id: int | None = Field(None, description="Updated payment mode ID")
@@ -95,6 +96,7 @@ class TicketUpdate(BaseModel):
     net_amount: float | None = Field(None, ge=1, description="Updated net amount (must be >= 1)")
     is_cancelled: bool | None = Field(None, description="Set true to cancel the ticket")
     items: list[TicketItemUpdate] | None = Field(None, description="Updated ticket items")
+    version: int | None = Field(None, description="Loaded ticket version (optimistic locking). If supplied and DB version differs, returns 409.")
 
     model_config = {
         "json_schema_extra": {
@@ -131,6 +133,7 @@ class TicketRead(BaseModel):
     created_by_username: str | None = Field(None, description="Username of the operator who created the ticket")
     is_multi_ticket: bool = Field(False, description="Whether created from multi-ticketing")
     generated_at: datetime | None = Field(None, description="Timestamp when ticket was generated")
+    version: int = Field(1, description="Row version for optimistic locking — pass back unchanged in update payload")
 
     model_config = {"from_attributes": True}
 

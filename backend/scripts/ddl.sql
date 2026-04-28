@@ -475,6 +475,10 @@ ALTER TABLE tickets ADD COLUMN IF NOT EXISTS boat_id INTEGER REFERENCES boats(id
 -- PATCH: Add ref_no to tickets
 ALTER TABLE tickets ADD COLUMN IF NOT EXISTS ref_no VARCHAR(30);
 
+-- PATCH: Add version column for optimistic concurrency control on ticket edits.
+-- Frontend sends the version it loaded; backend rejects with 409 if DB version moved.
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1;
+
 -- PATCH: Add vehicle_name to ticket_items
 ALTER TABLE ticket_items ADD COLUMN IF NOT EXISTS vehicle_name VARCHAR(60);
 

@@ -294,6 +294,7 @@ export interface Ticket {
   created_by_username?: string | null;
   is_multi_ticket?: boolean;
   generated_at?: string | null;
+  version?: number;
 }
 
 export interface TicketCreate {
@@ -311,6 +312,7 @@ export interface TicketCreate {
 
 export interface TicketUpdate {
   branch_id?: number;
+  ticket_date?: string;
   departure?: string | null;
   route_id?: number;
   payment_mode_id?: number;
@@ -319,6 +321,7 @@ export interface TicketUpdate {
   net_amount?: number;
   is_cancelled?: boolean;
   items?: TicketItemUpdate[];
+  version?: number;
 }
 
 export interface RateLookupResponse {

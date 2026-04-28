@@ -31,6 +31,7 @@ class Ticket(AuditMixin, Base):
     ref_no: Mapped[str | None] = mapped_column(String(30), nullable=True)
     is_multi_ticket: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"), nullable=False)
     generated_at: Mapped[object | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"), default=1)
 
     def __repr__(self) -> str:
         return f"<Ticket id={self.id} ticket_no={self.ticket_no} branch_id={self.branch_id}>"
