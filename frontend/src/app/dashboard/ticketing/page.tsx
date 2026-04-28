@@ -241,6 +241,7 @@ export default function TicketingPage() {
   const user = useDashboardUser();
 
   const isAdmin = user.role === "SUPER_ADMIN" || user.role === "ADMIN";
+  const isAdminPortal = process.env.NEXT_PUBLIC_ADMIN_PORTAL === "true";
 
   // ── Time-lock state ──
   const [lockStatus, setLockStatus] = useState<TicketingStatus | null>(null);
@@ -298,6 +299,19 @@ export default function TicketingPage() {
   const [routeFilter, setRouteFilter] = useState("");
   const [dateFrom, setDateFrom] = useState(localToday());
   const [dateTo, setDateTo] = useState(localToday());
+  const [dateMode, setDateMode] = useState<"single" | "range">(() => {
+    if (typeof window === "undefined") return "single";
+    const saved = localStorage.getItem("ssmspl_ticketing_date_mode");
+    return saved === "range" ? "range" : "single";
+  });
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("ssmspl_ticketing_date_mode", dateMode);
+    }
+    if (dateMode === "single") {
+      setDateTo(dateFrom);
+    }
+  }, [dateMode, dateFrom]);
   const [statusFilter, setStatusFilter] = useState("");
   const [ticketNoInput, setTicketNoInput] = useState("");
   const [ticketNoFilter, setTicketNoFilter] = useState("");
@@ -1580,62 +1594,115 @@ export default function TicketingPage() {
               </Select>
             </div>
 
-            {/* Route filter */}
+            {/* Route filter (hidden on admin portal) */}
+            {!isAdminPortal && (
+              <div>
+                <Label className="text-xs text-muted-foreground mb-1 block">Route</Label>
+                <Select
+                  value={routeFilter || "__all__"}
+                  onValueChange={(val) => {
+                    setRouteFilter(val === "__all__" ? "" : val);
+                    setPage(1);
+                  }}
+                  disabled={isRouteRestricted}
+                >
+                  <SelectTrigger className="h-10 w-full sm:w-[200px]">
+                    <SelectValue placeholder="All Routes" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">All Routes</SelectItem>
+                    {allRoutes.map((r) => (
+                      <SelectItem key={r.id} value={String(r.id)}>
+                        {r.branch_one_name} - {r.branch_two_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {/* Date mode toggle */}
             <div>
-              <Label className="text-xs text-muted-foreground mb-1 block">Route</Label>
-              <Select
-                value={routeFilter || "__all__"}
-                onValueChange={(val) => {
-                  setRouteFilter(val === "__all__" ? "" : val);
-                  setPage(1);
-                }}
-                disabled={isRouteRestricted}
-              >
-                <SelectTrigger className="h-10 w-full sm:w-[200px]">
-                  <SelectValue placeholder="All Routes" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__all__">All Routes</SelectItem>
-                  {allRoutes.map((r) => (
-                    <SelectItem key={r.id} value={String(r.id)}>
-                      {r.branch_one_name} - {r.branch_two_name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label className="text-xs text-muted-foreground mb-1 block">Date Mode</Label>
+              <div className="inline-flex rounded-md border border-input bg-background h-10 p-0.5">
+                <button
+                  type="button"
+                  onClick={() => { setDateMode("single"); setPage(1); }}
+                  className={`px-3 text-xs font-medium rounded-sm transition-colors ${
+                    dateMode === "single"
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  Single
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setDateMode("range"); setPage(1); }}
+                  className={`px-3 text-xs font-medium rounded-sm transition-colors ${
+                    dateMode === "range"
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  Range
+                </button>
+              </div>
             </div>
 
-            {/* Date From */}
-            <div>
-              <Label className="text-xs text-muted-foreground mb-1 block">Date From</Label>
-              <Input
-                type="date"
-                value={dateFrom}
-                min={user?.role !== "SUPER_ADMIN" ? DATA_CUTOFF_DATE : undefined}
-                onChange={(e) => {
-                  setDateFrom(e.target.value);
-                  setPage(1);
-                }}
-                disabled={user?.role === "BILLING_OPERATOR"}
-                className="w-full sm:w-[150px]"
-              />
-            </div>
+            {dateMode === "single" ? (
+              /* Single date */
+              <div>
+                <Label className="text-xs text-muted-foreground mb-1 block">Date</Label>
+                <Input
+                  type="date"
+                  value={dateFrom}
+                  min={user?.role !== "SUPER_ADMIN" ? DATA_CUTOFF_DATE : undefined}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setDateFrom(val);
+                    setDateTo(val);
+                    setPage(1);
+                  }}
+                  disabled={user?.role === "BILLING_OPERATOR"}
+                  className="w-full sm:w-[150px]"
+                />
+              </div>
+            ) : (
+              <>
+                {/* Date From */}
+                <div>
+                  <Label className="text-xs text-muted-foreground mb-1 block">Date From</Label>
+                  <Input
+                    type="date"
+                    value={dateFrom}
+                    min={user?.role !== "SUPER_ADMIN" ? DATA_CUTOFF_DATE : undefined}
+                    onChange={(e) => {
+                      setDateFrom(e.target.value);
+                      setPage(1);
+                    }}
+                    disabled={user?.role === "BILLING_OPERATOR"}
+                    className="w-full sm:w-[150px]"
+                  />
+                </div>
 
-            {/* Date To */}
-            <div>
-              <Label className="text-xs text-muted-foreground mb-1 block">Date To</Label>
-              <Input
-                type="date"
-                value={dateTo}
-                min={user?.role !== "SUPER_ADMIN" ? DATA_CUTOFF_DATE : undefined}
-                onChange={(e) => {
-                  setDateTo(e.target.value);
-                  setPage(1);
-                }}
-                disabled={user?.role === "BILLING_OPERATOR"}
-                className="w-full sm:w-[150px]"
-              />
-            </div>
+                {/* Date To */}
+                <div>
+                  <Label className="text-xs text-muted-foreground mb-1 block">Date To</Label>
+                  <Input
+                    type="date"
+                    value={dateTo}
+                    min={user?.role !== "SUPER_ADMIN" ? DATA_CUTOFF_DATE : undefined}
+                    onChange={(e) => {
+                      setDateTo(e.target.value);
+                      setPage(1);
+                    }}
+                    disabled={user?.role === "BILLING_OPERATOR"}
+                    className="w-full sm:w-[150px]"
+                  />
+                </div>
+              </>
+            )}
 
             {/* Status filter */}
             <div>
