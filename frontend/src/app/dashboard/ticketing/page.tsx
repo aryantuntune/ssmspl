@@ -1292,13 +1292,6 @@ export default function TicketingPage() {
       render: (ticket) => ticket.branch_name || ticket.branch_id,
     },
     {
-      key: "route_id",
-      label: "Route",
-      sortable: true,
-      className: "text-center",
-      render: (ticket) => ticket.route_name || ticket.route_id,
-    },
-    {
       key: "ticket_date",
       label: "Date",
       sortable: true,
@@ -1312,24 +1305,44 @@ export default function TicketingPage() {
       render: (ticket) => ticket.departure || "-",
     },
     {
+      key: "items_summary",
+      label: "Items",
+      className: "text-center",
+      render: (ticket) => {
+        const active = (ticket.items || []).filter((it) => !it.is_cancelled);
+        if (active.length === 0) return <span className="text-muted-foreground">—</span>;
+        return (
+          <span className="text-xs">
+            {active
+              .map((it) => `${it.quantity}× ${it.item_short_name || it.item_name || `#${it.item_id}`} (₹${it.levy.toFixed(0)})`)
+              .join(" · ")}
+          </span>
+        );
+      },
+    },
+    {
       key: "amount",
       label: "Amount",
       sortable: true,
-      className: "text-center",
+      className: "text-center tabular-nums",
       render: (ticket) => ticket.amount.toFixed(2),
     },
     {
-      key: "discount",
-      label: "Discount",
-      sortable: true,
-      className: "text-center",
-      render: (ticket) => (ticket.discount || 0).toFixed(2),
+      key: "total_levy",
+      label: "Total Levy",
+      className: "text-center tabular-nums",
+      render: (ticket) => {
+        const total = (ticket.items || [])
+          .filter((it) => !it.is_cancelled)
+          .reduce((sum, it) => sum + it.quantity * it.levy, 0);
+        return total.toFixed(2);
+      },
     },
     {
       key: "net_amount",
       label: "Net Amount",
       sortable: true,
-      className: "text-center",
+      className: "text-center tabular-nums",
       render: (ticket) => <span className="font-medium">{ticket.net_amount.toFixed(2)}</span>,
     },
     {
@@ -1431,7 +1444,7 @@ export default function TicketingPage() {
   }
 
   return (
-    <>
+    <div style={{ zoom: 0.9 }}>
       {/* Page Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
@@ -2679,6 +2692,6 @@ export default function TicketingPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </>
+    </div>
   );
 }
