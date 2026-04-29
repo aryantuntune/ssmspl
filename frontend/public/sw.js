@@ -19,17 +19,23 @@ self.addEventListener("install", (event) => {
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     (async () => {
+      // Claim existing tabs first. Without this, the new SW is the active SW
+      // for the registration but is not the controller of already-open tabs
+      // (their controller is still the old, now-redundant SW). client.navigate
+      // rejects with TypeError on uncontrolled clients, so the auto-reload
+      // below would silently fail without claim().
+      try {
+        await self.clients.claim();
+      } catch {
+        // Ignore — auto-reload may not fire, but clearing caches and
+        // unregistering below still recover users on next manual refresh.
+      }
+
       try {
         const cacheKeys = await caches.keys();
         await Promise.allSettled(cacheKeys.map((key) => caches.delete(key)));
       } catch {
         // Ignore — proceed to unregister even if caches couldn't be enumerated.
-      }
-
-      try {
-        await self.registration.unregister();
-      } catch {
-        // Ignore — clients.navigate below still recovers most users.
       }
 
       try {
@@ -42,9 +48,18 @@ self.addEventListener("activate", (event) => {
             await client.navigate(client.url);
           } catch {
             // Cross-origin or detached clients can't be navigated. The SW is
-            // already unregistered, so the next manual reload will be clean.
+            // about to be unregistered, so the next manual reload will be clean.
           }
         }
+      } catch {
+        // Ignore.
+      }
+
+      // Unregister last so the navigations kicked off above still have a
+      // controller while in-flight. By the time the reloaded pages mount, the
+      // registration is gone and no SW intercepts their requests.
+      try {
+        await self.registration.unregister();
       } catch {
         // Ignore.
       }
