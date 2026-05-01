@@ -272,7 +272,7 @@ def _base_table_style(
         ("BACKGROUND", (0, 0), (-1, 0), _COLOR_HEADER_BG),
         ("TEXTCOLOR", (0, 0), (-1, 0), _COLOR_HEADER_FG),
         ("FONTNAME", (0, 0), (-1, 0), FONT_BOLD),
-        ("FONTSIZE", (0, 0), (-1, 0), 9),
+        ("FONTSIZE", (0, 0), (-1, 0), 8),
         ("ALIGN", (0, 0), (-1, 0), "CENTER"),
         ("VALIGN", (0, 0), (-1, 0), "MIDDLE"),
         ("TOPPADDING", (0, 0), (-1, 0), 6),
@@ -348,13 +348,16 @@ def generate_itemwise_levy_pdf(data: dict) -> BytesIO:
     body.append(total_line)
 
     # Column widths calibrated to A4 portrait (usable ≈17.6cm).
-    # Give Item extra room — most cluttered column, has 40-char names.
-    item_w_cm = 6.8
+    # Branch + Quantity columns must fit their headers ("BHAYANDER" 9ch,
+    # "Quantity" 8ch) on a single line at 9pt bold, so we widen those and
+    # claw back space from the previously over-wide Amount column. Item is
+    # still the widest because long names (40+ chars) wrap inside it.
+    item_w_cm = 5.7
     levy_w_cm = 1.5
-    branch_w_cm = 1.9
-    qty_w_cm = 1.9
+    branch_w_cm = 2.5
+    qty_w_cm = 2.4
     used_cm = item_w_cm + levy_w_cm + branch_w_cm * len(branches) + qty_w_cm
-    amount_w_cm = max(3.2, 17.6 - used_cm)
+    amount_w_cm = max(2.8, 17.6 - used_cm)
     col_widths = (
         [item_w_cm * cm, levy_w_cm * cm]
         + [branch_w_cm * cm] * len(branches)
