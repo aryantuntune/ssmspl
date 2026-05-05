@@ -257,6 +257,12 @@ app.include_router(qz.router)
 app.include_router(backup.router)
 app.include_router(user_sessions.router)
 
+# Admin Reports — available on BOTH main domain and admin portal.
+# Endpoint-level RBAC (SUPER_ADMIN/ADMIN only) keeps these locked down;
+# see app/routers/admin_reports.py where every route uses _admin_roles.
+from app.routers import admin_reports
+app.include_router(admin_reports.router)
+
 # Customer-facing routers — disabled on admin portal (no public site / customer portal)
 if not settings.ADMIN_PORTAL_MODE:
     app.include_router(portal_auth.router)
@@ -268,13 +274,12 @@ if not settings.ADMIN_PORTAL_MODE:
 
 # Admin-only routers — only active on admin portal
 if settings.ADMIN_PORTAL_MODE:
-    from app.routers import admin_user_access, admin_parameter_master, admin_d_drive, admin_transfer, admin_adjustments, admin_reports, admin_sync_check
+    from app.routers import admin_user_access, admin_parameter_master, admin_d_drive, admin_transfer, admin_adjustments, admin_sync_check
     app.include_router(admin_user_access.router)
     app.include_router(admin_parameter_master.router)
     app.include_router(admin_d_drive.router)
     app.include_router(admin_transfer.router)
     app.include_router(admin_adjustments.router)
-    app.include_router(admin_reports.router)
     app.include_router(admin_sync_check.router)
 
 
