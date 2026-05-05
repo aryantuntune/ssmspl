@@ -172,6 +172,7 @@ export default function DDrivePage() {
         open={historyOpen}
         onClose={() => setHistoryOpen(false)}
         onRolledBack={() => loadData(filters)}
+        branches={branches}
       />
 
       <SyncCheckModal

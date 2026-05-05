@@ -27,6 +27,9 @@ from app.models.admin_adjustments_log import AdminAdjustmentsLog
 from app.models.admin_adjustment_details import AdminAdjustmentDetails
 from app.models.tickets_backup import TicketsBackup
 from app.models.ticket_items_backup import TicketItemsBackup
+from app.models.branch import Branch
+from app.models.user import User
+from sqlalchemy.orm import aliased
 
 
 def _date_lock_hash(date_start: date, date_end: date) -> int:
@@ -52,7 +55,23 @@ async def list_adjustments(
     """
     from sqlalchemy import func as _func, cast as _cast, String as _String
 
-    base = select(AdminAdjustmentsLog)
+    # Aliases so we can join the users table twice (creator + rollback operator)
+    Creator = aliased(User)
+    Reverter = aliased(User)
+
+    base = (
+        select(
+            AdminAdjustmentsLog,
+            Branch.name.label("branch_name"),
+            Creator.full_name.label("creator_name"),
+            Creator.username.label("creator_username"),
+            Reverter.full_name.label("reverter_name"),
+            Reverter.username.label("reverter_username"),
+        )
+        .outerjoin(Branch, Branch.id == AdminAdjustmentsLog.branch_id)
+        .outerjoin(Creator, Creator.id == AdminAdjustmentsLog.created_by)
+        .outerjoin(Reverter, Reverter.id == AdminAdjustmentsLog.rolled_back_by)
+    )
     count_base = select(_func.count()).select_from(AdminAdjustmentsLog)
 
     where_conds = []
@@ -95,11 +114,14 @@ async def list_adjustments(
         .offset(offset)
         .limit(limit)
     )
-    rows = (await db.execute(q)).scalars().all()
-    adjustments = [
-        {
+    rows = (await db.execute(q)).all()
+    adjustments = []
+    for row in rows:
+        r = row.AdminAdjustmentsLog
+        adjustments.append({
             "batch_id": str(r.id),
             "branch_id": r.branch_id,
+            "branch_name": row.branch_name,
             "date_range_start": str(r.date_range_start),
             "date_range_end": str(r.date_range_end),
             "adjustment_amount": float(r.adjustment_amount),
@@ -108,15 +130,15 @@ async def list_adjustments(
             "total_tickets_affected": r.total_tickets_affected,
             "total_items_affected": r.total_items_affected,
             "created_by": str(r.created_by) if r.created_by else None,
+            "created_by_name": row.creator_name or row.creator_username,
             "created_at": r.created_at.isoformat() if r.created_at else None,
             "executed_at": r.executed_at.isoformat() if r.executed_at else None,
             "rolled_back_at": r.rolled_back_at.isoformat() if r.rolled_back_at else None,
             "rolled_back_by": str(r.rolled_back_by) if r.rolled_back_by else None,
+            "rolled_back_by_name": row.reverter_name or row.reverter_username,
             "error_message": r.error_message,
             "operation_kind": _infer_kind(r),
-        }
-        for r in rows
-    ]
+        })
     return {
         "adjustments": adjustments,
         "total": total,
