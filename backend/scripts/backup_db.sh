@@ -7,12 +7,17 @@
 
 set -euo pipefail
 
-BACKUP_DIR="${BACKUP_DIR:-/backups}"
+# BACKUP_OUTPUT_DIR is the new env var name (server-2 admin uses it).
+# BACKUP_DIR is kept for backwards compatibility with the existing prod cron.
+BACKUP_DIR="${BACKUP_OUTPUT_DIR:-${BACKUP_DIR:-/backups}}"
 PGHOST="${PGHOST:-db}"
 PGPORT="${PGPORT:-5432}"
 PGUSER="${POSTGRES_USER:-ssmspl_user}"
 PGPASSWORD="${POSTGRES_PASSWORD:-ssmspl_prod_pass}"
-PGDATABASE="${POSTGRES_DB:-ssmspl_db_prod}"
+# BACKUP_DB_NAME lets us back up a different database than the one
+# the backend connects to (e.g. ssmspl_admin on server 2). Falls back
+# to POSTGRES_DB to preserve existing prod behavior.
+PGDATABASE="${BACKUP_DB_NAME:-${POSTGRES_DB:-ssmspl_db_prod}}"
 RETENTION_DAYS="${RETENTION_DAYS:-7}"
 
 export PGPASSWORD

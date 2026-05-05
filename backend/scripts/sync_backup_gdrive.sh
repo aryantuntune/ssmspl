@@ -16,9 +16,13 @@
 set -euo pipefail
 
 # ── Config ──────────────────────────────────────────────────────────────────
-BACKUP_DIR="${BACKUP_DIR:-/var/www/ssmspl/backups}"
+# BACKUP_OUTPUT_DIR is the new env var name (server-2 admin uses it).
+# BACKUP_DIR is kept for backwards compatibility with the existing prod cron.
+BACKUP_DIR="${BACKUP_OUTPUT_DIR:-${BACKUP_DIR:-/var/www/ssmspl/backups}}"
 RCLONE_REMOTE="${RCLONE_REMOTE:-gdrive}"
-GDRIVE_FOLDER="${GDRIVE_FOLDER:-SSMSPL-Backups}"
+# BACKUP_GDRIVE_REMOTE_DIR is the new env var name. GDRIVE_FOLDER is the
+# legacy name kept for backwards compatibility with the prod cron.
+GDRIVE_FOLDER="${BACKUP_GDRIVE_REMOTE_DIR:-${GDRIVE_FOLDER:-SSMSPL-Backups}}"
 GDRIVE_RETENTION_DAYS="${GDRIVE_RETENTION_DAYS:-30}"
 LOG_FILE="${LOG_FILE:-/var/log/ssmspl-backup-sync.log}"
 NOTIFY_SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"

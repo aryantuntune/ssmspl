@@ -13,7 +13,13 @@ set -euo pipefail
 
 STATUS="${1:-UNKNOWN}"
 MESSAGE="${2:-No details provided}"
-BACKUP_DIR="${BACKUP_DIR:-/var/www/ssmspl/backups}"
+# BACKUP_OUTPUT_DIR is the new env var name (server-2 admin uses it).
+# BACKUP_DIR is kept for backwards compatibility with the existing prod cron.
+BACKUP_DIR="${BACKUP_OUTPUT_DIR:-${BACKUP_DIR:-/var/www/ssmspl/backups}}"
+# BACKUP_NOTIFY_LABEL goes into the email subject/body so admins can
+# distinguish prod vs admin DB backup emails. Defaults preserve the
+# existing prod subject ("SSMSPL Backup").
+BACKUP_NOTIFY_LABEL="${BACKUP_NOTIFY_LABEL:-SSMSPL}"
 SERVER_HOSTNAME=$(hostname)
 TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S %Z')
 
@@ -57,7 +63,7 @@ case "${STATUS}" in
     *)       SUBJECT_PREFIX="[INFO]" ;;
 esac
 
-SUBJECT="${SUBJECT_PREFIX} SSMSPL Backup — ${STATUS} — ${TIMESTAMP}"
+SUBJECT="${SUBJECT_PREFIX} ${BACKUP_NOTIFY_LABEL} Backup — ${STATUS} — ${TIMESTAMP}"
 
 # Send to each recipient
 for RECIPIENT in ${RECIPIENTS}; do
@@ -67,7 +73,7 @@ Subject: ${SUBJECT}
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 
-SSMSPL Database Backup Report
+${BACKUP_NOTIFY_LABEL} Database Backup Report
 =============================
 Status:    ${STATUS}
 Server:    ${SERVER_HOSTNAME}
@@ -75,7 +81,7 @@ Time:      ${TIMESTAMP}
 Details:   ${MESSAGE}
 
 ---
-This is an automated notification from the SSMSPL backup system.
+This is an automated notification from the ${BACKUP_NOTIFY_LABEL} backup system.
 EOF
         echo "[$(date)] NOTIFY: Email sent to ${RECIPIENT} — ${STATUS}"
     else

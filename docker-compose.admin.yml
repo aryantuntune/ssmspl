@@ -8,9 +8,17 @@ services:
     environment:
       APP_ENV: production
       FORWARDED_ALLOW_IPS: "*"
+      # Path inside the container; backend/app/routers/backup.py reads this.
+      # The host-side cron writes backups to ./backups (mounted below).
+      BACKUP_DIR: /app/backups
     env_file: ./backend/.env.admin
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    volumes:
+      # Same pattern as docker-compose.prod.yml's `backend` service so the
+      # Backups settings tab can read .last_backup.json / .sync_status.json
+      # / list .sql.gz files written by the host-driven backup scripts.
+      - ./backups:/app/backups
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
       interval: 30s
