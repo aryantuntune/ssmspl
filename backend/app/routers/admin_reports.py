@@ -1,9 +1,10 @@
 """
-Admin Reports router — registered only when ADMIN_PORTAL_MODE=true.
+Admin Reports router — registered on both main domain and admin portal.
 
-Three POS-only statutory reports. The subdomain gate
+POS-only statutory reports. On the admin portal, the subdomain gate
 (AdminUserAccess.is_granted) is enforced upstream in ``get_current_user``.
-Endpoint-level RBAC here restricts to SUPER_ADMIN and ADMIN.
+On the main domain, only the endpoint-level RBAC applies.
+Either way, endpoint-level RBAC here restricts to SUPER_ADMIN and ADMIN.
 """
 from __future__ import annotations
 
