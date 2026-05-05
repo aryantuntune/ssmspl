@@ -19,7 +19,7 @@ interface TransferItem {
 
 export default function TransferAllowList() {
   const user = useDashboardUser();
-  const isSuperAdmin = user?.role === "SUPER_ADMIN";
+  const canEdit = user?.role === "SUPER_ADMIN" || user?.role === "ADMIN";
   const [items, setItems] = useState<TransferItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -74,7 +74,7 @@ export default function TransferAllowList() {
   const someFilteredSelected = selectedFiltered.length > 0 && !allFilteredSelected;
 
   const toggleIndividual = async (item: TransferItem, field: "from" | "to" | "quantity_mode") => {
-    if (!isSuperAdmin) return;
+    if (!canEdit) return;
     const fieldKey =
       field === "from" ? "allowed_as_transfer_from"
       : field === "to" ? "allowed_as_transfer_to"
@@ -112,7 +112,7 @@ export default function TransferAllowList() {
   const clearSelection = () => setSelected(new Set());
 
   const bulkUpdate = async (field: "from" | "to" | "quantity_mode", allowed: boolean) => {
-    if (!isSuperAdmin || selected.size === 0) return;
+    if (!canEdit || selected.size === 0) return;
     const ids = Array.from(selected);
     const fieldKey =
       field === "from" ? "allowed_as_transfer_from"
@@ -174,7 +174,7 @@ export default function TransferAllowList() {
 
       {error && <div className="bg-destructive/10 text-destructive px-4 py-2 rounded text-sm">{error}</div>}
 
-      {isSuperAdmin && selected.size > 0 && (
+      {canEdit && selected.size > 0 && (
         <div className="sticky top-0 z-10 bg-primary text-primary-foreground px-4 py-3 rounded-lg flex items-center gap-3 flex-wrap shadow">
           <span className="text-sm font-medium">{selected.size} item{selected.size !== 1 ? "s" : ""} selected</span>
           <div className="flex gap-2 ml-auto flex-wrap">
@@ -190,7 +190,7 @@ export default function TransferAllowList() {
       )}
 
       <div className="border rounded-lg overflow-hidden divide-y">
-        {isSuperAdmin && filtered.length > 0 && (
+        {canEdit && filtered.length > 0 && (
           <div className="px-4 py-2 bg-muted/50 flex items-center gap-3 text-xs text-muted-foreground">
             <Checkbox
               checked={allFilteredSelected ? true : someFilteredSelected ? "indeterminate" : false}
@@ -231,7 +231,7 @@ export default function TransferAllowList() {
             const isSelected = selected.has(item.item_id);
             return (
               <div key={item.item_id} className={`px-4 py-3 flex items-center gap-3 ${isSelected ? "bg-primary/5" : "hover:bg-muted/30"}`}>
-                {isSuperAdmin && (
+                {canEdit && (
                   <Checkbox
                     checked={isSelected}
                     onCheckedChange={() => toggleSelect(item.item_id)}
@@ -250,21 +250,21 @@ export default function TransferAllowList() {
                   <div className="w-20 flex justify-center">
                     <Switch
                       checked={item.allowed_as_transfer_from}
-                      disabled={!isSuperAdmin || saving}
+                      disabled={!canEdit || saving}
                       onCheckedChange={() => toggleIndividual(item, "from")}
                     />
                   </div>
                   <div className="w-20 flex justify-center">
                     <Switch
                       checked={item.allowed_as_transfer_to}
-                      disabled={!isSuperAdmin || saving}
+                      disabled={!canEdit || saving}
                       onCheckedChange={() => toggleIndividual(item, "to")}
                     />
                   </div>
                   <div className="w-20 flex justify-center">
                     <Switch
                       checked={item.quantity_mode}
-                      disabled={!isSuperAdmin || saving}
+                      disabled={!canEdit || saving}
                       onCheckedChange={() => toggleIndividual(item, "quantity_mode")}
                     />
                   </div>
@@ -275,7 +275,7 @@ export default function TransferAllowList() {
         )}
       </div>
 
-      {!isSuperAdmin && (
+      {!canEdit && (
         <p className="text-xs text-muted-foreground italic">
           You have read-only access. Contact a System Administrator to change transfer allowlist.
         </p>

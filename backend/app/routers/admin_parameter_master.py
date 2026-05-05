@@ -9,7 +9,6 @@ from app.services import admin_parameter_master_service
 
 router = APIRouter(prefix="/api/admin/parameter-master", tags=["Admin Parameter Master"])
 
-_super_admin_only = require_roles(UserRole.SUPER_ADMIN)
 _admin_or_super = require_roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
 
 
@@ -74,7 +73,7 @@ async def list_rules(
 async def create_rule(
     body: RuleCreate,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(_super_admin_only),
+    current_user=Depends(_admin_or_super),
 ):
     return await admin_parameter_master_service.create_rule(db, body.model_dump(), current_user.id)
 
@@ -84,7 +83,7 @@ async def update_rule(
     rule_id: int,
     body: RuleCreate,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(_super_admin_only),
+    current_user=Depends(_admin_or_super),
 ):
     rule = await admin_parameter_master_service.update_rule(db, rule_id, body.model_dump())
     if rule is None:
@@ -97,7 +96,7 @@ async def toggle_rule_status(
     rule_id: int,
     body: StatusToggle,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(_super_admin_only),
+    current_user=Depends(_admin_or_super),
 ):
     rule = await admin_parameter_master_service.set_rule_status(db, rule_id, body.is_active)
     if rule is None:
@@ -109,7 +108,7 @@ async def toggle_rule_status(
 async def reorder_rules(
     body: ReorderBody,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(_super_admin_only),
+    current_user=Depends(_admin_or_super),
 ):
     return await admin_parameter_master_service.reorder_rules(db, body.ordered_ids)
 
@@ -374,7 +373,7 @@ async def list_transfer_allowlist(
 async def bulk_set_transfer_allowlist(
     body: TransferAllowToggle,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(_super_admin_only),
+    current_user=Depends(_admin_or_super),
 ):
     """
     Set allowed_as_transfer_from OR allowed_as_transfer_to for the given item_ids.
