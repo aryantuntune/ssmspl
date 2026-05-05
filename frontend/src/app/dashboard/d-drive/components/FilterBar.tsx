@@ -6,6 +6,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import { CalendarPlus, X } from "lucide-react";
 
 export interface Filters {
   dateStart: string;
@@ -23,22 +24,82 @@ interface Props {
 
 export default function FilterBar({ branches, items, onApply }: Props) {
   const today = new Date().toISOString().slice(0, 10);
-  const [dateStart, setDateStart] = useState(today);
+  const [date, setDate] = useState(today);
   const [dateEnd, setDateEnd] = useState(today);
+  const [rangeMode, setRangeMode] = useState(false);
   const [branchId, setBranchId] = useState("all");
   const [paymentMode, setPaymentMode] = useState("all");
   const [itemId, setItemId] = useState("all");
 
+  const handleApply = () => {
+    onApply({
+      dateStart: date,
+      dateEnd: rangeMode ? dateEnd : date,
+      branchId,
+      paymentMode,
+      itemId,
+    });
+  };
+
+  const enableRange = () => {
+    // When opening range, seed end date to current single date if it's earlier
+    if (dateEnd < date) setDateEnd(date);
+    setRangeMode(true);
+  };
+
+  const disableRange = () => {
+    setRangeMode(false);
+    setDateEnd(date);
+  };
+
   return (
     <div className="flex flex-wrap gap-4 items-end p-4 bg-card border rounded-lg">
       <div className="flex flex-col gap-1.5">
-        <Label>From</Label>
-        <Input type="date" value={dateStart} onChange={e => setDateStart(e.target.value)} className="w-36" />
+        <Label>{rangeMode ? "From" : "Date"}</Label>
+        <Input
+          type="date"
+          value={date}
+          onChange={e => setDate(e.target.value)}
+          className="w-36"
+        />
       </div>
-      <div className="flex flex-col gap-1.5">
-        <Label>To</Label>
-        <Input type="date" value={dateEnd} onChange={e => setDateEnd(e.target.value)} className="w-36" />
-      </div>
+      {rangeMode ? (
+        <div className="flex flex-col gap-1.5">
+          <Label>To</Label>
+          <div className="flex items-center gap-1">
+            <Input
+              type="date"
+              value={dateEnd}
+              min={date}
+              onChange={e => setDateEnd(e.target.value)}
+              className="w-36"
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9"
+              onClick={disableRange}
+              title="Remove range"
+            >
+              <X className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-1.5">
+          <Label className="invisible">Range</Label>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-9"
+            onClick={enableRange}
+          >
+            <CalendarPlus className="w-4 h-4 mr-1.5" /> Add range
+          </Button>
+        </div>
+      )}
       <div className="flex flex-col gap-1.5">
         <Label>Branch</Label>
         <Select value={branchId} onValueChange={setBranchId}>
@@ -71,7 +132,7 @@ export default function FilterBar({ branches, items, onApply }: Props) {
           </SelectContent>
         </Select>
       </div>
-      <Button onClick={() => onApply({ dateStart, dateEnd, branchId, paymentMode, itemId })}>
+      <Button onClick={handleApply}>
         Apply Filters
       </Button>
     </div>

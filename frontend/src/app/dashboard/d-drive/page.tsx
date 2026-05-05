@@ -59,7 +59,7 @@ export default function DDrivePage() {
   const [syncCheckOpen, setSyncCheckOpen] = useState(false);
 
   useEffect(() => {
-    api.get("/api/branches", { params: { limit: 200, status: "all" } })
+    api.get("/api/branches", { params: { limit: 200, status: "active" } })
       .then(r => setBranches(r.data?.branches ?? r.data ?? [])).catch(() => {});
     api.get("/api/items", { params: { limit: 200, status: "all" } })
       .then(r => setItems(r.data?.items ?? r.data ?? [])).catch(() => {});
