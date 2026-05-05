@@ -37,6 +37,14 @@ const nextConfig: NextConfig = {
         source: "/:path*",
         headers: securityHeaders,
       },
+      {
+        // Force the browser to revalidate the kill-switch SW on every visit
+        // so stuck users heal as soon as they reload, not within 24h.
+        source: "/sw.js",
+        headers: [
+          { key: "Cache-Control", value: "no-cache, no-store, must-revalidate" },
+        ],
+      },
     ];
   },
   async rewrites() {

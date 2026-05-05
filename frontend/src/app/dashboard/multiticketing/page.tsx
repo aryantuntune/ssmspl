@@ -416,6 +416,7 @@ export default function MultiTicketingPage() {
         createdBy: t.created_by_username || user?.username || "",
         paperWidth,
         paymentModeName: t.payment_mode_name || "-",
+        ferryName: t.boat_name,
       };
       await printReceipt(receiptData);
     } catch {
@@ -917,6 +918,7 @@ export default function MultiTicketingPage() {
           createdBy: ticket.created_by_username || user?.username || "",
           paperWidth,
           paymentModeName: ticket.payment_mode_name || "-",
+          ferryName: ticket.boat_name,
         };
         await printReceipt(receiptData);
       }

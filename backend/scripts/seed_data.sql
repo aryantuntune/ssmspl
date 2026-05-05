@@ -73,21 +73,30 @@ ON CONFLICT (username) DO NOTHING;
 -- ============================================================
 -- 4. BOATS (12)
 -- ============================================================
-INSERT INTO boats (id, name, no, is_active)
+-- Source of truth: data/Ferry location details 30.03.2026.pdf
+-- route_id maps each vessel to its operating route corridor:
+--   VESAV-BAGMANDALE = route 2, VASAI-BHAYANDER = route 5,
+--   DABHOL-DHOPAVE = route 1, DIGHI-AGARDANDA = route 4,
+--   JAIGAD-TAVSAL = route 3, VIRAR-SAPHALE = route 7
+INSERT INTO boats (id, name, no, is_active, route_id)
 VALUES
-    (1,  'SHANTADURGA', 'RTN-IV-03-00001', TRUE),
-    (2,  'SONIA',       'RTN-IV-03-00007', TRUE),
-    (3,  'PRIYANKA',    'RTN-IV-08-00010', TRUE),
-    (4,  'SUPRIYA',     'RTN-IV-08-00011', TRUE),
-    (5,  'AISHWARYA',   'RTN-IV-08-00030', TRUE),
-    (6,  'AVANTIKA',    'RTN-IV-03-00082', TRUE),
-    (7,  'ISHWARI',     'RTN-IV-118',      TRUE),
-    (8,  'VAIBHAVI',    'RTN-IV-124',      TRUE),
-    (9,  'AAROHI',      'RTN-IV-125',      TRUE),
-    (10, 'GIRIJA',      'RTN-IV-136',      TRUE),
-    (11, 'JANHVI',      'RTN-IV-137',      TRUE),
-    (12, 'DEVIKA',      'RTN-IV-159',      TRUE)
-ON CONFLICT (name) DO NOTHING;
+    (1,  'SHANTADURGA', 'RTN-IV-03-00001', TRUE, 2),
+    (2,  'SONIA',       'RTN-IV-03-00007', TRUE, 5),
+    (3,  'PRIYANKA',    'RTN-IV-08-00010', TRUE, 1),
+    (4,  'SUPRIYA',     'RTN-IV-08-00011', TRUE, 1),
+    (5,  'AISHWARYA',   'RTN-IV-08-00030', TRUE, 4),
+    (6,  'AVANTIKA',    'RTN-IV-03-00082', TRUE, 2),
+    (7,  'ISHWARI',     'RTN-IV-118',      TRUE, 3),
+    (8,  'VAIBHAVI',    'RTN-IV-124',      TRUE, 5),
+    (9,  'AAROHI',      'RTN-IV-125',      TRUE, 7),
+    (10, 'GIRIJA',      'RTN-IV-136',      TRUE, 7),
+    (11, 'JANHVI',      'RTN-IV-137',      TRUE, 2),
+    (12, 'DEVIKA',      'RTN-IV-159',      TRUE, 1)
+ON CONFLICT (name) DO UPDATE SET
+    no         = EXCLUDED.no,
+    route_id   = EXCLUDED.route_id,
+    is_active  = EXCLUDED.is_active,
+    updated_at = NOW();
 
 -- ============================================================
 -- 5. ITEMS — V2 (21 items, per PDF "NEW ITEM ID & RATE")
@@ -499,6 +508,51 @@ VALUES
     )
 ON CONFLICT (id) DO NOTHING;
 
+-- ============================================================
+-- 9. FERRY SCHEDULE → BOAT ASSIGNMENT (rotation pattern)
+--
+-- Each route's ferries rotate through the schedule slots; branch B is
+-- offset by one slot so the two branches see different boats at the same
+-- relative slot (the boats are physically crossing on the route).
+-- Routes with a single boat assign that boat to every slot.
+-- Route 6 (AMBET ↔ MHAPRAL) has no boats per the official PDF, so its
+-- schedules stay NULL.
+-- ============================================================
+WITH route_boats(route_id, boats) AS (
+    VALUES
+        (1, ARRAY[3, 4, 12]::INTEGER[]),  -- DABHOL ↔ DHOPAVE: PRIYANKA, SUPRIYA, DEVIKA
+        (2, ARRAY[1, 6, 11]::INTEGER[]),  -- VESHVI ↔ BAGMANDALE: SHANTADURGA, AVANTIKA, JANHVI
+        (3, ARRAY[7]::INTEGER[]),         -- JAIGAD ↔ TAVSAL: ISHWARI
+        (4, ARRAY[5]::INTEGER[]),         -- AGARDANDA ↔ DIGHI: AISHWARYA
+        (5, ARRAY[2, 8]::INTEGER[]),      -- BHAYANDER ↔ VASAI: SONIA, VAIBHAVI
+        (7, ARRAY[9, 10]::INTEGER[])      -- VIRAR ↔ SAFALE: AAROHI, GIRIJA
+),
+ranked AS (
+    SELECT
+        fs.id AS schedule_id,
+        fs.branch_id,
+        r.id AS route_id,
+        r.branch_id_one,
+        ROW_NUMBER() OVER (PARTITION BY fs.branch_id ORDER BY fs.departure) AS slot
+    FROM ferry_schedules fs
+    JOIN routes r ON fs.branch_id IN (r.branch_id_one, r.branch_id_two)
+),
+assigned AS (
+    SELECT
+        ranked.schedule_id,
+        rb.boats[
+            ((ranked.slot - 1
+              + CASE WHEN ranked.branch_id = ranked.branch_id_one THEN 0 ELSE 1 END)
+             % array_length(rb.boats, 1)) + 1
+        ] AS boat_id
+    FROM ranked
+    JOIN route_boats rb ON rb.route_id = ranked.route_id
+)
+UPDATE ferry_schedules fs
+SET boat_id = a.boat_id
+FROM assigned a
+WHERE fs.id = a.schedule_id;
+
 COMMIT;
 
 -- ============================================================
@@ -511,6 +565,7 @@ SELECT 'Boats' AS entity, COUNT(*) AS total FROM boats;
 SELECT 'Items' AS entity, COUNT(*) AS total FROM items;
 SELECT 'Payment Modes' AS entity, COUNT(*) AS total FROM payment_modes;
 SELECT 'Ferry Schedules' AS entity, COUNT(*) AS total FROM ferry_schedules;
+SELECT 'Schedules with Boats' AS entity, COUNT(*) AS total FROM ferry_schedules WHERE boat_id IS NOT NULL;
 SELECT 'Item Rates' AS entity, COUNT(*) AS total FROM item_rates;
 SELECT r.id, b1.name AS branch_one, b2.name AS branch_two
   FROM routes r

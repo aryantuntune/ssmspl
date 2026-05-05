@@ -13,6 +13,7 @@ import { useDashboardUser } from "@/components/dashboard/DashboardUserContext";
 interface Adjustment {
   batch_id: string;
   branch_id: number;
+  branch_name: string | null;
   date_range_start: string;
   date_range_end: string;
   adjustment_amount: number;
@@ -21,10 +22,12 @@ interface Adjustment {
   total_tickets_affected: number | null;
   total_items_affected: number | null;
   created_by: string | null;
+  created_by_name: string | null;
   created_at: string | null;
   executed_at: string | null;
   rolled_back_at: string | null;
   rolled_back_by: string | null;
+  rolled_back_by_name: string | null;
   error_message: string | null;
   operation_kind: "TRANSFER" | "DELETE" | "UNKNOWN";
 }
@@ -33,6 +36,7 @@ interface Props {
   open: boolean;
   onClose: () => void;
   onRolledBack: () => void;
+  branches?: { id: number; name: string }[];
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -58,7 +62,7 @@ interface ListResponse {
   limit: number;
 }
 
-export default function AdjustmentsHistoryModal({ open, onClose, onRolledBack }: Props) {
+export default function AdjustmentsHistoryModal({ open, onClose, onRolledBack, branches = [] }: Props) {
   const user = useDashboardUser();
   const [items, setItems] = useState<Adjustment[]>([]);
   const [total, setTotal] = useState(0);
@@ -71,6 +75,7 @@ export default function AdjustmentsHistoryModal({ open, onClose, onRolledBack }:
 
   // Filters
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [branchFilter, setBranchFilter] = useState<string>("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [search, setSearch] = useState("");
@@ -84,15 +89,24 @@ export default function AdjustmentsHistoryModal({ open, onClose, onRolledBack }:
       limit: PAGE_SIZE,
     };
     if (statusFilter !== "all") params.status = statusFilter;
+    if (branchFilter !== "all") params.branch_id = branchFilter;
     if (dateFrom) params.date_from = dateFrom;
     if (dateTo) params.date_to = dateTo;
     if (search.trim()) params.search = search.trim();
 
     api.get<ListResponse>("/api/admin/d-drive/adjustments", { params })
-      .then(r => { setItems(r.data.adjustments); setTotal(r.data.total); })
+      .then(r => {
+        setItems(r.data.adjustments);
+        setTotal(r.data.total);
+        // Pagination overflow: if user is on a page that no longer exists
+        // (e.g., after a refresh that shrank the result set), bounce to page 1.
+        if (r.data.total > 0 && (p - 1) * PAGE_SIZE >= r.data.total) {
+          setPage(1);
+        }
+      })
       .catch(() => setError("Could not load adjustment history"))
       .finally(() => setLoading(false));
-  }, [page, statusFilter, dateFrom, dateTo, search]);
+  }, [page, statusFilter, branchFilter, dateFrom, dateTo, search]);
 
   // One-time permission check on open
   useEffect(() => {
@@ -108,10 +122,19 @@ export default function AdjustmentsHistoryModal({ open, onClose, onRolledBack }:
   }, [open, load]);
 
   const clearFilters = () => {
-    setStatusFilter("all"); setDateFrom(""); setDateTo(""); setSearch(""); setPage(1);
+    setStatusFilter("all"); setBranchFilter("all"); setDateFrom(""); setDateTo(""); setSearch(""); setPage(1);
   };
   const applySearch = () => { setPage(1); };
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const hasFilters = !!(dateFrom || dateTo || search || statusFilter !== "all" || branchFilter !== "all");
+
+  const dayCount = (start: string, end: string) => {
+    const s = new Date(start);
+    const e = new Date(end);
+    return Math.round((e.getTime() - s.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+  };
+  const fmtShortDate = (s: string) =>
+    new Date(s).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 
   const handleRollback = async (adj: Adjustment) => {
     setRollingBackId(adj.batch_id);
@@ -129,7 +152,6 @@ export default function AdjustmentsHistoryModal({ open, onClose, onRolledBack }:
     }
   };
 
-  const fmt = (n: number) => "₹" + n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const fmtDate = (s: string | null) => s ? new Date(s).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }) : "—";
 
   if (confirmTarget) {
@@ -147,11 +169,14 @@ export default function AdjustmentsHistoryModal({ open, onClose, onRolledBack }:
             <div className="bg-muted/50 rounded p-3 space-y-1">
               <p><strong>Batch:</strong> <code className="text-xs">{confirmTarget.batch_id}</code></p>
               <p><strong>Type:</strong> {confirmTarget.operation_kind}</p>
-              <p><strong>Branch:</strong> #{confirmTarget.branch_id}</p>
-              <p><strong>Dates:</strong> {confirmTarget.date_range_start} → {confirmTarget.date_range_end}</p>
+              <p><strong>Branch:</strong> {confirmTarget.branch_name ?? `#${confirmTarget.branch_id}`}{confirmTarget.branch_name ? <span className="text-xs text-muted-foreground"> (#{confirmTarget.branch_id})</span> : null}</p>
+              <p><strong>Affected dates:</strong> {confirmTarget.date_range_start === confirmTarget.date_range_end
+                ? fmtShortDate(confirmTarget.date_range_start)
+                : <>{fmtShortDate(confirmTarget.date_range_start)} → {fmtShortDate(confirmTarget.date_range_end)} <span className="text-xs text-muted-foreground">({dayCount(confirmTarget.date_range_start, confirmTarget.date_range_end)} days)</span></>}</p>
               <p><strong>Tickets affected:</strong> {confirmTarget.total_tickets_affected ?? "—"}</p>
               <p><strong>Items affected:</strong> {confirmTarget.total_items_affected ?? "—"}</p>
-              <p><strong>Executed:</strong> {fmtDate(confirmTarget.executed_at)}</p>
+              <p><strong>Performed by:</strong> {confirmTarget.created_by_name ?? "—"}</p>
+              <p><strong>Performed on:</strong> {fmtDate(confirmTarget.executed_at)}</p>
             </div>
             <p className="text-amber-700 dark:text-amber-400">
               Rolling back will restore the original ticket and ticket_item values from backup. Any changes made AFTER this adjustment on the same tickets will block the rollback.
@@ -186,14 +211,26 @@ export default function AdjustmentsHistoryModal({ open, onClose, onRolledBack }:
         </DialogHeader>
 
         {/* Filter bar */}
-        <div className="px-6 py-3 border-b grid grid-cols-5 gap-3 items-end bg-muted/20">
+        <div className="px-6 py-3 border-b grid grid-cols-6 gap-3 items-end bg-muted/20">
           <div className="space-y-1">
-            <Label className="text-xs">From (created)</Label>
+            <Label className="text-xs">From (performed)</Label>
             <Input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setPage(1); }} />
           </div>
           <div className="space-y-1">
-            <Label className="text-xs">To (created)</Label>
+            <Label className="text-xs">To (performed)</Label>
             <Input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setPage(1); }} />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Branch</Label>
+            <Select value={branchFilter} onValueChange={v => { setBranchFilter(v); setPage(1); }}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Branches</SelectItem>
+                {branches.map(b => (
+                  <SelectItem key={b.id} value={String(b.id)}>{b.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="space-y-1">
             <Label className="text-xs">Status</Label>
@@ -210,7 +247,7 @@ export default function AdjustmentsHistoryModal({ open, onClose, onRolledBack }:
             </Select>
           </div>
           <div className="space-y-1 col-span-2">
-            <Label className="text-xs">Batch ID search (substring)</Label>
+            <Label className="text-xs">Search adjustment ID</Label>
             <div className="relative flex gap-2">
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -222,7 +259,7 @@ export default function AdjustmentsHistoryModal({ open, onClose, onRolledBack }:
                 />
               </div>
               <Button size="sm" variant="outline" onClick={applySearch}>Go</Button>
-              {(dateFrom || dateTo || search || statusFilter !== "all") && (
+              {hasFilters && (
                 <Button size="sm" variant="outline" onClick={clearFilters} title="Clear all filters">
                   <X className="w-4 h-4" />
                 </Button>
@@ -242,54 +279,88 @@ export default function AdjustmentsHistoryModal({ open, onClose, onRolledBack }:
             <table className="w-full text-sm">
               <thead className="bg-muted/50 text-muted-foreground uppercase text-xs sticky top-0">
                 <tr>
-                  <th className="px-4 py-2.5 text-left font-medium">When</th>
-                  <th className="px-4 py-2.5 text-left font-medium">Type</th>
+                  <th className="px-4 py-2.5 text-left font-medium">Performed</th>
+                  <th className="px-4 py-2.5 text-left font-medium">By</th>
+                  <th className="px-4 py-2.5 text-left font-medium">Action</th>
                   <th className="px-4 py-2.5 text-left font-medium">Branch</th>
-                  <th className="px-4 py-2.5 text-left font-medium">Dates</th>
+                  <th className="px-4 py-2.5 text-left font-medium">Affected Dates</th>
                   <th className="px-4 py-2.5 text-right font-medium">Tickets</th>
                   <th className="px-4 py-2.5 text-right font-medium">Items</th>
                   <th className="px-4 py-2.5 text-left font-medium">Status</th>
-                  <th className="px-4 py-2.5 text-left font-medium">Actions</th>
+                  <th className="px-4 py-2.5 text-left font-medium">Rollback</th>
                 </tr>
               </thead>
               <tbody>
-                {items.map(a => (
-                  <tr key={a.batch_id} className="border-t hover:bg-muted/30">
-                    <td className="px-4 py-2.5 whitespace-nowrap text-xs">{fmtDate(a.executed_at || a.created_at)}</td>
-                    <td className="px-4 py-2.5">
-                      <Badge className={KIND_COLORS[a.operation_kind]}>{a.operation_kind}</Badge>
-                    </td>
-                    <td className="px-4 py-2.5">#{a.branch_id}</td>
-                    <td className="px-4 py-2.5 text-xs text-muted-foreground">
-                      {a.date_range_start}{a.date_range_start !== a.date_range_end ? ` → ${a.date_range_end}` : ""}
-                    </td>
-                    <td className="px-4 py-2.5 text-right">{a.total_tickets_affected ?? "—"}</td>
-                    <td className="px-4 py-2.5 text-right">{a.total_items_affected ?? "—"}</td>
-                    <td className="px-4 py-2.5">
-                      <Badge className={STATUS_COLORS[a.status]}>{a.status}</Badge>
-                    </td>
-                    <td className="px-4 py-2.5">
-                      {canRollback && (a.status === "COMMITTED" || a.status === "FAILED") ? (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="text-destructive border-destructive/50 hover:bg-destructive hover:text-destructive-foreground"
-                          onClick={() => setConfirmTarget(a)}
-                          disabled={rollingBackId !== null}
-                          title={a.status === "FAILED" ? `Retry rollback (previous attempt: ${a.error_message ?? "unknown error"})` : ""}
-                        >
-                          <Undo2 className="w-3 h-3 mr-1" /> {a.status === "FAILED" ? "Retry Rollback" : "Rollback"}
-                        </Button>
-                      ) : a.status === "ROLLED_BACK" ? (
-                        <span className="text-xs text-muted-foreground">Rolled back {fmtDate(a.rolled_back_at)}</span>
-                      ) : a.status === "FAILED" ? (
-                        <span className="text-xs text-destructive" title={a.error_message ?? ""}>Failed</span>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                {items.map(a => {
+                  const sameDay = a.date_range_start === a.date_range_end;
+                  const days = sameDay ? 1 : dayCount(a.date_range_start, a.date_range_end);
+                  return (
+                    <tr key={a.batch_id} className="border-t hover:bg-muted/30 align-top">
+                      <td className="px-4 py-2.5 whitespace-nowrap text-xs">
+                        {fmtDate(a.executed_at || a.created_at)}
+                      </td>
+                      <td className="px-4 py-2.5 text-xs whitespace-nowrap">
+                        {a.created_by_name ? (
+                          <span className="font-medium">{a.created_by_name}</span>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <Badge className={KIND_COLORS[a.operation_kind]}>{a.operation_kind}</Badge>
+                        <div className="text-[11px] text-muted-foreground mt-0.5">
+                          {a.operation_kind === "DELETE" ? "Items removed" : a.operation_kind === "TRANSFER" ? "Items reassigned" : ""}
+                        </div>
+                      </td>
+                      <td className="px-4 py-2.5 whitespace-nowrap">
+                        <div>{a.branch_name ?? `#${a.branch_id}`}</div>
+                        {a.branch_name && (
+                          <div className="text-[11px] text-muted-foreground">#{a.branch_id}</div>
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5 text-xs whitespace-nowrap">
+                        <div className="font-medium text-foreground">
+                          {sameDay
+                            ? fmtShortDate(a.date_range_start)
+                            : `${fmtShortDate(a.date_range_start)} → ${fmtShortDate(a.date_range_end)}`}
+                        </div>
+                        <div className="text-[11px] text-muted-foreground">
+                          {days} day{days !== 1 ? "s" : ""}
+                        </div>
+                      </td>
+                      <td className="px-4 py-2.5 text-right">{a.total_tickets_affected ?? "—"}</td>
+                      <td className="px-4 py-2.5 text-right">{a.total_items_affected ?? "—"}</td>
+                      <td className="px-4 py-2.5">
+                        <Badge className={STATUS_COLORS[a.status]}>{a.status}</Badge>
+                        {a.status === "ROLLED_BACK" && a.rolled_back_by_name && (
+                          <div className="text-[11px] text-muted-foreground mt-0.5 max-w-[180px]">
+                            by {a.rolled_back_by_name} · {fmtDate(a.rolled_back_at)}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        {canRollback && (a.status === "COMMITTED" || a.status === "FAILED") ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-destructive border-destructive/50 hover:bg-destructive hover:text-destructive-foreground"
+                            onClick={() => setConfirmTarget(a)}
+                            disabled={rollingBackId !== null}
+                            title={a.status === "FAILED" ? `Retry rollback (previous attempt: ${a.error_message ?? "unknown error"})` : ""}
+                          >
+                            <Undo2 className="w-3 h-3 mr-1" /> {a.status === "FAILED" ? "Retry" : "Rollback"}
+                          </Button>
+                        ) : a.status === "ROLLED_BACK" ? (
+                          <span className="text-xs text-muted-foreground">Reverted</span>
+                        ) : a.status === "FAILED" ? (
+                          <span className="text-xs text-destructive" title={a.error_message ?? ""}>Failed</span>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -304,7 +375,7 @@ export default function AdjustmentsHistoryModal({ open, onClose, onRolledBack }:
                 Showing <strong>{(page - 1) * PAGE_SIZE + 1}</strong>–
                 <strong>{Math.min(page * PAGE_SIZE, total)}</strong> of{" "}
                 <strong>{total.toLocaleString()}</strong>
-                {(dateFrom || dateTo || search || statusFilter !== "all") && " (filtered)"}
+                {hasFilters && " (filtered)"}
               </>
             ) : (
               "No results"

@@ -1,75 +1,72 @@
-// SSMSPL Ticket Checker — Service Worker
-// Strategy: cache app shell for fast loads; network-first for API calls.
+// Kill-switch service worker.
+//
+// The previous /sw.js was meant only for the staff ticket-checker PWA but was
+// registered globally in the root layout, so it intercepted every page on
+// carferry.online with a cache-first strategy. Returning visitors got stuck on
+// stale HTML referencing Next.js chunks that no longer existed, breaking
+// hydration (and with it scrolling, navigation, etc.).
+//
+// This replacement SW takes over the existing registration, clears every
+// cached entry, unregisters itself, and reloads any open tabs so they pick up
+// fresh content from the network. Each step is independently guarded so the
+// activate event never rejects — if waitUntil rejected, the new SW would go
+// redundant and the old buggy SW would stay in control.
 
-const CACHE_NAME = "ssmspl-checker-v1";
-
-const APP_SHELL = [
-  "/dashboard/verify",
-  "/manifest.json",
-  "/android-chrome-192x192.png",
-  "/android-chrome-512x512.png",
-  "/apple-touch-icon.png",
-  "/favicon-32x32.png",
-];
-
-// Install — pre-cache the app shell
 self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL))
-  );
-  self.skipWaiting();
+  event.waitUntil(self.skipWaiting());
 });
 
-// Activate — clean up old caches
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(
-        keys
-          .filter((key) => key !== CACHE_NAME)
-          .map((key) => caches.delete(key))
-      )
-    )
-  );
-  self.clients.claim();
-});
+    (async () => {
+      // Claim existing tabs first. Without this, the new SW is the active SW
+      // for the registration but is not the controller of already-open tabs
+      // (their controller is still the old, now-redundant SW). client.navigate
+      // rejects with TypeError on uncontrolled clients, so the auto-reload
+      // below would silently fail without claim().
+      try {
+        await self.clients.claim();
+      } catch {
+        // Ignore — auto-reload may not fire, but clearing caches and
+        // unregistering below still recover users on next manual refresh.
+      }
 
-// Fetch — network-first for API, cache-first for static assets
-self.addEventListener("fetch", (event) => {
-  const { request } = event;
-  const url = new URL(request.url);
+      try {
+        const cacheKeys = await caches.keys();
+        await Promise.allSettled(cacheKeys.map((key) => caches.delete(key)));
+      } catch {
+        // Ignore — proceed to unregister even if caches couldn't be enumerated.
+      }
 
-  // Skip non-GET requests
-  if (request.method !== "GET") return;
-
-  // API calls: network-first, no cache fallback (verification must be live)
-  if (url.pathname.startsWith("/api/")) {
-    event.respondWith(
-      fetch(request).catch(() =>
-        new Response(JSON.stringify({ detail: "You are offline. Please check your connection." }), {
-          status: 503,
-          headers: { "Content-Type": "application/json" },
-        })
-      )
-    );
-    return;
-  }
-
-  // Static assets & app shell: cache-first, then network
-  event.respondWith(
-    caches.match(request).then((cached) => {
-      const networkFetch = fetch(request)
-        .then((response) => {
-          // Update cache with fresh response
-          if (response.ok) {
-            const clone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+      try {
+        const windowClients = await self.clients.matchAll({
+          type: "window",
+          includeUncontrolled: true,
+        });
+        for (const client of windowClients) {
+          try {
+            await client.navigate(client.url);
+          } catch {
+            // Cross-origin or detached clients can't be navigated. The SW is
+            // about to be unregistered, so the next manual reload will be clean.
           }
-          return response;
-        })
-        .catch(() => cached);
+        }
+      } catch {
+        // Ignore.
+      }
 
-      return cached || networkFetch;
-    })
+      // Unregister last so the navigations kicked off above still have a
+      // controller while in-flight. By the time the reloaded pages mount, the
+      // registration is gone and no SW intercepts their requests.
+      try {
+        await self.registration.unregister();
+      } catch {
+        // Ignore.
+      }
+    })()
   );
 });
+
+// No fetch handler on purpose: until activation completes, the old SW is still
+// in control. Once this SW activates and unregisters, the browser stops
+// intercepting requests entirely.

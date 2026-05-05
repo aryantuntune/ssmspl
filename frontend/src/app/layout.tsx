@@ -1,7 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
-import { PWARegister } from "@/components/pwa-register";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -51,7 +50,6 @@ export default function RootLayout({
         className={`${inter.variable} antialiased`}
       >
         {children}
-        <PWARegister />
       </body>
     </html>
   );

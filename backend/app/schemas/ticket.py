@@ -127,6 +127,8 @@ class TicketRead(BaseModel):
     branch_name: str | None = Field(None, description="Branch name")
     route_name: str | None = Field(None, description="Route display name")
     payment_mode_name: str | None = Field(None, description="Payment mode description")
+    boat_id: int | None = Field(None, description="Assigned ferry/boat ID (auto-derived from schedule)")
+    boat_name: str | None = Field(None, description="Assigned ferry/boat name (e.g. SHANTADURGA)")
     items: list[TicketItemRead] | None = Field(None, description="Ticket items (only in detail view)")
     created_at: datetime | None = Field(None, description="Record creation timestamp")
     updated_at: datetime | None = Field(None, description="Record last update timestamp")

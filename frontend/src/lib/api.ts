@@ -49,6 +49,31 @@ function isPortalContext(url: string): boolean {
   return false;
 }
 
+// Whether the *current page* is a protected route that should bounce to a login
+// screen on auth failure. Mirrors middleware.ts. On public pages (/, /about,
+// /contact, /customer/login, etc.) a 401 from a probe call (e.g. Header.tsx
+// calling /auth/me to pick a login-vs-account UI) must NOT force-navigate the
+// visitor to /login — they aren't logged in by design.
+function isProtectedPath(pathname: string): boolean {
+  if (pathname.startsWith("/dashboard")) return true;
+  if (pathname.startsWith("/customer")) {
+    return (
+      !pathname.startsWith("/customer/login") &&
+      !pathname.startsWith("/customer/register") &&
+      !pathname.startsWith("/customer/forgot-password") &&
+      !pathname.startsWith("/customer/reset-password") &&
+      !pathname.startsWith("/customer/verify-email")
+    );
+  }
+  return false;
+}
+
+function redirectToLogin(target: string) {
+  if (typeof window === "undefined") return;
+  if (!isProtectedPath(window.location.pathname)) return;
+  window.location.href = target;
+}
+
 api.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
@@ -72,7 +97,7 @@ api.interceptors.response.use(
     // Prevent infinite retry: if we already refreshed and retried this request, give up
     if ((originalRequest as unknown as Record<string, unknown>)._retried) {
       const isPortal = isPortalContext(url);
-      window.location.href = isPortal ? "/customer/login" : "/login";
+      redirectToLogin(isPortal ? "/customer/login" : "/login");
       return Promise.reject(error);
     }
     (originalRequest as unknown as Record<string, unknown>)._retried = true;
@@ -82,13 +107,13 @@ api.interceptors.response.use(
     if (detail === "session_expired_elsewhere") {
       const isPortal = isPortalContext(url);
       const loginPath = isPortal ? "/customer/login" : "/login";
-      window.location.href = `${loginPath}?reason=session_conflict`;
+      redirectToLogin(`${loginPath}?reason=session_conflict`);
       return Promise.reject(error);
     }
     if (detail === "session_idle_timeout") {
       const isPortal = isPortalContext(url);
       const loginPath = isPortal ? "/customer/login" : "/login";
-      window.location.href = `${loginPath}?reason=idle_timeout`;
+      redirectToLogin(`${loginPath}?reason=idle_timeout`);
       return Promise.reject(error);
     }
 
@@ -112,11 +137,7 @@ api.interceptors.response.use(
     } catch {
       processQueue(error);
       const isPortal = isPortalContext(url);
-      if (isPortal) {
-        window.location.href = "/customer/login";
-      } else {
-        window.location.href = "/login";
-      }
+      redirectToLogin(isPortal ? "/customer/login" : "/login");
       return Promise.reject(error);
     } finally {
       isRefreshing = false;

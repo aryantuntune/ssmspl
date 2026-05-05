@@ -27,6 +27,7 @@ export interface ReceiptData {
   createdBy: string;
   paperWidth: PaperWidth;
   paymentModeName: string; // e.g. "CASH", "UPI", "CASH / UPI"
+  ferryName?: string | null; // optional ferry vessel name (e.g. "MV SHANTADURGA"); rendered only when present
 }
 
 // ── Paper width persistence (sessionStorage) ──
@@ -220,6 +221,7 @@ function buildReceiptBodyHtml(
     ticketNo, branchName, branchPhone, fromTo,
     ticketDate, createdAt, departure, items,
     netAmount, createdBy, paperWidth, paymentModeName,
+    ferryName,
   } = data;
 
   const widthMm = paperWidth === "58mm" ? 58 : 80;
@@ -257,11 +259,17 @@ function buildReceiptBodyHtml(
     ? `<div class="qr-wrap"><img src="${qrBase64}" style="width:${qrSize}px;height:auto;" /></div>`
     : "";
 
+  // Ferry vessel line is shown only when the ticket has a boat assigned
+  const ferryLine = ferryName
+    ? `<div class="center bold">FERRY: ${escHtml(ferryName.toUpperCase())}</div>`
+    : "";
+
   return `
 <div class="co-name">SUVARNADURGA SHIPPING &amp; MARINE SERVICES PVT. LTD.</div>
 <div class="center bold">${escHtml(branchName.toUpperCase())}</div>
 <div class="approval">MAHARASHTRA MARITIME BOARD APPROVAL</div>
 <div class="center bold">${escHtml(fromTo)}</div>
+${ferryLine}
 <div class="info-row"><span>Ph: ${escHtml(displayPhone)}</span><span>TIME: ${time}</span></div>
 <div class="info-row"><span>Memo No: ${ticketNo}</span><span>DATE: ${dateStr}</span></div>
 <div class="info-row"><span>Pay: ${escHtml(paymentModeName)}</span><span>BY: ${escHtml(createdBy)}</span></div>

@@ -473,13 +473,14 @@ async def vehicle_wise_ticket_report(
     branch_id: int | None = Query(None),
     route_id: int | None = Query(None),
     payment_mode_id: int | None = Query(None),
+    boat_id: int | None = Query(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(_report_roles),
 ):
     route_id, branch_id = await _scope_route_and_branch(db, current_user, route_id, branch_id)
     date = clamp_single_date(date, current_user.role)
-    _log_report(background_tasks, current_user, "vehicle_wise_tickets", False, date=date, branch_id=branch_id, route_id=route_id, payment_mode_id=payment_mode_id)
-    return await report_service.get_vehicle_wise_tickets(db, date, branch_id, route_id, payment_mode_id)
+    _log_report(background_tasks, current_user, "vehicle_wise_tickets", False, date=date, branch_id=branch_id, route_id=route_id, payment_mode_id=payment_mode_id, boat_id=boat_id)
+    return await report_service.get_vehicle_wise_tickets(db, date, branch_id, route_id, payment_mode_id, boat_id)
 
 
 @limiter.limit("10/minute")
@@ -732,14 +733,15 @@ async def get_vehicle_wise_tickets_pdf(
     branch_id: int | None = Query(None),
     route_id: int | None = Query(None),
     payment_mode_id: int | None = Query(None),
+    boat_id: int | None = Query(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(_report_roles),
 ):
     route_id, branch_id = await _scope_route_and_branch(db, current_user, route_id, branch_id)
     date = clamp_single_date(date, current_user.role)
-    data = await report_service.get_vehicle_wise_tickets(db, date, branch_id, route_id, payment_mode_id)
+    data = await report_service.get_vehicle_wise_tickets(db, date, branch_id, route_id, payment_mode_id, boat_id)
     pdf_buf = pdf_service.generate_vehicle_wise_tickets_pdf(data)
-    _log_report(background_tasks, current_user, "vehicle_wise_tickets", True, date=date, branch_id=branch_id, route_id=route_id, payment_mode_id=payment_mode_id)
+    _log_report(background_tasks, current_user, "vehicle_wise_tickets", True, date=date, branch_id=branch_id, route_id=route_id, payment_mode_id=payment_mode_id, boat_id=boat_id)
     return StreamingResponse(
         pdf_buf,
         media_type="application/pdf",
