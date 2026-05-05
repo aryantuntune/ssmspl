@@ -8,15 +8,27 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import api from "@/lib/api";
 import TransferDryRunPreview, { TransferDryRunResult } from "./TransferDryRunPreview";
 
-interface Props {
-  open: boolean;
-  branchId: number;
-  branchName: string;
-  dateStart: string;
-  dateEnd: string;
-  onClose: () => void;
-  onCommitted: () => void;
-}
+type Props =
+  | {
+      open: boolean;
+      mode: "branch";
+      branchId: number;
+      branchName: string;
+      dateStart: string;
+      dateEnd: string;
+      onClose: () => void;
+      onCommitted: () => void;
+    }
+  | {
+      open: boolean;
+      mode: "route";
+      routeId: number;
+      routeLabel: string;
+      dateStart: string;
+      dateEnd: string;
+      onClose: () => void;
+      onCommitted: () => void;
+    };
 
 interface AllowItem {
   item_id: number;
@@ -30,11 +42,21 @@ interface ScopeData {
   from_levy_total: number;
   from_levy_representative: number | null;
   routes: { route_id: number; count: number }[];
+  branch_ids?: number[];
 }
 
-export default function TransferModal({
-  open, branchId, branchName, dateStart, dateEnd, onClose, onCommitted,
-}: Props) {
+export default function TransferModal(props: Props) {
+  const { open, dateStart, dateEnd, onClose, onCommitted } = props;
+  const isRouteMode = props.mode === "route";
+  const titleScope = isRouteMode ? props.routeLabel : props.branchName;
+  const subtitleScope = isRouteMode
+    ? `Route: ${props.routeLabel} (BOTH branches participate)`
+    : `Branch: ${props.branchName}`;
+
+  // Identifier to pass back to TransferDryRunPreview (its `branchName` prop is
+  // legacy — we still pass the human label so the title stays meaningful).
+  const previewLabel = isRouteMode ? `Route ${props.routeLabel}` : props.branchName;
+
   const [allowList, setAllowList] = useState<AllowItem[]>([]);
   const [fromItemId, setFromItemId] = useState<string>("");
   const [toItemId, setToItemId] = useState<string>("");
@@ -46,6 +68,12 @@ export default function TransferModal({
   const [error, setError] = useState("");
   const [dryRunResult, setDryRunResult] = useState<TransferDryRunResult | null>(null);
 
+  // Build the scope query params once per render so the dependencies on the
+  // useEffect below match the actual call shape.
+  const scopeParamsBase: Record<string, string | number> = isRouteMode
+    ? { route_id: props.routeId, date_start: dateStart, date_end: dateEnd }
+    : { branch_id: props.branchId, date_start: dateStart, date_end: dateEnd };
+
   useEffect(() => {
     api.get<AllowItem[]>("/api/admin/parameter-master/items/transfer")
       .then(r => setAllowList(r.data))
@@ -56,9 +84,10 @@ export default function TransferModal({
   useEffect(() => {
     if (!fromItemId) { setScope(null); return; }
     api.get<ScopeData>("/api/admin/d-drive/transfer/scope", {
-      params: { branch_id: branchId, date_start: dateStart, date_end: dateEnd, from_item_id: fromItemId },
+      params: { ...scopeParamsBase, from_item_id: fromItemId },
     }).then(r => setScope(r.data)).catch(() => setScope(null));
-  }, [fromItemId, branchId, dateStart, dateEnd]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fromItemId, isRouteMode ? props.routeId : props.branchId, dateStart, dateEnd]);
 
   // Fetch TO master (rate + levy) from first route in scope
   useEffect(() => {
@@ -88,15 +117,17 @@ export default function TransferModal({
     if (!inputValue || parseFloat(inputValue) <= 0) { setError("Enter a valid positive value."); return; }
     setLoading(true);
     try {
-      const res = await api.post<TransferDryRunResult>("/api/admin/d-drive/transfer/dry-run", {
-        branch_id: branchId,
+      const body: Record<string, unknown> = {
         date_start: dateStart,
         date_end: dateEnd,
         from_item_id: parseInt(fromItemId),
         to_item_id: parseInt(toItemId),
         input_mode: inputMode,
         input_value: parseFloat(inputValue),
-      });
+      };
+      if (isRouteMode) body.route_id = props.routeId;
+      else body.branch_id = props.branchId;
+      const res = await api.post<TransferDryRunResult>("/api/admin/d-drive/transfer/dry-run", body);
       setDryRunResult(res.data);
     } catch (e) {
       const err = e as { response?: { data?: { detail?: string } } };
@@ -116,7 +147,7 @@ export default function TransferModal({
     return (
       <TransferDryRunPreview
         result={dryRunResult}
-        branchName={branchName}
+        branchName={previewLabel}
         onCancel={() => setDryRunResult(null)}
         onCommitted={() => { handleClose(); onCommitted(); }}
       />
@@ -127,10 +158,17 @@ export default function TransferModal({
     <Dialog open={open} onOpenChange={v => !v && handleClose()}>
       <DialogContent className="max-w-xl">
         <DialogHeader>
-          <DialogTitle>Transfer Items — {branchName}</DialogTitle>
+          <DialogTitle>
+            Transfer Items {isRouteMode ? "— Route " : "— "}{titleScope}
+          </DialogTitle>
           <p className="text-sm text-muted-foreground">
-            Date range: {dateStart} → {dateEnd} · CASH tickets only
+            {subtitleScope} · {dateStart} → {dateEnd} · CASH tickets only
           </p>
+          {isRouteMode && (
+            <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
+              Both endpoint branches are aggregated. FIFO across the route by ticket creation time.
+            </p>
+          )}
         </DialogHeader>
 
         <div className="space-y-4">
@@ -163,7 +201,9 @@ export default function TransferModal({
 
           {scope && (
             <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900 rounded-lg p-3 space-y-1.5">
-              <p className="text-xs font-semibold uppercase tracking-wide text-blue-800 dark:text-blue-200">FROM Section</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-blue-800 dark:text-blue-200">
+                FROM Section{isRouteMode ? " (route-aggregated)" : ""}
+              </p>
               <div className="grid grid-cols-3 gap-2 text-sm">
                 <div><span className="text-muted-foreground">Total Qty:</span> <strong>{scope.total_quantity}</strong></div>
                 <div><span className="text-muted-foreground">Levy (typical):</span> <strong>{scope.from_levy_representative != null ? fmt(scope.from_levy_representative) : "—"}</strong></div>

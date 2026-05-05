@@ -8,10 +8,22 @@ import {
 import { Input } from "@/components/ui/input";
 import { CalendarPlus, X } from "lucide-react";
 
+export type ScopeMode = "branch" | "route";
+
+export interface RouteOption {
+  id: number;
+  branch_one_name: string | null;
+  branch_two_name: string | null;
+  branch_id_one: number;
+  branch_id_two: number;
+}
+
 export interface Filters {
   dateStart: string;
   dateEnd: string;
+  scopeMode: ScopeMode;
   branchId: string;
+  routeId: string;
   paymentMode: string;
   itemId: string;
 }
@@ -19,15 +31,21 @@ export interface Filters {
 interface Props {
   branches: { id: number; name: string }[];
   items: { id: number; name: string }[];
+  routes: RouteOption[];
   onApply: (f: Filters) => void;
 }
 
-export default function FilterBar({ branches, items, onApply }: Props) {
+export const formatRouteLabel = (r: RouteOption) =>
+  `${r.branch_one_name ?? "Branch " + r.branch_id_one} ↔ ${r.branch_two_name ?? "Branch " + r.branch_id_two}`;
+
+export default function FilterBar({ branches, items, routes, onApply }: Props) {
   const today = new Date().toISOString().slice(0, 10);
   const [date, setDate] = useState(today);
   const [dateEnd, setDateEnd] = useState(today);
   const [rangeMode, setRangeMode] = useState(false);
+  const [scopeMode, setScopeMode] = useState<ScopeMode>("branch");
   const [branchId, setBranchId] = useState("all");
+  const [routeId, setRouteId] = useState("all");
   const [paymentMode, setPaymentMode] = useState("all");
   const [itemId, setItemId] = useState("all");
 
@@ -35,7 +53,9 @@ export default function FilterBar({ branches, items, onApply }: Props) {
     onApply({
       dateStart: date,
       dateEnd: rangeMode ? dateEnd : date,
+      scopeMode,
       branchId,
+      routeId,
       paymentMode,
       itemId,
     });
@@ -101,15 +121,40 @@ export default function FilterBar({ branches, items, onApply }: Props) {
         </div>
       )}
       <div className="flex flex-col gap-1.5">
-        <Label>Branch</Label>
-        <Select value={branchId} onValueChange={setBranchId}>
-          <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+        <Label>Scope</Label>
+        <Select value={scopeMode} onValueChange={(v) => setScopeMode(v as ScopeMode)}>
+          <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All Branches</SelectItem>
-            {branches.map(b => <SelectItem key={b.id} value={String(b.id)}>{b.name}</SelectItem>)}
+            <SelectItem value="branch">Branch</SelectItem>
+            <SelectItem value="route">Route</SelectItem>
           </SelectContent>
         </Select>
       </div>
+      {scopeMode === "branch" ? (
+        <div className="flex flex-col gap-1.5">
+          <Label>Branch</Label>
+          <Select value={branchId} onValueChange={setBranchId}>
+            <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Branches</SelectItem>
+              {branches.map(b => <SelectItem key={b.id} value={String(b.id)}>{b.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-1.5">
+          <Label>Route</Label>
+          <Select value={routeId} onValueChange={setRouteId}>
+            <SelectTrigger className="w-64"><SelectValue placeholder="Select a route…" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Routes</SelectItem>
+              {routes.map(r => (
+                <SelectItem key={r.id} value={String(r.id)}>{formatRouteLabel(r)}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
       <div className="flex flex-col gap-1.5">
         <Label>Payment Mode</Label>
         <Select value={paymentMode} onValueChange={setPaymentMode}>

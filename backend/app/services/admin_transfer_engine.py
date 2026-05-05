@@ -35,6 +35,7 @@ from app.models.admin_adjustments_log import AdminAdjustmentsLog
 from app.models.admin_adjustment_details import AdminAdjustmentDetails
 from app.models.tickets_backup import TicketsBackup
 from app.models.ticket_items_backup import TicketItemsBackup
+from app.models.route import Route
 
 MAX_ITEM_ROWS = 5000
 
@@ -83,14 +84,43 @@ async def _resolve_to_master(
     return (rate, levy)
 
 
+async def _resolve_branch_ids(
+    db: AsyncSession, branch_id: int | None, route_id: int | None
+) -> tuple[list[int], int | None]:
+    """
+    Returns (branch_ids, resolved_route_id).
+
+    - Single-branch mode: returns ([branch_id], None).
+    - Route mode: returns ([branch_one, branch_two], route_id) for both endpoint
+      branches of the route. Both branches participate regardless of individual
+      active flags so historical transfers stay possible.
+    """
+    if (branch_id is None) == (route_id is None):
+        raise HTTPException(
+            status_code=400,
+            detail="Provide exactly one of `branch_id` or `route_id`.",
+        )
+    if branch_id is not None:
+        return ([int(branch_id)], None)
+    route = (await db.execute(select(Route).where(Route.id == route_id))).scalar_one_or_none()
+    if route is None:
+        raise HTTPException(status_code=404, detail=f"Route {route_id} not found.")
+    return ([int(route.branch_id_one), int(route.branch_id_two)], int(route.id))
+
+
 async def _get_scope_data(
     db: AsyncSession,
-    branch_id: int,
+    branch_ids: list[int],
     date_start: date,
     date_end: date,
     from_item_id: int,
 ):
-    """Ordered list of FROM ticket_items with their ticket context. FIFO by created_at."""
+    """Ordered list of FROM ticket_items with their ticket context. FIFO by created_at.
+
+    `branch_ids` may contain one (single-branch mode) or two branches (route mode,
+    both endpoint branches of the route). FIFO ordering is by ticket.created_at
+    so the chronological order is preserved across branches.
+    """
     q = (
         select(
             TicketItem.id.label("tiid"),
@@ -105,12 +135,13 @@ async def _get_scope_data(
             Ticket.ticket_date,
             Ticket.created_at,
             Ticket.discount,
+            Ticket.branch_id,
         )
         .select_from(TicketItem)
         .join(Ticket, Ticket.id == TicketItem.ticket_id)
         .join(PaymentMode, PaymentMode.id == Ticket.payment_mode_id)
         .where(
-            Ticket.branch_id == branch_id,
+            Ticket.branch_id.in_(branch_ids),
             Ticket.ticket_date >= date_start,
             Ticket.ticket_date <= date_end,
             TicketItem.item_id == from_item_id,
@@ -135,6 +166,7 @@ async def _get_scope_data(
             "ticket_date": r.ticket_date,
             "created_at": r.created_at,
             "discount": Decimal(str(r.discount)) if r.discount is not None else Decimal("0"),
+            "branch_id": int(r.branch_id),
         }
         for r in rows
     ]
@@ -197,7 +229,7 @@ async def _check_transfer_allowed(db: AsyncSession, from_item_id: int, to_item_i
 
 async def dry_run(
     db: AsyncSession,
-    branch_id: int,
+    branch_id: int | None,
     date_start: date,
     date_end: date,
     from_item_id: int,
@@ -205,17 +237,23 @@ async def dry_run(
     input_mode: str,  # "percentage" or "quantity"
     input_value: float,
     created_by: uuid.UUID,
+    route_id: int | None = None,
 ) -> dict:
     if input_mode not in ("percentage", "quantity"):
         raise HTTPException(status_code=400, detail="input_mode must be 'percentage' or 'quantity'")
 
     await _check_transfer_allowed(db, from_item_id, to_item_id)
 
-    scope = await _get_scope_data(db, branch_id, date_start, date_end, from_item_id)
+    branch_ids, resolved_route_id = await _resolve_branch_ids(db, branch_id, route_id)
+
+    scope = await _get_scope_data(db, branch_ids, date_start, date_end, from_item_id)
     if not scope:
+        scope_label = (
+            f"route {resolved_route_id}" if resolved_route_id is not None else f"branch {branch_ids[0]}"
+        )
         raise HTTPException(
             status_code=400,
-            detail="No eligible CASH ticket items found for FROM item in this branch / date range.",
+            detail=f"No eligible CASH ticket items found for FROM item in {scope_label} / date range.",
         )
     if len(scope) > MAX_ITEM_ROWS:
         raise HTTPException(
@@ -511,8 +549,16 @@ async def dry_run(
         })
     tickets_view.sort(key=lambda t: t["ticket_id"])
 
+    # The legacy `branch_id` column on admin_adjustments_log is NOT NULL. In
+    # route mode we record the route's first branch as the canonical anchor and
+    # store the full route context (id + both branches) inside dry_run_summary.
+    log_branch_id = branch_ids[0]
+
     execution_plan = {
-        "branch_id": branch_id,
+        "branch_id": log_branch_id,
+        "scope_branch_ids": branch_ids,
+        "route_id": resolved_route_id,
+        "scope_mode": "route" if resolved_route_id is not None else "branch",
         "date_start": str(date_start),
         "date_end": str(date_end),
         "from_item_id": from_item_id,
@@ -541,7 +587,7 @@ async def dry_run(
     }
 
     log = AdminAdjustmentsLog(
-        branch_id=branch_id,
+        branch_id=log_branch_id,
         date_range_start=date_start,
         date_range_end=date_end,
         adjustment_amount=float(levy_before - levy_after),
@@ -558,6 +604,9 @@ async def dry_run(
 
     return {
         "batch_id": str(log.id),
+        "scope_mode": "route" if resolved_route_id is not None else "branch",
+        "scope_branch_ids": branch_ids,
+        "route_id": resolved_route_id,
         "from_item_id": from_item_id,
         "from_item_name": item_map[from_item_id],
         "to_item_id": to_item_id,
@@ -640,12 +689,18 @@ async def commit(
                 )
 
     try:
-        # Advisory lock — per-branch only so overlapping date ranges on the same branch
-        # are serialized. Prevents concurrent transfer/delete operations from racing on shared tickets.
-        await db.execute(
-            text("SELECT pg_advisory_xact_lock(:a, :b)"),
-            {"a": log.branch_id, "b": 0},
-        )
+        # Advisory lock — per-branch only so overlapping date ranges on the same
+        # branch are serialized. Prevents concurrent transfer/delete operations
+        # from racing on shared tickets. In route mode we lock BOTH endpoint
+        # branches (in deterministic ascending order) so a transfer scoped to
+        # the same route from another worker — even with branches in inverse
+        # order — cannot deadlock or race against this one.
+        plan_branch_ids = sorted({int(b) for b in (plan.get("scope_branch_ids") or [log.branch_id])})
+        for bid in plan_branch_ids:
+            await db.execute(
+                text("SELECT pg_advisory_xact_lock(:a, :b)"),
+                {"a": bid, "b": 0},
+            )
 
         # Collect UPDATE targets (CONVERT + REDUCE both are updates)
         update_ops = [op for op in operations if op["type"] in ("CONVERT", "REDUCE")]

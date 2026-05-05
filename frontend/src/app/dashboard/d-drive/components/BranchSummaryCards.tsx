@@ -17,12 +17,20 @@ interface Props {
   onReconcile: (branchId: number, branchName: string, cashTotal: number) => void;
   onTransfer: (branchId: number, branchName: string) => void;
   loading: boolean;
+  /**
+   * When false (e.g. in route-scoped mode) the per-branch Transfer button is
+   * hidden — transfers happen at the route level via the dedicated banner
+   * above the cards.
+   */
+  showTransferButton?: boolean;
 }
 
 const fmt = (n: number) =>
   "₹" + n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-export default function BranchSummaryCards({ summaries, onReconcile, onTransfer, loading }: Props) {
+export default function BranchSummaryCards({
+  summaries, onReconcile, onTransfer, loading, showTransferButton = true,
+}: Props) {
   if (loading) return <div className="text-muted-foreground py-6">Loading summaries…</div>;
   if (!summaries.length) return <div className="text-muted-foreground py-6">No data for selected filters.</div>;
 
@@ -43,13 +51,15 @@ export default function BranchSummaryCards({ summaries, onReconcile, onTransfer,
               >
                 Reconcile
               </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => onTransfer(s.branch_id, s.branch_name)}
-              >
-                Transfer
-              </Button>
+              {showTransferButton && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => onTransfer(s.branch_id, s.branch_name)}
+                >
+                  Transfer
+                </Button>
+              )}
             </div>
           </CardHeader>
           <CardContent>
