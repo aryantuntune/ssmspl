@@ -31,7 +31,7 @@ export async function getClient(): Promise<AxiosInstance> {
         if (refresh && err.config && !(err.config as any)._retried) {
           (err.config as any)._retried = true;
           try {
-            const r = await axios.post(`${base}/api/auth/refresh`, { refresh_token: refresh });
+            const r = await axios.post(`${base}/api/auth/superadmin-refresh`, { refresh_token: refresh });
             const newAccess = r.data?.access_token;
             const newRefresh = r.data?.refresh_token;
             if (newAccess) await tokens.setAccess(newAccess);

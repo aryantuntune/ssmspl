@@ -269,6 +269,13 @@ app.include_router(admin_reports.router)
 from app.routers import system_health
 app.include_router(system_health.router)
 
+# System Actions — SUPER_ADMIN remote control (restart container, trigger
+# backup, ack events, host-daemon-mediated privileged ops). Mounted alongside
+# system_health so the mobile app has both observability + control on either
+# deployment.
+from app.routers import system_actions
+app.include_router(system_actions.router)
+
 # Customer-facing routers — disabled on admin portal (no public site / customer portal)
 if not settings.ADMIN_PORTAL_MODE:
     app.include_router(portal_auth.router)

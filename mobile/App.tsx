@@ -7,13 +7,15 @@ import { Subscription } from 'expo-notifications';
 
 import LoginScreen from './src/screens/LoginScreen';
 import DashboardScreen from './src/screens/DashboardScreen';
+import LogsScreen from './src/screens/LogsScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import { tokens } from './src/lib/storage';
 
-type Screen = 'login' | 'dashboard' | 'settings';
+type Screen = 'login' | 'dashboard' | 'settings' | 'logs';
 
 export default function App() {
   const [screen, setScreen] = useState<Screen | null>(null);
+  const [logsContainer, setLogsContainer] = useState<string | null>(null);
   const responseListener = useRef<Subscription>();
 
   const checkAuth = useCallback(async () => {
@@ -47,7 +49,19 @@ export default function App() {
       <SafeAreaView style={styles.bg} edges={['top', 'bottom']}>
         {screen === 'login' && <LoginScreen onLoggedIn={() => setScreen('dashboard')} />}
         {screen === 'dashboard' && (
-          <DashboardScreen onSettings={() => setScreen('settings')} />
+          <DashboardScreen
+            onSettings={() => setScreen('settings')}
+            onTailLogs={(name) => {
+              setLogsContainer(name);
+              setScreen('logs');
+            }}
+          />
+        )}
+        {screen === 'logs' && logsContainer && (
+          <LogsScreen
+            containerName={logsContainer}
+            onClose={() => setScreen('dashboard')}
+          />
         )}
         {screen === 'settings' && (
           <SettingsScreen

@@ -11,7 +11,9 @@ export type Me = {
 
 export async function login(username: string, password: string) {
   const client = await getClient();
-  const r = await client.post('/api/auth/login', { username, password });
+  // /superadmin-login returns tokens in JSON body (the regular /login uses
+  // HttpOnly cookies which React Native doesn't auto-manage).
+  const r = await client.post('/api/auth/superadmin-login', { username, password });
   const { access_token, refresh_token } = r.data;
   if (access_token) await tokens.setAccess(access_token);
   if (refresh_token) await tokens.setRefresh(refresh_token);

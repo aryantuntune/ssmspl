@@ -139,6 +139,91 @@ async def mobile_login(
 
 
 @router.post(
+    "/superadmin-login",
+    summary="SuperAdmin mobile-app login (SUPER_ADMIN/ADMIN only)",
+    description="Returns tokens in JSON body (no cookies) for the SuperAdmin Android app. Available on the admin portal.",
+    responses={
+        200: {"description": "Successfully authenticated"},
+        401: {"description": "Invalid username or password"},
+        403: {"description": "Role not permitted"},
+    },
+)
+@limiter.limit("10/minute")
+async def superadmin_login(
+    request: Request,
+    body: LoginRequest,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+):
+    """Authenticate SUPER_ADMIN/ADMIN and return tokens in body. Works on either deployment."""
+    user = await auth_service.authenticate_user(db, body.username, body.password)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect username or password")
+    if user.role not in (UserRole.SUPER_ADMIN, UserRole.ADMIN):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This app is for SUPER_ADMIN/ADMIN only.",
+        )
+
+    from app.services.auth_service import _start_session
+    from app.services import user_session_service
+
+    if user.active_session_id:
+        await user_session_service.end_session(db, user.active_session_id, "login_elsewhere")
+    sid = _start_session(user)
+    user.last_login = datetime.now(timezone.utc)
+    await user_session_service.start_session(
+        db, user.id, sid,
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+        branch_id=user.active_branch_id,
+        route_id=user.route_id,
+    )
+
+    extra = {"role": user.role.value, "sid": sid}
+    # 24h access tokens for the SuperAdmin app — same pattern as mobile checkers, no idle timeout.
+    access_token = create_access_token(subject=str(user.id), extra_claims=extra, expires_minutes=1440)
+    refresh_token = create_refresh_token(subject=str(user.id))
+    expires_at = datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+    await token_service.store_refresh_token(db, refresh_token, expires_at, user_id=user.id)
+    await db.commit()
+
+    if random.random() < 0.05:
+        background_tasks.add_task(cleanup_expired_background)
+
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "token_type": "bearer",
+        "user": {
+            "id": str(user.id),
+            "username": user.username,
+            "full_name": user.full_name,
+            "email": user.email,
+            "role": user.role.value,
+        },
+    }
+
+
+@router.post(
+    "/superadmin-refresh",
+    summary="SuperAdmin app refresh — returns tokens in JSON body",
+    responses={
+        200: {"description": "New token pair issued"},
+        401: {"description": "Invalid or expired refresh token"},
+    },
+)
+@limiter.limit("20/minute")
+async def superadmin_refresh(request: Request, body: RefreshRequest, db: AsyncSession = Depends(get_db)):
+    tokens = await auth_service.refresh_access_token(db, body.refresh_token)
+    return {
+        "access_token": tokens["access_token"],
+        "refresh_token": tokens["refresh_token"],
+        "token_type": "bearer",
+    }
+
+
+@router.post(
     "/mobile-refresh",
     summary="Refresh tokens for mobile app",
     description="Exchange a valid refresh token for a new token pair. Returns tokens in JSON body.",

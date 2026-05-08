@@ -1,7 +1,8 @@
-import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import React, { useState } from 'react';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { HealthEvent } from '../api/systemHealth';
+import { ackEvent } from '../api/systemActions';
 import { StatusBadge } from './StatusBadge';
 
 function formatWhen(iso: string): string {
@@ -14,19 +15,47 @@ function formatWhen(iso: string): string {
   return d.toLocaleString();
 }
 
-export function AlertRow({ event }: { event: HealthEvent }) {
+export function AlertRow({ event, onAcked }: { event: HealthEvent; onAcked?: (id: number) => void }) {
+  const [busy, setBusy] = useState(false);
+  const [acked, setAcked] = useState(false);
+
+  const onAck = async () => {
+    setBusy(true);
+    try {
+      await ackEvent(event.id);
+      setAcked(true);
+      onAcked?.(event.id);
+    } catch {
+      // swallow — UI remains in non-acked state, user can retry
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
-    <View style={styles.row}>
+    <View style={[styles.row, acked && styles.rowAcked]}>
       <View style={styles.left}>
         <StatusBadge severity={event.severity} />
         <Text style={styles.when}>{formatWhen(event.created_at)}</Text>
       </View>
       <View style={styles.body}>
         <Text style={styles.check}>{event.check_name}</Text>
-        <Text style={styles.message} numberOfLines={3}>
+        <Text style={styles.message} numberOfLines={4}>
           {event.message}
         </Text>
-        <Text style={styles.server}>{event.server_name}</Text>
+        <View style={styles.footer}>
+          <Text style={styles.server}>{event.server_name}</Text>
+          {!acked && (
+            <Pressable onPress={onAck} disabled={busy} style={styles.ackBtn}>
+              {busy ? (
+                <ActivityIndicator size="small" color="#cbd5e1" />
+              ) : (
+                <Text style={styles.ackText}>Ack</Text>
+              )}
+            </Pressable>
+          )}
+          {acked && <Text style={styles.ackedLabel}>✓ acked</Text>}
+        </View>
       </View>
     </View>
   );
@@ -41,6 +70,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     alignItems: 'flex-start',
   },
+  rowAcked: { opacity: 0.55 },
   left: {
     width: 84,
     alignItems: 'flex-start',
@@ -65,9 +95,24 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
   },
+  footer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 6,
+  },
   server: {
     color: '#64748b',
     fontSize: 11,
-    marginTop: 4,
   },
+  ackBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    backgroundColor: '#0f172a',
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  ackText: { color: '#cbd5e1', fontSize: 11, fontWeight: '600' },
+  ackedLabel: { color: '#34d399', fontSize: 11, fontWeight: '500' },
 });

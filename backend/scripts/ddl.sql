@@ -709,11 +709,17 @@ CREATE TABLE IF NOT EXISTS system_health_events (
     check_name VARCHAR(80) NOT NULL,
     message TEXT NOT NULL,
     details JSONB,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    acked_at TIMESTAMPTZ,
+    acked_by UUID REFERENCES users(id)
 );
 CREATE INDEX IF NOT EXISTS idx_system_health_events_created_at ON system_health_events(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_system_health_events_server ON system_health_events(server_name);
 CREATE INDEX IF NOT EXISTS idx_system_health_events_severity ON system_health_events(severity);
+CREATE INDEX IF NOT EXISTS idx_system_health_events_unacked ON system_health_events(created_at DESC) WHERE acked_at IS NULL;
+-- PATCH: ack columns for upgrades from earlier rev
+ALTER TABLE system_health_events ADD COLUMN IF NOT EXISTS acked_at TIMESTAMPTZ;
+ALTER TABLE system_health_events ADD COLUMN IF NOT EXISTS acked_by UUID REFERENCES users(id);
 
 -- ============================================================
 -- END OF DDL

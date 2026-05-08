@@ -15,7 +15,14 @@ import {
   type HealthEvent,
   type StatusSnapshot,
 } from '../api/systemHealth';
+import {
+  getHostDaemonStatus,
+  listContainers,
+  type ContainerInspect,
+} from '../api/systemActions';
+import { ActionsPanel } from '../components/ActionsPanel';
 import { AlertRow } from '../components/AlertRow';
+import { ContainerCard } from '../components/ContainerCard';
 import { HealthTile } from '../components/HealthTile';
 import { StatusBadge } from '../components/StatusBadge';
 
@@ -23,11 +30,15 @@ const REFRESH_MS = 30_000;
 
 export default function DashboardScreen({
   onSettings,
+  onTailLogs,
 }: {
   onSettings: () => void;
+  onTailLogs: (containerName: string) => void;
 }) {
   const [snapshot, setSnapshot] = useState<StatusSnapshot | null>(null);
   const [events, setEvents] = useState<HealthEvent[]>([]);
+  const [containers, setContainers] = useState<ContainerInspect[]>([]);
+  const [hostQueueAvailable, setHostQueueAvailable] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -35,9 +46,24 @@ export default function DashboardScreen({
   const load = useCallback(async () => {
     setError(null);
     try {
+      // Health + events are required; containers + host-daemon are best-effort
+      // (older backends without v2 routes still work).
       const [s, e] = await Promise.all([fetchStatus(), fetchEvents({ limit: 25 })]);
       setSnapshot(s);
       setEvents(e);
+
+      try {
+        const c = await listContainers();
+        setContainers(c);
+      } catch {
+        setContainers([]);
+      }
+      try {
+        const h = await getHostDaemonStatus();
+        setHostQueueAvailable(!!h.detail?.queue_mounted);
+      } catch {
+        setHostQueueAvailable(false);
+      }
     } catch (err: any) {
       const detail = err?.response?.data?.detail || err?.message || 'Failed to load';
       setError(typeof detail === 'string' ? detail : 'Failed to load');
@@ -168,11 +194,33 @@ export default function DashboardScreen({
         </>
       )}
 
-      <Text style={[styles.h2, { marginTop: 8 }]}>Recent alerts</Text>
+      {containers.length > 0 && (
+        <>
+          <Text style={[styles.h2, { marginTop: 12 }]}>Containers</Text>
+          {containers.map((c) => (
+            <ContainerCard
+              key={c.name}
+              inspect={c}
+              onTailLogs={onTailLogs}
+              onAfterAction={load}
+            />
+          ))}
+        </>
+      )}
+
+      <ActionsPanel hostQueueAvailable={hostQueueAvailable} onAfterAction={load} />
+
+      <Text style={[styles.h2, { marginTop: 18 }]}>Recent alerts</Text>
       {events.length === 0 ? (
         <Text style={styles.dim}>No events yet. The host-side health-check will populate this once it fires.</Text>
       ) : (
-        events.map((e) => <AlertRow key={e.id} event={e} />)
+        events.map((e) => (
+          <AlertRow
+            key={e.id}
+            event={e}
+            onAcked={(id) => setEvents((cur) => cur.filter((ev) => ev.id !== id))}
+          />
+        ))
       )}
     </ScrollView>
   );

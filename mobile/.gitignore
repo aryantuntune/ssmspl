@@ -3,6 +3,10 @@ node_modules/
 dist/
 web-build/
 
+# Expo prebuild output — regenerable, 1GB+
+android/
+ios/
+
 # OS
 .DS_Store
 Thumbs.db

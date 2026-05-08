@@ -17,6 +17,17 @@ services:
       # backups live at /home/ssmspl-admin-backups (NOT ./backups). Host
       # cron writes pg_dump output here; /api/backup/* reads from /app/backups.
       - /home/ssmspl-admin-backups:/app/backups
+      # Docker socket for SuperAdmin remote-control (restart container, logs,
+      # stats). Read-only inside container — the docker SDK only needs RW for
+      # writes, but we use it for restart/logs/inspect which work read-only on
+      # most snap-docker setups. SUPER_ADMIN-only at the router gate.
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Host-action queue: backend writes JSON requests, host-side daemon
+      # picks them up and runs whitelisted privileged ops (kill -9, iptables
+      # fix, etc.). If the dir doesn't exist on host, the bind silently
+      # mounts an empty volume and host_action_service.is_queue_mounted()
+      # returns false — endpoints stay safely disabled.
+      - /var/lib/ssmspl-host-actions:/var/lib/ssmspl-host-actions
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:
