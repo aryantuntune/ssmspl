@@ -12,6 +12,12 @@ services:
       # The host-side cron writes backups to ./backups (mounted below).
       BACKUP_DIR: /app/backups
     env_file: ./backend/.env.admin
+    # The host's docker group GID (snap-docker on Server 2 uses 987). Required
+    # so the appuser (uid 1000) inside the container can read /var/run/docker.sock.
+    # If the host docker group GID changes, update this to match `stat -c %g
+    # /var/run/docker.sock` on the host.
+    group_add:
+      - "987"
     volumes:
       # snap-docker on Server 2 cannot bind-mount paths outside /home, so
       # backups live at /home/ssmspl-admin-backups (NOT ./backups). Host
