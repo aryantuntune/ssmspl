@@ -94,7 +94,11 @@ async def restart_container(
 async def prune_images(
     current_user: Annotated[User, Depends(_super_admin_only)],
 ):
-    result = system_actions_service.prune_docker_images()
+    try:
+        result = system_actions_service.prune_docker_images()
+    except Exception as e:  # noqa: BLE001
+        logger.exception("prune_images failed")
+        return ActionResult(ok=False, error=f"prune raised: {e}")
     await log_activity(
         getattr(current_user, "active_session_id", None),
         current_user.id,
@@ -111,7 +115,11 @@ async def prune_images(
 async def trigger_backup(
     current_user: Annotated[User, Depends(_super_admin_only)],
 ):
-    result = system_actions_service.trigger_backup()
+    try:
+        result = system_actions_service.trigger_backup()
+    except Exception as e:  # noqa: BLE001
+        logger.exception("trigger_backup failed")
+        return ActionResult(ok=False, error=f"trigger_backup raised: {e}")
     await log_activity(
         getattr(current_user, "active_session_id", None),
         current_user.id,
@@ -125,7 +133,11 @@ async def trigger_backup(
 async def force_sync(
     current_user: Annotated[User, Depends(_super_admin_only)],
 ):
-    result = system_actions_service.force_sync()
+    try:
+        result = system_actions_service.force_sync()
+    except Exception as e:  # noqa: BLE001
+        logger.exception("force_sync failed")
+        return ActionResult(ok=False, error=f"force_sync raised: {e}")
     await log_activity(
         getattr(current_user, "active_session_id", None),
         current_user.id,
@@ -143,20 +155,36 @@ async def test_push(
     current_user: Annotated[User, Depends(_super_admin_only)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    """Fire a test push to all registered devices. Useful to verify the chain after install."""
-    result = await push_service.send_push(
-        db,
-        title="SSMSPL — test push",
-        body="If you see this, your SuperAdmin app + backend chain is healthy.",
-        data={"kind": "test"},
-    )
+    """Fire a test push to all registered devices. Useful to verify the chain after install.
+
+    Considered successful as long as the action ran cleanly — having zero
+    devices registered is an informational outcome (mobile UI explains it),
+    not a failure. We only mark `ok=False` if every send attempt failed.
+    """
+    try:
+        result = await push_service.send_push(
+            db,
+            title="SSMSPL — test push",
+            body="If you see this, your SuperAdmin app + backend chain is healthy.",
+            data={"kind": "test"},
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.exception("test_push: send_push raised")
+        return ActionResult(ok=False, error=f"send_push raised: {e}")
+
     await log_activity(
         getattr(current_user, "active_session_id", None),
         current_user.id,
         ActivityAction.SYSTEM_TEST_PUSH,
         result,
     )
-    return ActionResult(ok=result["sent"] > 0, detail=result)
+
+    devices = result.get("devices", 0)
+    sent = result.get("sent", 0)
+    # No devices registered = informational, not failure
+    # Devices > 0 but sent == 0 = real failure (transport/auth issue)
+    ok = devices == 0 or sent > 0
+    return ActionResult(ok=ok, detail=result)
 
 
 class AckBody(BaseModel):

@@ -14,6 +14,23 @@ Notifications.setNotificationHandler({
   }),
 });
 
+export type PushRegistrationResult = {
+  token: string | null;
+  ok: boolean;
+  reason?: string;
+};
+
+const PLACEHOLDER_PROJECT_ID = 'REPLACE_WITH_YOUR_EAS_PROJECT_ID';
+
+function getValidProjectId(): string | null {
+  const id =
+    (Constants.expoConfig?.extra as any)?.eas?.projectId ??
+    (Constants as any).easConfig?.projectId ??
+    null;
+  if (!id || id === PLACEHOLDER_PROJECT_ID || id.length < 8) return null;
+  return id;
+}
+
 export async function ensurePermissions(): Promise<boolean> {
   if (!Device.isDevice) return false;
   let { status } = await Notifications.getPermissionsAsync();
@@ -24,40 +41,61 @@ export async function ensurePermissions(): Promise<boolean> {
   return status === 'granted';
 }
 
-export async function getExpoPushToken(): Promise<string | null> {
-  if (!Device.isDevice) return null;
-  if (Platform.OS === 'android') {
-    await Notifications.setNotificationChannelAsync('default', {
-      name: 'default',
-      importance: Notifications.AndroidImportance.MAX,
-      vibrationPattern: [0, 250, 250, 250],
-      lightColor: '#3B82F6',
-    });
+export async function registerForPushNotifications(deviceLabel?: string): Promise<PushRegistrationResult> {
+  if (!Device.isDevice) {
+    return { token: null, ok: false, reason: 'Not a physical device — push only works on real hardware.' };
   }
-  const projectId =
-    Constants.expoConfig?.extra?.eas?.projectId ??
-    Constants.easConfig?.projectId;
-  try {
-    const r = await Notifications.getExpoPushTokenAsync(
-      projectId ? { projectId } : undefined,
-    );
-    return r.data;
-  } catch (e) {
-    console.warn('getExpoPushTokenAsync failed', e);
-    return null;
-  }
-}
 
-export async function registerForPushNotifications(deviceLabel?: string): Promise<string | null> {
   const granted = await ensurePermissions();
-  if (!granted) return null;
-  const token = await getExpoPushToken();
-  if (!token) return null;
+  if (!granted) {
+    return { token: null, ok: false, reason: 'Notification permission denied. Enable in Android Settings → Apps → SSMSPL SuperAdmin → Notifications.' };
+  }
+
+  if (Platform.OS === 'android') {
+    try {
+      await Notifications.setNotificationChannelAsync('default', {
+        name: 'default',
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#3B82F6',
+      });
+    } catch {
+      // channel setup is best-effort
+    }
+  }
+
+  const projectId = getValidProjectId();
+  if (!projectId) {
+    return {
+      token: null,
+      ok: false,
+      reason:
+        'No EAS project ID configured. Run `npx eas init` in mobile/ to create one, then put the UUID in app.json under extra.eas.projectId. Without it, Expo refuses to issue push tokens.',
+    };
+  }
+
+  let token: string;
+  try {
+    const r = await Notifications.getExpoPushTokenAsync({ projectId });
+    token = r.data;
+  } catch (e: any) {
+    return {
+      token: null,
+      ok: false,
+      reason: `Expo push-token fetch failed: ${e?.message ?? e}`,
+    };
+  }
+
   try {
     await registerDevice(token, deviceLabel);
     await prefs.set(PUSH_TOKEN_KEY, token);
-  } catch (e) {
-    console.warn('registerDevice failed', e);
+  } catch (e: any) {
+    return {
+      token,
+      ok: false,
+      reason: `Got token but backend registerDevice failed: ${e?.response?.data?.detail ?? e?.message ?? e}`,
+    };
   }
-  return token;
+
+  return { token, ok: true };
 }

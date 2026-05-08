@@ -69,7 +69,11 @@ export function ActionsPanel({ hostQueueAvailable, onAfterAction }: Props) {
           onPress={() => wrap(testPush)}
           resultLabel={(r) => {
             const d = r?.detail ?? {};
-            return `Sent to ${d.sent ?? 0} device(s) · ${d.failed ?? 0} failed`;
+            const devs = d.devices ?? 0;
+            const sent = d.sent ?? 0;
+            if (devs === 0) return 'No registered devices — open Settings to register';
+            if (sent === devs) return `Sent to all ${sent} device${sent === 1 ? '' : 's'}`;
+            return `Sent to ${sent} of ${devs} (rest failed — see logs)`;
           }}
         />
       </View>

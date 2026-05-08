@@ -44,7 +44,9 @@ export default function LoginScreen({ onLoggedIn }: { onLoggedIn: () => void }) 
         setBusy(false);
         return;
       }
-      // Best-effort push registration; failures don't block login.
+      // Best-effort push registration; failures don't block login. The
+      // Settings screen surfaces the precise reason if registration didn't
+      // succeed (permission denied, EAS project ID missing, backend error…).
       registerForPushNotifications(`${me.username} (mobile)`).catch(() => {});
       onLoggedIn();
     } catch (e: any) {

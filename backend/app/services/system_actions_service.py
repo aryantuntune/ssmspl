@@ -116,10 +116,18 @@ def trigger_backup() -> dict:
     """Drop a .trigger file in BACKUP_DIR — same path the existing /api/backup/trigger uses.
 
     Reuses the same atomic-create pattern so two trigger calls don't race.
+    Catches every plausible OS error so the router gets a clean dict, never
+    a 500 — the caller should never have to scrape stack traces from logs.
     """
     bdir = Path(os.environ.get("BACKUP_DIR", "/app/backups"))
     if not bdir.exists():
-        return {"ok": False, "error": f"{bdir} not mounted"}
+        return {"ok": False, "error": f"backup dir {bdir} is not mounted"}
+    if not os.access(bdir, os.W_OK):
+        return {
+            "ok": False,
+            "error": f"backup dir {bdir} is not writable by the backend container "
+                     f"(uid {os.geteuid()}). Fix on host: chmod 1777 the host bind path.",
+        }
     trigger = bdir / ".trigger"
     try:
         fd = os.open(str(trigger), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
@@ -127,20 +135,29 @@ def trigger_backup() -> dict:
         os.close(fd)
         return {"ok": True, "triggered_at": datetime.now(timezone.utc).isoformat()}
     except FileExistsError:
-        return {"ok": False, "error": "a backup is already in progress"}
+        return {"ok": False, "error": "a backup is already in progress (.trigger marker exists)"}
+    except PermissionError as e:
+        return {"ok": False, "error": f"permission denied writing {trigger}: {e}"}
+    except OSError as e:
+        return {"ok": False, "error": f"OS error writing {trigger}: {e}"}
 
 
 def force_sync() -> dict:
     """Drop .sync_needed marker — host cron's gdrive sync picks it up within 5 min."""
     bdir = Path(os.environ.get("BACKUP_DIR", "/app/backups"))
     if not bdir.exists():
-        return {"ok": False, "error": f"{bdir} not mounted"}
+        return {"ok": False, "error": f"backup dir {bdir} is not mounted"}
+    if not os.access(bdir, os.W_OK):
+        return {
+            "ok": False,
+            "error": f"backup dir {bdir} is not writable by the backend container",
+        }
     marker = bdir / ".sync_needed"
     try:
         marker.touch()
         return {"ok": True, "marker": str(marker)}
     except OSError as e:
-        return {"ok": False, "error": str(e)}
+        return {"ok": False, "error": f"failed to write {marker}: {e}"}
 
 
 def prune_docker_images() -> dict:

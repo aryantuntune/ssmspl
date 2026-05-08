@@ -44,12 +44,15 @@ export default function SettingsScreen({
   }, []);
 
   const reRegisterPush = async () => {
-    const t = await registerForPushNotifications(`${me?.username ?? 'mobile'} (re-reg)`);
-    if (t) {
-      Alert.alert('Push registered', `Token registered: ${t.slice(0, 24)}…`);
+    const r = await registerForPushNotifications(`${me?.username ?? 'mobile'} (re-reg)`);
+    if (r.ok && r.token) {
+      Alert.alert('Push registered', `Token: ${r.token.slice(0, 30)}…\n\nThis device will now receive CRIT alerts.`);
       load();
     } else {
-      Alert.alert('Push not granted', 'Notifications permission denied.');
+      Alert.alert(
+        'Push registration failed',
+        r.reason ?? 'Unknown error. Check device notification settings.',
+      );
     }
   };
 
