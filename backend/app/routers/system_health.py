@@ -135,14 +135,26 @@ async def list_events(
     severity: str | None = Query(None, pattern=r"^(INFO|WARN|CRIT)$"),
     server_name: str | None = Query(None, max_length=40),
     limit: int = Query(50, ge=1, le=500),
+    unacked_only: bool = Query(False),
 ):
     q = select(SystemHealthEvent).order_by(desc(SystemHealthEvent.created_at)).limit(limit)
     if severity:
         q = q.where(SystemHealthEvent.severity == severity)
     if server_name:
         q = q.where(SystemHealthEvent.server_name == server_name)
+    if unacked_only:
+        q = q.where(SystemHealthEvent.acked_at.is_(None))
     rows = (await db.execute(q)).scalars().all()
     return list(rows)
+
+
+@router.get("/backups")
+async def list_backups(
+    _user: Annotated[User, Depends(_admin_or_super)],
+    limit: int = Query(10, ge=1, le=50),
+):
+    """Returns recent pg_dump files in BACKUP_DIR — name, size, age."""
+    return system_health_service.get_backup_history(limit=limit)
 
 
 @router.post("/events", response_model=HealthEventIngestResponse, status_code=status.HTTP_201_CREATED)

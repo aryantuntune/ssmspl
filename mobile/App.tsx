@@ -7,11 +7,13 @@ import { Subscription } from 'expo-notifications';
 
 import LoginScreen from './src/screens/LoginScreen';
 import DashboardScreen from './src/screens/DashboardScreen';
+import IncidentReportScreen from './src/screens/IncidentReportScreen';
 import LogsScreen from './src/screens/LogsScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
+import VersionsScreen from './src/screens/VersionsScreen';
 import { tokens } from './src/lib/storage';
 
-type Screen = 'login' | 'dashboard' | 'settings' | 'logs';
+type Screen = 'login' | 'dashboard' | 'settings' | 'logs' | 'versions' | 'incident';
 
 export default function App() {
   const [screen, setScreen] = useState<Screen | null>(null);
@@ -51,6 +53,8 @@ export default function App() {
         {screen === 'dashboard' && (
           <DashboardScreen
             onSettings={() => setScreen('settings')}
+            onVersions={() => setScreen('versions')}
+            onIncidentReport={() => setScreen('incident')}
             onTailLogs={(name) => {
               setLogsContainer(name);
               setScreen('logs');
@@ -62,6 +66,12 @@ export default function App() {
             containerName={logsContainer}
             onClose={() => setScreen('dashboard')}
           />
+        )}
+        {screen === 'versions' && (
+          <VersionsScreen onClose={() => setScreen('dashboard')} />
+        )}
+        {screen === 'incident' && (
+          <IncidentReportScreen onClose={() => setScreen('dashboard')} />
         )}
         {screen === 'settings' && (
           <SettingsScreen

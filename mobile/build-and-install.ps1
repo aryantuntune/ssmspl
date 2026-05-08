@@ -29,11 +29,11 @@ if (-not (Test-Path "android\settings.gradle")) {
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 
-# ── build debug APK ───────────────────────────────────────────────────
-Write-Host "→ Compiling debug APK with Gradle (first build is slow, ~5-10 min)…" -ForegroundColor Cyan
+# ── build release APK (debug builds require Metro dev server — unusable for sideload) ──
+Write-Host "→ Compiling release APK with Gradle (first build ~5-10 min)…" -ForegroundColor Cyan
 Push-Location android
 try {
-    .\gradlew.bat assembleDebug --no-daemon
+    .\gradlew.bat assembleRelease --no-daemon
     if ($LASTEXITCODE -ne 0) {
         Write-Host "Gradle build FAILED" -ForegroundColor Red
         exit $LASTEXITCODE
@@ -42,7 +42,7 @@ try {
     Pop-Location
 }
 
-$apk = "android\app\build\outputs\apk\debug\app-debug.apk"
+$apk = "android\app\build\outputs\apk\release\app-release.apk"
 if (-not (Test-Path $apk)) {
     Write-Host "ERROR: APK not found at $apk" -ForegroundColor Red
     exit 1

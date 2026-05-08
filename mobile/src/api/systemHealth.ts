@@ -8,12 +8,23 @@ export type DiskStatus = {
 export type MemoryStatus = {
   total_mb: number; used_mb: number; available_mb: number; pct_used: number; severity: Severity;
 };
+export type SystemInfo = {
+  uptime_s: number; uptime_str: string; boot_at: string;
+  load_avg_1: number; load_avg_5: number; load_avg_15: number;
+  cpu_count: number; cpu_pct: number;
+  net_rx_kbs: number; net_tx_kbs: number;
+  severity: Severity; error?: string;
+};
 export type DbStatus = {
   connections?: number; max_connections?: number; pct_used?: number; severity: Severity; error?: string;
 };
 export type BackupStatus = {
   present: boolean; count?: number; latest_file?: string; latest_size_mb?: number; age_hours?: number;
   severity: Severity; message?: string;
+};
+export type TodayActivity = {
+  tickets_today?: number; revenue_today?: number; tickets_last_hour?: number;
+  active_sessions?: number; severity: Severity; error?: string;
 };
 export type TicketingStatus = {
   seconds_since_last_ticket: number; minutes_since_last_ticket: number;
@@ -30,11 +41,20 @@ export type StatusSnapshot = {
   checked_at: string;
   disk: DiskStatus;
   memory: MemoryStatus;
+  system: SystemInfo;
   db: DbStatus;
   backup: BackupStatus;
+  today: TodayActivity;
   ticketing: TicketingStatus;
   replication: ReplicationStatus;
   overall_severity: Severity;
+};
+
+export type BackupHistoryEntry = {
+  name: string;
+  size_mb: number;
+  age_hours: number;
+  mtime: string;
 };
 
 export type HealthEvent = {
@@ -63,9 +83,15 @@ export async function fetchStatus(): Promise<StatusSnapshot> {
   return r.data;
 }
 
-export async function fetchEvents(params: { severity?: 'INFO' | 'WARN' | 'CRIT'; limit?: number } = {}): Promise<HealthEvent[]> {
+export async function fetchEvents(params: { severity?: 'INFO' | 'WARN' | 'CRIT'; limit?: number; unacked_only?: boolean } = {}): Promise<HealthEvent[]> {
   const c = await getClient();
   const r = await c.get('/api/system-health/events', { params });
+  return r.data;
+}
+
+export async function fetchBackupHistory(limit = 10): Promise<BackupHistoryEntry[]> {
+  const c = await getClient();
+  const r = await c.get('/api/system-health/backups', { params: { limit } });
   return r.data;
 }
 

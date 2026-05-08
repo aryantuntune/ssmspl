@@ -95,6 +95,12 @@ export async function ackEvent(eventId: number): Promise<ActionResult> {
   return r.data;
 }
 
+export async function ackAllEvents(): Promise<ActionResult> {
+  const c = await getClient();
+  const r = await c.post(`${ACTIONS_BASE}/events/ack-all`);
+  return r.data;
+}
+
 // ─── host-daemon actions ────────────────────────────────────────────
 
 export async function getHostDaemonStatus(): Promise<HostDaemonStatus> {
@@ -110,5 +116,87 @@ export async function submitHostAction(
 ): Promise<ActionResult> {
   const c = await getClient();
   const r = await c.post(`${ACTIONS_BASE}/host`, { action, params, timeout_s: timeoutS });
+  return r.data;
+}
+
+// ─── version + releases + rollback ─────────────────────────────────
+
+export type VersionInfo = {
+  git_sha: string;
+  build_ts: string;
+  alembic_head: string;
+  image_tag: string;
+};
+
+export type ReleaseEntry = {
+  image_tag: string;
+  git_sha: string;
+  build_ts: string;
+  alembic_head: string;
+  deployed_at?: string;
+  deployed_by?: string;
+  host?: string;
+  image_present: boolean;
+  is_current: boolean;
+};
+
+export type ReleasesResponse = {
+  current: VersionInfo;
+  releases: ReleaseEntry[];
+};
+
+export async function getCurrentVersion(): Promise<VersionInfo> {
+  const c = await getClient();
+  const r = await c.get(`${ACTIONS_BASE}/version`);
+  return r.data;
+}
+
+export async function listReleases(limit = 20): Promise<ReleasesResponse> {
+  const c = await getClient();
+  const r = await c.get(`${ACTIONS_BASE}/releases`, { params: { limit } });
+  return r.data;
+}
+
+export async function rollbackToRelease(
+  imageTag: string,
+  forceSchemaDrift = false,
+): Promise<ActionResult> {
+  const c = await getClient();
+  const r = await c.post(`${ACTIONS_BASE}/rollback`, {
+    image_tag: imageTag,
+    force_schema_drift: forceSchemaDrift,
+  });
+  return r.data;
+}
+
+// ─── incident report ───────────────────────────────────────────────
+
+export type IncidentReport = {
+  generated_at: string;
+  version: VersionInfo;
+  snapshot: any;
+  containers: any[];
+  container_logs: Record<string, string[]>;
+  events: Array<{
+    id: number;
+    server_name: string;
+    severity: string;
+    check_name: string;
+    message: string;
+    created_at: string | null;
+    acked_at: string | null;
+  }>;
+  activity: Array<{
+    id: string | null;
+    action_type: string;
+    user_id: string | null;
+    created_at: string | null;
+    metadata: Record<string, unknown> | null;
+  }>;
+};
+
+export async function fetchIncidentReport(logLines = 200): Promise<IncidentReport> {
+  const c = await getClient();
+  const r = await c.get(`${ACTIONS_BASE}/incident-report`, { params: { log_lines: logLines } });
   return r.data;
 }

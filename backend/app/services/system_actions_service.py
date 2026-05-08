@@ -144,17 +144,56 @@ def force_sync() -> dict:
 
 
 def prune_docker_images() -> dict:
-    """docker image prune --force (untagged + dangling). Frees disk."""
+    """Remove ONLY truly dangling images (tag = <none>). We never delete tagged
+    images because rollback targets are kept by tag — accidental garbage-collection
+    of a release tag would silently break rollback.
+    """
     client = _docker_client()
     try:
-        result = client.images.prune(filters={"dangling": False})
+        # `dangling: True` filter restricts to images with no repo tag at all
+        # (the literal `<none>:<none>` rows). Any image we explicitly tagged
+        # for a release survives.
+        result = client.images.prune(filters={"dangling": True})
         return {
             "ok": True,
             "images_deleted": len(result.get("ImagesDeleted") or []),
             "space_reclaimed_mb": round((result.get("SpaceReclaimed") or 0) / 2**20, 1),
+            "note": "release-tagged images preserved",
         }
     except Exception as e:  # noqa: BLE001
         return {"ok": False, "error": str(e)}
+
+
+def list_image_tags(repo_pattern: str = "ssmspl") -> list[dict]:
+    """List image tags on host matching a repo pattern. Used by /releases to
+    cross-check that manifest entries still have a real image to roll back to."""
+    client = _docker_client()
+    out: list[dict] = []
+    try:
+        for img in client.images.list():
+            for tag in img.tags or []:
+                if repo_pattern in tag:
+                    out.append(
+                        {
+                            "tag": tag,
+                            "id": img.short_id,
+                            "created": img.attrs.get("Created"),
+                            "size_mb": round((img.attrs.get("Size") or 0) / 2**20, 1),
+                        }
+                    )
+    except Exception as e:  # noqa: BLE001
+        logger.warning("list_image_tags failed: %s", e)
+    return out
+
+
+def image_tag_exists(tag: str) -> bool:
+    """Pre-rollback validation: refuse to start if the target image is gone."""
+    client = _docker_client()
+    try:
+        client.images.get(tag)
+        return True
+    except Exception:  # noqa: BLE001 — docker.errors.ImageNotFound or daemon errors
+        return False
 
 
 def disk_cleanup_logs() -> dict:

@@ -25,93 +25,92 @@ export function ActionsPanel({ hostQueueAvailable, onAfterAction }: Props) {
 
   return (
     <View style={styles.wrap}>
-      <Text style={styles.title}>Quick actions</Text>
-
+      <Text style={styles.section}>Backups & sync</Text>
       <View style={styles.row}>
         <ActionButton
-          label="Trigger backup"
-          icon="⤓"
+          label="Backup database now"
           variant="primary"
-          confirm="Start a manual pg_dump now?"
-          hint="writes .trigger marker"
+          confirm="Start a manual pg_dump? Runs in ~30s; non-blocking."
+          hint="Triggers an immediate Postgres dump"
           onPress={() => wrap(triggerBackup)}
-          resultLabel={(r) => (r?.ok ? `triggered @ ${(r?.detail?.triggered_at ?? '').slice(11, 19)}` : r?.error ?? 'failed')}
+          resultLabel={(r) =>
+            r?.ok
+              ? `Triggered at ${(r?.detail?.triggered_at ?? '').slice(11, 19)} UTC`
+              : r?.error ?? 'Failed'
+          }
         />
         <ActionButton
-          label="Force GDrive sync"
-          icon="↑"
+          label="Sync to Google Drive"
           variant="primary"
-          hint="touches .sync_needed"
+          hint="Uploads pending backups offsite"
           onPress={() => wrap(forceSync)}
-          resultLabel={(r) => (r?.ok ? 'sync queued' : r?.error ?? 'failed')}
+          resultLabel={(r) => (r?.ok ? 'Sync queued for next run' : r?.error ?? 'Failed')}
         />
       </View>
 
+      <Text style={styles.section}>Maintenance</Text>
       <View style={styles.row}>
         <ActionButton
-          label="Prune images"
-          icon="✂"
+          label="Clean unused Docker images"
           variant="warn"
-          confirm="Delete dangling docker images? Frees disk."
-          hint="docker image prune"
+          confirm="Delete dangling Docker images? Frees disk; safe — only removes what's no longer referenced."
+          hint="Frees disk space"
           onPress={() => wrap(pruneImages)}
           resultLabel={(r) => {
-            if (!r?.ok) return r?.error ?? 'failed';
+            if (!r?.ok) return r?.error ?? 'Failed';
             const d = r.detail ?? {};
-            return `${d.images_deleted ?? 0} images, ${d.space_reclaimed_mb ?? 0} MB freed`;
+            return `Removed ${d.images_deleted ?? 0} image(s) · freed ${d.space_reclaimed_mb ?? 0} MB`;
           }}
         />
         <ActionButton
-          label="Test push"
-          icon="📨"
+          label="Send test alert to phone"
           variant="ghost"
-          hint="fans out to all devices"
+          hint="Verifies push notifications work"
           onPress={() => wrap(testPush)}
           resultLabel={(r) => {
             const d = r?.detail ?? {};
-            return `sent ${d.sent ?? 0}, failed ${d.failed ?? 0}`;
+            return `Sent to ${d.sent ?? 0} device(s) · ${d.failed ?? 0} failed`;
           }}
         />
       </View>
 
       {hostQueueAvailable && (
         <>
-          <Text style={[styles.title, { marginTop: 18 }]}>Host actions</Text>
-          <Text style={styles.subtle}>Privileged ops via the host-side daemon.</Text>
+          <Text style={styles.section}>Host-level fixes</Text>
+          <Text style={styles.subtle}>
+            These run on the host machine itself, not in a container — used to recover from broken
+            networking or stuck containers.
+          </Text>
           <View style={styles.row}>
             <ActionButton
-              label="iptables fix"
-              icon="🛡"
+              label="Re-apply iptables rules"
               variant="warn"
-              hint="re-runs FORWARD-chain script"
+              hint="Fixes Docker FORWARD-chain breakage"
               onPress={() => submitHostAction('run_iptables_fix')}
               resultLabel={hostResultLabel}
             />
             <ActionButton
-              label="Run health-check"
-              icon="♥"
+              label="Run host health check"
               variant="ghost"
-              hint="manual scripts/health_check.sh"
+              hint="Re-runs health_check.sh manually"
               onPress={() => submitHostAction('run_health_check', {}, 60)}
               resultLabel={hostResultLabel}
             />
           </View>
           <View style={styles.row}>
             <ActionButton
-              label="Cleanup logs"
-              icon="🧹"
+              label="Truncate large host logs"
               variant="ghost"
-              confirm="Truncate large log files (>100 MB) on host?"
-              hint="frees /var/log space"
+              confirm="Truncate any /var/log file over 200MB on the host?"
+              hint="Frees disk in /var/log"
               onPress={() => submitHostAction('cleanup_logs')}
               resultLabel={hostResultLabel}
             />
             <ActionButton
-              label="Force-recreate backend"
-              icon="↻"
+              label="Force-recreate admin-backend"
               variant="danger"
-              confirm="Stop & recreate admin-backend container? Brief downtime."
-              hint="for zombie-pid recovery"
+              confirm="Stop & recreate the admin-backend container? ~30s downtime — use when it's stuck."
+              hint="Recovers from zombie container"
               onPress={() => submitHostAction('force_recreate_admin_backend', {}, 90)}
               resultLabel={hostResultLabel}
             />
@@ -121,8 +120,8 @@ export function ActionsPanel({ hostQueueAvailable, onAfterAction }: Props) {
 
       {!hostQueueAvailable && (
         <Text style={styles.note}>
-          Host-action daemon not detected. Install ssmspl-host-action-daemon on the server to enable
-          privileged ops (iptables fix, force-recreate, log cleanup).
+          Host-action daemon is not installed yet. Once set up, this panel gains buttons for
+          iptables fix, container force-recreate, and host log cleanup.
         </Text>
       )}
     </View>
@@ -130,18 +129,26 @@ export function ActionsPanel({ hostQueueAvailable, onAfterAction }: Props) {
 }
 
 function hostResultLabel(r: any): string {
-  if (!r) return 'no response';
+  if (!r) return 'No response';
   if (r.error) return r.error;
-  if (r.exit_code === 0) return 'ok';
-  if (r.exit_code != null) return `exit ${r.exit_code}`;
-  return r.ok ? 'queued' : 'failed';
+  if (r.exit_code === 0) return 'Done';
+  if (r.exit_code != null) return `Exit code ${r.exit_code}`;
+  return r.ok ? 'Queued' : 'Failed';
 }
 
 const styles = StyleSheet.create({
-  wrap: { marginTop: 20 },
-  title: { color: '#cbd5e1', fontSize: 16, fontWeight: '600', marginBottom: 8 },
-  subtle: { color: '#94a3b8', fontSize: 12, marginBottom: 8 },
-  row: { flexDirection: 'row', gap: 10, marginBottom: 12 },
+  wrap: { marginTop: 4 },
+  section: {
+    color: '#cbd5e1',
+    fontSize: 14,
+    fontWeight: '600',
+    marginTop: 18,
+    marginBottom: 8,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  subtle: { color: '#94a3b8', fontSize: 12, marginBottom: 10, lineHeight: 16 },
+  row: { flexDirection: 'row', gap: 10, marginBottom: 10 },
   note: {
     color: '#94a3b8',
     fontSize: 12,
@@ -149,6 +156,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#1e293b',
     padding: 10,
     borderRadius: 8,
-    marginTop: 4,
+    marginTop: 14,
   },
 });

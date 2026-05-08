@@ -69,10 +69,14 @@ services:
       # Docker socket — used by SuperAdmin remote-control endpoints
       # (restart container, logs, stats). SUPER_ADMIN-only at the router gate.
       - /var/run/docker.sock:/var/run/docker.sock
-      # Host-action queue (optional; if /var/lib/ssmspl-host-actions doesn't
-      # exist on host, host_action_service.is_queue_mounted() returns false
-      # and the /host endpoint stays disabled).
+      # Host-action queue (optional; if the dir doesn't exist on host,
+      # host_action_service.is_queue_mounted() returns false and the /host
+      # endpoint stays disabled).
       - /var/lib/ssmspl-host-actions:/var/lib/ssmspl-host-actions
+      # Release manifest dir — survives container recreation, written by deploy
+      # script, read by /api/system-health/actions/releases. Mounted as a
+      # directory so docker doesn't auto-create the manifest path as a dir.
+      - /var/lib/ssmspl-releases:/app/releases
     depends_on:
       db:
         condition: service_healthy
