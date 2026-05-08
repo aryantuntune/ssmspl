@@ -18,6 +18,11 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     ADMIN_PORTAL_MODE: bool = False
 
+    # Shared secret for the host-side health_check.sh to POST events to
+    # /api/system-health/events. Must match X-Health-Token header. If unset,
+    # event ingestion is disabled (returns 503).
+    HEALTH_INGEST_SECRET: str | None = None
+
     # Security
     SECRET_KEY: str
     ALGORITHM: str = "HS256"

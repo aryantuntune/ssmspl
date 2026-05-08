@@ -1,0 +1,27 @@
+node_modules/
+.expo/
+dist/
+web-build/
+
+# Expo prebuild output — regenerable, 1GB+
+android/
+ios/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+*.apk
+*.aab
+*.jks
+*.keystore
+
+# Local env / secrets
+.env
+.env.local
+expo-env.d.ts
+
+# IDE
+.vscode/
+.idea/

@@ -684,6 +684,39 @@ CREATE TRIGGER item_rate_audit
 -- PATCH: Add time_lock_enabled to company
 ALTER TABLE company ADD COLUMN IF NOT EXISTS time_lock_enabled BOOLEAN NOT NULL DEFAULT TRUE;
 
+-- PATCH: SuperAdmin mobile app — push device registry + health event log
+CREATE TABLE IF NOT EXISTS push_devices (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    expo_push_token VARCHAR(255) NOT NULL UNIQUE,
+    device_label VARCHAR(120),
+    platform VARCHAR(20) NOT NULL DEFAULT 'android',
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    last_seen_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_push_devices_user_id ON push_devices(user_id);
+CREATE INDEX IF NOT EXISTS idx_push_devices_active ON push_devices(is_active) WHERE is_active = TRUE;
+
+CREATE TABLE IF NOT EXISTS system_health_events (
+    id BIGSERIAL PRIMARY KEY,
+    server_name VARCHAR(40) NOT NULL,
+    severity VARCHAR(10) NOT NULL CHECK (severity IN ('INFO', 'WARN', 'CRIT')),
+    check_name VARCHAR(80) NOT NULL,
+    message TEXT NOT NULL,
+    details JSONB,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    acked_at TIMESTAMPTZ,
+    acked_by UUID REFERENCES users(id)
+);
+CREATE INDEX IF NOT EXISTS idx_system_health_events_created_at ON system_health_events(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_system_health_events_server ON system_health_events(server_name);
+CREATE INDEX IF NOT EXISTS idx_system_health_events_severity ON system_health_events(severity);
+CREATE INDEX IF NOT EXISTS idx_system_health_events_unacked ON system_health_events(created_at DESC) WHERE acked_at IS NULL;
+-- PATCH: ack columns for upgrades from earlier rev
+ALTER TABLE system_health_events ADD COLUMN IF NOT EXISTS acked_at TIMESTAMPTZ;
+ALTER TABLE system_health_events ADD COLUMN IF NOT EXISTS acked_by UUID REFERENCES users(id);
+
 -- ============================================================
 -- END OF DDL
 -- ============================================================

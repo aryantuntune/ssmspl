@@ -9,6 +9,30 @@ services:
       APP_ENV: production
       FORWARDED_ALLOW_IPS: "*"
     env_file: ./backend/.env.admin
+    volumes:
+      # snap-docker on Server 2 cannot bind-mount paths outside /home, so
+      # backups live at /home/ssmspl-admin-backups (NOT ./backups). Host
+      # cron writes pg_dump output here; /api/backup/* reads from /app/backups.
+      - /home/ssmspl-admin-backups:/app/backups
+      # Docker socket for SuperAdmin remote-control (restart container, logs,
+      # stats). Read-only inside container — the docker SDK only needs RW for
+      # writes, but we use it for restart/logs/inspect which work read-only on
+      # most snap-docker setups. SUPER_ADMIN-only at the router gate.
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Host-action queue: backend writes JSON requests, host-side daemon
+      # picks them up and runs whitelisted privileged ops (kill -9, iptables
+      # fix, etc.). The container path stays /var/lib/... so host_action_service
+      # can find it; the host path is /home/... because snap-docker on Server 2
+      # cannot bind-mount paths outside /home. If the dir doesn't exist on
+      # host, the bind silently mounts an empty volume and is_queue_mounted()
+      # returns false — endpoints stay safely disabled.
+      - /home/ssmspl-host-actions:/var/lib/ssmspl-host-actions
+      # Release manifest dir — backend reads <dir>/releases.json for /releases,
+      # deploy script writes to it after each tagged build. Living outside the
+      # image so rollback history survives container recreation. Mounted as
+      # directory (not file) because docker auto-creates non-existent file
+      # paths as directories, which would break the manifest read.
+      - /home/ssmspl-admin-releases:/app/releases
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:
