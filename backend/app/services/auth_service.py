@@ -99,7 +99,12 @@ async def login(
     return {"access_token": access_token, "refresh_token": refresh_token}
 
 
-async def refresh_access_token(db: AsyncSession, refresh_token: str) -> dict:
+async def refresh_access_token(
+    db: AsyncSession,
+    refresh_token: str,
+    *,
+    is_mobile_app: bool = False,
+) -> dict:
     from fastapi import HTTPException, status
     from jose import JWTError
     try:
@@ -135,9 +140,14 @@ async def refresh_access_token(db: AsyncSession, refresh_token: str) -> dict:
         await db.commit()
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="session_idle_timeout")
 
-    # Enforce idle timeout during refresh — prevent stale sessions from renewing
-    # Skip for TICKET_CHECKER — mobile checker app has no heartbeat mechanism
-    if user.session_last_active and user.role != UserRole.TICKET_CHECKER:
+    # Enforce idle timeout during refresh — prevent stale sessions from renewing.
+    # Skipped for:
+    #   - TICKET_CHECKER mobile app (no heartbeat mechanism)
+    #   - SuperAdmin mobile app (is_mobile_app=True): the phone's lock screen
+    #     + SecureStore is the security boundary, not a 10-min web timer.
+    #     Without this, backgrounding the phone for >10 min force-logs out.
+    skip_idle_check = is_mobile_app or user.role == UserRole.TICKET_CHECKER
+    if user.session_last_active and not skip_idle_check:
         idle_seconds = (datetime.now(timezone.utc) - user.session_last_active).total_seconds()
         if idle_seconds > settings.SESSION_IDLE_TIMEOUT_MINUTES * 60:
             from app.services import user_session_service
@@ -156,8 +166,14 @@ async def refresh_access_token(db: AsyncSession, refresh_token: str) -> dict:
     extra = {"role": user.role.value}
     if user.active_session_id:
         extra["sid"] = user.active_session_id
-    # Mobile checkers get long-lived tokens (24h) to avoid frequent refreshing
-    token_ttl = 1440 if user.role == UserRole.TICKET_CHECKER else None
+    # Long-lived (24h) access tokens for:
+    #   - TICKET_CHECKER mobile app (no heartbeat)
+    #   - SuperAdmin mobile app (is_mobile_app=True) — same reasoning,
+    #     plus the phone's lock screen is the auth boundary anyway.
+    # Web-portal refresh keeps the short default TTL so admin sessions
+    # turn over frequently if the same refresh token is replayed elsewhere.
+    long_ttl = is_mobile_app or user.role == UserRole.TICKET_CHECKER
+    token_ttl = 1440 if long_ttl else None
     new_access = create_access_token(subject=str(user.id), extra_claims=extra, expires_minutes=token_ttl)
     new_refresh = create_refresh_token(subject=str(user.id))
 

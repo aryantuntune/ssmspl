@@ -215,7 +215,12 @@ async def superadmin_login(
 )
 @limiter.limit("20/minute")
 async def superadmin_refresh(request: Request, body: RefreshRequest, db: AsyncSession = Depends(get_db)):
-    tokens = await auth_service.refresh_access_token(db, body.refresh_token)
+    # is_mobile_app=True → 24h access tokens + skip the 10-min idle timeout.
+    # The mobile app stores tokens in SecureStore (hardware-backed) and the
+    # OS lock screen / biometric is the access gate, so a desktop-style idle
+    # timeout doesn't fit. Without this the user gets force-logged-out every
+    # ~10 min of phone idle time.
+    tokens = await auth_service.refresh_access_token(db, body.refresh_token, is_mobile_app=True)
     return {
         "access_token": tokens["access_token"],
         "refresh_token": tokens["refresh_token"],
