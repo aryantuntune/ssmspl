@@ -29,6 +29,8 @@ from app.models.admin_adjustment_details import AdminAdjustmentDetails
 from app.models.tickets_backup import TicketsBackup
 from app.models.ticket_items_backup import TicketItemsBackup
 from app.models.item_rate_history import ItemRateHistory
+from app.models.push_device import PushDevice
+from app.models.system_health_event import SystemHealthEvent
 
 __all__ = [
     "User",
@@ -63,4 +65,6 @@ __all__ = [
     "TicketsBackup",
     "TicketItemsBackup",
     "ItemRateHistory",
+    "PushDevice",
+    "SystemHealthEvent",
 ]

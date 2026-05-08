@@ -299,4 +299,45 @@ print('Alert email sent')
 PYEOF
 fi
 
+# ─── SuperAdmin mobile app — push notification via /api/system-health/events ─
+# Configured via /etc/ssmspl_monitor.conf (or ~/.config/ssmspl_monitor.conf):
+#   HEALTH_INGEST_URL=https://admin.carferry.online/api/system-health/events
+#   HEALTH_INGEST_SECRET=<same value as backend's HEALTH_INGEST_SECRET env>
+# Same dedup state as email — won't re-fire if issue list is unchanged.
+if [ "$CRIT_COUNT" -gt 0 ] 2>/dev/null && [ -n "${HEALTH_INGEST_URL:-}" ] && [ -n "${HEALTH_INGEST_SECRET:-}" ]; then
+    if [[ "$SERVER_NAME" == *"Server 1"* ]]; then
+        SERVER_ID="server-1-prod"
+    else
+        SERVER_ID="server-2-admin"
+    fi
+    FIRST_CRIT=$(printf '%s\n' "${ISSUES[@]}" | grep '\[CRIT\]' | head -1 | sed 's/^\[CRIT\] //' | head -c 200)
+    JSON=$(SERVER_ID="$SERVER_ID" FIRST_CRIT="$FIRST_CRIT" \
+           CRIT_COUNT="$CRIT_COUNT" TOTAL="${#ISSUES[@]}" \
+           ALL_ISSUES="$SUMMARY" \
+           python3 -c "
+import json, os
+print(json.dumps({
+    'server_name': os.environ['SERVER_ID'],
+    'severity': 'CRIT',
+    'check_name': 'health_check.batch',
+    'message': os.environ['FIRST_CRIT'] or 'health_check found CRIT issues',
+    'details': {
+        'crit_count': int(os.environ['CRIT_COUNT']),
+        'total_issues': int(os.environ['TOTAL']),
+        'all_issues': os.environ['ALL_ISSUES'][:1500],
+    },
+}))
+")
+    PUSH_RESULT=$(curl -s -m 5 -o /dev/null -w '%{http_code}' \
+        -X POST \
+        -H 'Content-Type: application/json' \
+        -H "X-Health-Token: $HEALTH_INGEST_SECRET" \
+        -d "$JSON" "$HEALTH_INGEST_URL" 2>>$LOG)
+    if [ "$PUSH_RESULT" = "201" ]; then
+        echo "[$TS] push event ingested OK" >> $LOG
+    else
+        echo "[$TS] push event ingest HTTP $PUSH_RESULT" >> $LOG
+    fi
+fi
+
 exit 1

@@ -1,0 +1,47 @@
+{
+  "expo": {
+    "name": "SSMSPL SuperAdmin",
+    "slug": "ssmspl-superadmin",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0b1220"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.ssmspl.superadmin"
+    },
+    "android": {
+      "package": "com.ssmspl.superadmin",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#0b1220"
+      },
+      "permissions": ["NOTIFICATIONS", "POST_NOTIFICATIONS", "INTERNET"]
+    },
+    "plugins": [
+      [
+        "expo-notifications",
+        {
+          "color": "#3b82f6",
+          "androidMode": "default"
+        }
+      ],
+      "expo-secure-store"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "REPLACE_WITH_YOUR_EAS_PROJECT_ID"
+      },
+      "defaultServers": [
+        { "name": "Server 2 — Admin", "url": "https://admin.carferry.online" },
+        { "name": "Server 1 — Prod", "url": "https://carferry.online" }
+      ]
+    }
+  }
+}

@@ -263,6 +263,12 @@ app.include_router(user_sessions.router)
 from app.routers import admin_reports
 app.include_router(admin_reports.router)
 
+# System Health — read-only status + push device registration + event
+# ingestion. Available on both deployments so the SuperAdmin mobile app
+# works against either server independently.
+from app.routers import system_health
+app.include_router(system_health.router)
+
 # Customer-facing routers — disabled on admin portal (no public site / customer portal)
 if not settings.ADMIN_PORTAL_MODE:
     app.include_router(portal_auth.router)

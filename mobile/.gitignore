@@ -1,0 +1,23 @@
+node_modules/
+.expo/
+dist/
+web-build/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+*.apk
+*.aab
+*.jks
+*.keystore
+
+# Local env / secrets
+.env
+.env.local
+expo-env.d.ts
+
+# IDE
+.vscode/
+.idea/
