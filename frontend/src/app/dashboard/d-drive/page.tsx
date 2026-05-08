@@ -11,6 +11,8 @@ import SyncCheckModal from "./components/SyncCheckModal";
 import { Button } from "@/components/ui/button";
 import { History, ShieldCheck, ArrowRightLeft } from "lucide-react";
 
+type Mode = "reconcile" | "transfer" | null;
+
 interface BranchSummary {
   branch_id: number;
   branch_name: string;
@@ -38,23 +40,10 @@ interface TicketPageData {
   total_pages: number;
 }
 
-type TransferTarget =
-  | { mode: "branch"; branchId: number; branchName: string }
-  | { mode: "route"; routeId: number; routeLabel: string };
-
 export default function DDrivePage() {
-  const today = new Date().toISOString().slice(0, 10);
-  const [filters, setFilters] = useState<Filters>({
-    dateStart: today,
-    dateEnd: today,
-    scopeMode: "branch",
-    branchId: "all",
-    routeId: "all",
-    paymentMode: "all",
-    itemId: "all",
-  });
+  const [mode, setMode] = useState<Mode>(null);
+  const [filters, setFilters] = useState<Filters | null>(null);
   const [branches, setBranches] = useState<{ id: number; name: string }[]>([]);
-  const [items, setItems] = useState<{ id: number; name: string }[]>([]);
   const [routes, setRoutes] = useState<RouteOption[]>([]);
   const [summaries, setSummaries] = useState<BranchSummary[]>([]);
   const [ticketData, setTicketData] = useState<TicketPageData>({
@@ -65,39 +54,30 @@ export default function DDrivePage() {
   const [reconcileTarget, setReconcileTarget] = useState<{
     branchId: number; branchName: string; cashTotal: number;
   } | null>(null);
-  const [transferTarget, setTransferTarget] = useState<TransferTarget | null>(null);
+  const [transferTarget, setTransferTarget] = useState<{
+    routeId: number; routeLabel: string;
+  } | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [syncCheckOpen, setSyncCheckOpen] = useState(false);
 
   useEffect(() => {
     api.get("/api/branches", { params: { limit: 200, status: "active" } })
       .then(r => setBranches(r.data?.branches ?? r.data ?? [])).catch(() => {});
-    api.get("/api/items", { params: { limit: 200, status: "all" } })
-      .then(r => setItems(r.data?.items ?? r.data ?? [])).catch(() => {});
     api.get("/api/routes", { params: { limit: 200, status: "active" } })
       .then(r => setRoutes(r.data?.routes ?? r.data ?? [])).catch(() => {});
   }, []);
 
   const selectedRoute = useMemo<RouteOption | null>(() => {
-    if (filters.scopeMode !== "route" || filters.routeId === "all") return null;
+    if (!filters || filters.scopeMode !== "route" || filters.routeId === "all") return null;
     return routes.find(r => String(r.id) === filters.routeId) ?? null;
-  }, [filters.scopeMode, filters.routeId, routes]);
+  }, [filters, routes]);
 
-  const buildParams = (f: Filters, page = 1) => {
+  const buildParams = useCallback((f: Filters, page = 1) => {
     const p: Record<string, string> = { date_start: f.dateStart, date_end: f.dateEnd };
-    // Scope filter: in branch mode pass branch_id; in route mode pass both
-    // endpoint branches via comma-separated branch_id (the existing summary &
-    // tickets endpoints accept a single value, so for route mode we omit the
-    // branch filter entirely and instead rely on the front-end card layout to
-    // surface only the two participating branches if a specific route is chosen).
-    if (f.scopeMode === "branch") {
-      if (f.branchId !== "all") p.branch_id = f.branchId;
-    }
-    if (f.paymentMode !== "all") p.payment_mode = f.paymentMode;
-    if (f.itemId !== "all") p.item_id = f.itemId;
+    if (f.scopeMode === "branch" && f.branchId !== "all") p.branch_id = f.branchId;
     if (page > 1) p.page = String(page);
     return p;
-  };
+  }, []);
 
   const loadData = useCallback(async (f: Filters, page = 1) => {
     const params = buildParams(f, page);
@@ -106,8 +86,6 @@ export default function DDrivePage() {
     api.get("/api/admin/d-drive/summary", { params })
       .then(r => {
         let data: BranchSummary[] = r.data ?? [];
-        // Route mode + specific route: client-side filter to the two endpoint
-        // branches only (the /summary endpoint doesn't accept multi-branch).
         if (f.scopeMode === "route" && f.routeId !== "all") {
           const route = routes.find(rt => String(rt.id) === f.routeId);
           if (route) {
@@ -136,20 +114,33 @@ export default function DDrivePage() {
       })
       .catch(() => {})
       .finally(() => setTicketsLoading(false));
-  }, [routes]);
+  }, [buildParams, routes]);
 
-  const handleApply = (f: Filters) => { setFilters(f); loadData(f); };
+  const handleApply = (f: Filters) => {
+    setFilters(f);
+    loadData(f);
+  };
 
-  useEffect(() => { loadData(filters); }, [loadData]);
+  const handleModeChange = (newMode: Mode) => {
+    if (mode === newMode) return;
+    setMode(newMode);
+    setFilters(null);
+    setSummaries([]);
+    setTicketData({ tickets: [], total: 0, page: 1, total_pages: 1 });
+  };
+
+  const subtitle = mode === "reconcile"
+    ? "Branch-wise reconciliation"
+    : mode === "transfer"
+      ? "Route-scoped item transfer"
+      : "Choose an action below";
 
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold">D Drive</h1>
-          <p className="text-muted-foreground text-sm mt-1">
-            Branch-wise ticket collection and reconciliation
-          </p>
+          <p className="text-muted-foreground text-sm mt-1">{subtitle}</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => setSyncCheckOpen(true)}>
@@ -161,65 +152,140 @@ export default function DDrivePage() {
         </div>
       </div>
 
-      <FilterBar branches={branches} items={items} routes={routes} onApply={handleApply} />
+      {/* Mode toggle — always visible at the top */}
+      <div className="inline-flex rounded-lg border bg-muted/30 p-1">
+        <button
+          type="button"
+          onClick={() => handleModeChange("reconcile")}
+          className={`px-5 py-2 rounded-md text-sm font-medium transition-colors ${
+            mode === "reconcile"
+              ? "bg-background shadow text-foreground"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          Reconciliation
+        </button>
+        <button
+          type="button"
+          onClick={() => handleModeChange("transfer")}
+          className={`px-5 py-2 rounded-md text-sm font-medium transition-colors ${
+            mode === "transfer"
+              ? "bg-background shadow text-foreground"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          Transfer
+        </button>
+      </div>
 
-      {filters.scopeMode === "route" && selectedRoute && (
-        <div className="flex flex-wrap items-center justify-between gap-3 p-4 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded-lg">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-200">
-              Route-Scoped Mode
-            </p>
-            <p className="text-sm mt-0.5">
-              Transfer will operate across <strong>{formatRouteLabel(selectedRoute)}</strong> —
-              tickets from BOTH branches participate.
-            </p>
-          </div>
-          <Button
-            onClick={() =>
-              setTransferTarget({
-                mode: "route",
-                routeId: selectedRoute.id,
-                routeLabel: formatRouteLabel(selectedRoute),
-              })
-            }
-          >
-            <ArrowRightLeft className="w-4 h-4 mr-1.5" /> Transfer (Route-Scoped)
-          </Button>
+      {/* Empty state */}
+      {mode === null && (
+        <div className="border border-dashed rounded-lg p-12 text-center text-muted-foreground">
+          Select <strong>Reconciliation</strong> or <strong>Transfer</strong> above to begin.
         </div>
       )}
 
-      <div>
-        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
-          Branch Summary
-        </h2>
-        <BranchSummaryCards
-          summaries={summaries}
-          loading={summaryLoading}
-          showTransferButton={filters.scopeMode === "branch"}
-          onReconcile={(branchId, branchName, cashTotal) =>
-            setReconcileTarget({ branchId, branchName, cashTotal })
-          }
-          onTransfer={(branchId, branchName) =>
-            setTransferTarget({ mode: "branch", branchId, branchName })
-          }
+      {/* Filter bar — only after mode is chosen */}
+      {mode && (
+        <FilterBar
+          mode={mode}
+          branches={branches}
+          routes={routes}
+          onApply={handleApply}
         />
-      </div>
+      )}
 
-      <div>
-        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
-          Tickets
-        </h2>
-        <TicketTable
-          tickets={ticketData.tickets}
-          total={ticketData.total}
-          page={ticketData.page}
-          totalPages={ticketData.total_pages}
-          loading={ticketsLoading}
-          onPageChange={p => loadData(filters, p)}
-        />
-      </div>
+      {/* Reconcile mode results */}
+      {mode === "reconcile" && filters && (
+        <>
+          <div>
+            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+              Branch Summary
+            </h2>
+            <BranchSummaryCards
+              summaries={summaries}
+              loading={summaryLoading}
+              showTransferButton={false}
+              onReconcile={(branchId, branchName, cashTotal) =>
+                setReconcileTarget({ branchId, branchName, cashTotal })
+              }
+              onTransfer={() => {}}
+            />
+          </div>
 
-      {reconcileTarget && (
+          <div>
+            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+              Tickets
+            </h2>
+            <TicketTable
+              tickets={ticketData.tickets}
+              total={ticketData.total}
+              page={ticketData.page}
+              totalPages={ticketData.total_pages}
+              loading={ticketsLoading}
+              onPageChange={p => loadData(filters, p)}
+            />
+          </div>
+        </>
+      )}
+
+      {/* Transfer mode results */}
+      {mode === "transfer" && filters && selectedRoute && (
+        <>
+          <div className="flex flex-wrap items-center justify-between gap-3 p-4 bg-card border rounded-lg">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Selected Route
+              </p>
+              <p className="text-base font-semibold mt-0.5">
+                {formatRouteLabel(selectedRoute)}
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Tickets from both branches participate in this transfer.
+              </p>
+            </div>
+            <Button
+              onClick={() =>
+                setTransferTarget({
+                  routeId: selectedRoute.id,
+                  routeLabel: formatRouteLabel(selectedRoute),
+                })
+              }
+            >
+              <ArrowRightLeft className="w-4 h-4 mr-1.5" /> Transfer Items
+            </Button>
+          </div>
+
+          <div>
+            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+              Branches on this Route
+            </h2>
+            <BranchSummaryCards
+              summaries={summaries}
+              loading={summaryLoading}
+              showTransferButton={false}
+              onReconcile={() => {}}
+              onTransfer={() => {}}
+            />
+          </div>
+
+          <div>
+            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+              Tickets
+            </h2>
+            <TicketTable
+              tickets={ticketData.tickets}
+              total={ticketData.total}
+              page={ticketData.page}
+              totalPages={ticketData.total_pages}
+              loading={ticketsLoading}
+              onPageChange={p => loadData(filters, p)}
+            />
+          </div>
+        </>
+      )}
+
+      {reconcileTarget && filters && (
         <AdjustmentModal
           open={true}
           branchId={reconcileTarget.branchId}
@@ -232,19 +298,7 @@ export default function DDrivePage() {
         />
       )}
 
-      {transferTarget && transferTarget.mode === "branch" && (
-        <TransferModal
-          open={true}
-          mode="branch"
-          branchId={transferTarget.branchId}
-          branchName={transferTarget.branchName}
-          dateStart={filters.dateStart}
-          dateEnd={filters.dateEnd}
-          onClose={() => setTransferTarget(null)}
-          onCommitted={() => { setTransferTarget(null); loadData(filters); }}
-        />
-      )}
-      {transferTarget && transferTarget.mode === "route" && (
+      {transferTarget && filters && (
         <TransferModal
           open={true}
           mode="route"
@@ -260,7 +314,7 @@ export default function DDrivePage() {
       <AdjustmentsHistoryModal
         open={historyOpen}
         onClose={() => setHistoryOpen(false)}
-        onRolledBack={() => loadData(filters)}
+        onRolledBack={() => filters && loadData(filters)}
         branches={branches}
       />
 
@@ -268,9 +322,9 @@ export default function DDrivePage() {
         open={syncCheckOpen}
         onClose={() => setSyncCheckOpen(false)}
         branches={branches}
-        defaultDateStart={filters.dateStart}
-        defaultDateEnd={filters.dateEnd}
-        defaultBranchId={filters.branchId}
+        defaultDateStart={filters?.dateStart ?? new Date().toISOString().slice(0, 10)}
+        defaultDateEnd={filters?.dateEnd ?? new Date().toISOString().slice(0, 10)}
+        defaultBranchId={filters?.branchId ?? "all"}
       />
     </div>
   );
