@@ -64,6 +64,12 @@ services:
       RATE_LIMIT_STORAGE_URI: redis://:${REDIS_PASSWORD:-ssmspl_redis_prod}@redis:6379/1
       FORWARDED_ALLOW_IPS: "*"  # Docker internal network only — nginx is the sole proxy
     env_file: ./backend/.env.production
+    # The host's docker group GID (Server 1 = 988). Required so the appuser
+    # (uid 1000) inside the container can read /var/run/docker.sock for the
+    # SuperAdmin remote-control endpoints. If the host docker group GID
+    # changes, update to match `stat -c %g /var/run/docker.sock` on the host.
+    group_add:
+      - "988"
     volumes:
       - ./backups:/app/backups
       # Docker socket — used by SuperAdmin remote-control endpoints
