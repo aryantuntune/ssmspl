@@ -33,7 +33,12 @@ if (-not (Test-Path "android\settings.gradle")) {
 Write-Host "→ Compiling release APK with Gradle (first build ~5-10 min)…" -ForegroundColor Cyan
 Push-Location android
 try {
-    .\gradlew.bat assembleRelease --no-daemon
+    # Invoke via cmd.exe so PowerShell 5.1's NativeCommandError doesn't trip
+    # on harmless gradlew warnings written to stderr (e.g. "SDK XML version 4
+    # was encountered" — non-fatal, but PS treats native-cmd stderr as throw
+    # under StrictMode and fails the script). cmd's `2>&1` merges streams at
+    # the OS level before PS sees them.
+    cmd /c "gradlew.bat assembleRelease --no-daemon 2>&1"
     if ($LASTEXITCODE -ne 0) {
         Write-Host "Gradle build FAILED" -ForegroundColor Red
         exit $LASTEXITCODE
