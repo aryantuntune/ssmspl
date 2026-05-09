@@ -67,6 +67,14 @@ services:
       MAINT_DIR: /app/maintenance
       DEPLOYMENT_LABEL: prod
     env_file: ./backend/.env.production
+    # ssmspl-host-actions group GID — required so the backend (uid 1000) can
+    # drop request files into /var/lib/ssmspl-host-actions/queue. Created by
+    # `groupadd --system ssmspl-host-actions` during host-daemon install. If
+    # `getent group ssmspl-host-actions` returns a different number on a fresh
+    # install, update this value. Without it, /api/host endpoints stay
+    # disabled (is_queue_mounted() returns false for write-blocked dir).
+    group_add:
+      - "986"
     volumes:
       - ./backups:/app/backups
       # Docker socket — used by SuperAdmin remote-control endpoints
