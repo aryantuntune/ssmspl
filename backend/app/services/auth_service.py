@@ -164,7 +164,13 @@ async def refresh_access_token(
 
     # Issue new pair — carry forward the user's current session ID
     extra = {"role": user.role.value}
-    if user.active_session_id:
+    if is_mobile_app:
+        # Mobile sessions are parallel to web sessions; they don't bind to
+        # user.active_session_id. Stamp `mobile: True` so dependencies.py
+        # skips the sid-match check.
+        extra["mobile"] = True
+        extra["sid"] = extra.get("sid") or str(__import__("uuid").uuid4())
+    elif user.active_session_id:
         extra["sid"] = user.active_session_id
     # Long-lived (24h) access tokens for:
     #   - TICKET_CHECKER mobile app (no heartbeat)
