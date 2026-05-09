@@ -7,6 +7,7 @@ import {
   type ContainerStats,
   getContainerStats,
 } from '../api/systemActions';
+import { colors, radii, spacing, text as t } from '../theme';
 
 type Props = {
   inspect: ContainerInspect;
@@ -19,12 +20,14 @@ export function ContainerCard({ inspect, onTailLogs, onAfterAction }: Props) {
   const [stats, setStats] = useState<ContainerStats | null>(null);
   const [statsBusy, setStatsBusy] = useState(false);
 
-  const dotColor = (() => {
-    if (inspect.error) return '#f87171';
-    if (inspect.health === 'unhealthy') return '#f87171';
-    if (inspect.health === 'starting') return '#fbbf24';
-    if (inspect.status === 'running') return '#34d399';
-    return '#94a3b8';
+  // Single source of truth for "is this container in a bad state?".
+  // Drives the left rail color and the dot.
+  const railColor = (() => {
+    if (inspect.error) return colors.crit;
+    if (inspect.health === 'unhealthy') return colors.crit;
+    if (inspect.health === 'starting') return colors.warn;
+    if (inspect.status === 'running') return colors.ok;
+    return colors.textDim;
   })();
 
   const restart = () => {
@@ -68,14 +71,16 @@ export function ContainerCard({ inspect, onTailLogs, onAfterAction }: Props) {
   };
 
   return (
-    <View style={styles.card}>
+    <View style={[styles.card, { borderLeftColor: railColor }]}>
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <View style={[styles.dot, { backgroundColor: dotColor }]} />
-          <Text style={styles.name}>{inspect.name}</Text>
+          <View style={[styles.dot, { backgroundColor: railColor }]} />
+          <Text style={styles.name} numberOfLines={1}>
+            {inspect.name}
+          </Text>
         </View>
-        <Text style={styles.status}>
-          {inspect.error ?? `${inspect.status}${inspect.health ? ` · ${inspect.health}` : ''}`}
+        <Text style={styles.status} numberOfLines={1}>
+          {inspect.error ?? `${inspect.status}${inspect.health ? ' · ' + inspect.health : ''}`}
         </Text>
       </View>
 
@@ -102,24 +107,32 @@ export function ContainerCard({ inspect, onTailLogs, onAfterAction }: Props) {
 
       <View style={styles.actions}>
         <Pressable
-          style={[styles.btn, styles.btnGhost]}
+          style={({ pressed }) => [styles.btn, styles.btnGhost, pressed && styles.btnPressed]}
           onPress={() => onTailLogs(inspect.name)}
         >
           <Text style={styles.btnGhostText}>Logs</Text>
         </Pressable>
         <Pressable
-          style={[styles.btn, styles.btnGhost]}
+          style={({ pressed }) => [styles.btn, styles.btnGhost, pressed && styles.btnPressed]}
           onPress={fetchStatsOnce}
           disabled={statsBusy}
         >
-          {statsBusy ? <ActivityIndicator color="#cbd5e1" size="small" /> : <Text style={styles.btnGhostText}>Stats</Text>}
+          {statsBusy ? (
+            <ActivityIndicator color={colors.action.ghostText} size="small" />
+          ) : (
+            <Text style={styles.btnGhostText}>Stats</Text>
+          )}
         </Pressable>
         <Pressable
-          style={[styles.btn, styles.btnDanger]}
+          style={({ pressed }) => [styles.btn, styles.btnDanger, pressed && styles.btnPressed]}
           onPress={restart}
           disabled={busy || !!inspect.error}
         >
-          {busy ? <ActivityIndicator color="#fecaca" size="small" /> : <Text style={styles.btnDangerText}>Restart</Text>}
+          {busy ? (
+            <ActivityIndicator color={colors.action.dangerText} size="small" />
+          ) : (
+            <Text style={styles.btnDangerText}>Restart</Text>
+          )}
         </Pressable>
       </View>
     </View>
@@ -141,38 +154,46 @@ function ago(iso: string): string {
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: '#1e293b',
-    padding: 12,
-    borderRadius: 10,
-    marginBottom: 10,
+    backgroundColor: colors.bgElev,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    borderRadius: radii.lg,
+    marginBottom: spacing.sm,
+    borderLeftWidth: 3,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    gap: spacing.sm,
   },
-  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
   dot: { width: 8, height: 8, borderRadius: 4 },
-  name: { color: '#f8fafc', fontSize: 14, fontWeight: '600' },
-  status: { color: '#94a3b8', fontSize: 12, maxWidth: 180, textAlign: 'right' },
-  metaRow: { flexDirection: 'row', gap: 12, marginTop: 6 },
-  meta: { color: '#64748b', fontSize: 11 },
-  metaStrong: { color: '#cbd5e1', fontSize: 12, fontWeight: '500' },
-  statsRow: { flexDirection: 'row', gap: 14, marginTop: 6 },
-  actions: {
+  name: { ...t.h2, fontSize: 14, flexShrink: 1 },
+  status: { color: colors.textMuted, fontSize: 12, maxWidth: 180, textAlign: 'right' },
+  metaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 6 },
+  meta: { color: colors.textDim, fontSize: 11 },
+  metaStrong: { color: colors.textMuted, fontSize: 12, fontWeight: '600' },
+  statsRow: {
     flexDirection: 'row',
-    gap: 8,
-    marginTop: 10,
+    gap: 14,
+    marginTop: 6,
+    paddingTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
   },
+  actions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md },
   btn: {
     flex: 1,
     paddingVertical: 8,
-    borderRadius: 8,
+    borderRadius: radii.md,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
   },
-  btnGhost: { backgroundColor: '#0f172a', borderWidth: 1, borderColor: '#334155' },
-  btnGhostText: { color: '#cbd5e1', fontSize: 12, fontWeight: '600' },
-  btnDanger: { backgroundColor: '#3f1d1d', borderWidth: 1, borderColor: '#7f1d1d' },
-  btnDangerText: { color: '#fecaca', fontSize: 12, fontWeight: '600' },
+  btnPressed: { opacity: 0.7 },
+  btnGhost: { backgroundColor: colors.action.ghost, borderColor: colors.action.ghostBorder },
+  btnGhostText: { color: colors.action.ghostText, fontSize: 12, fontWeight: '600' },
+  btnDanger: { backgroundColor: colors.action.danger, borderColor: colors.action.dangerBorder },
+  btnDangerText: { color: colors.action.dangerText, fontSize: 12, fontWeight: '700' },
 });

@@ -12,6 +12,7 @@ import LogsScreen from './src/screens/LogsScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import VersionsScreen from './src/screens/VersionsScreen';
 import { tokens } from './src/lib/storage';
+import { colors } from './src/theme';
 
 type Screen = 'login' | 'dashboard' | 'settings' | 'logs' | 'versions' | 'incident';
 
@@ -47,7 +48,7 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      <StatusBar style="light" backgroundColor="#0b1220" />
+      <StatusBar style="light" backgroundColor={colors.bg} />
       <SafeAreaView style={styles.bg} edges={['top', 'bottom']}>
         {screen === 'login' && <LoginScreen onLoggedIn={() => setScreen('dashboard')} />}
         {screen === 'dashboard' && (
@@ -85,5 +86,5 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  bg: { flex: 1, backgroundColor: '#0b1220' },
+  bg: { flex: 1, backgroundColor: colors.bg },
 });

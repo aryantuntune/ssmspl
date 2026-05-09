@@ -3,7 +3,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 
 import type { HealthEvent } from '../api/systemHealth';
 import { ackEvent } from '../api/systemActions';
-import { StatusBadge } from './StatusBadge';
+import { colors, radii, spacing, severityPalette } from '../theme';
 
 function formatWhen(iso: string): string {
   const d = new Date(iso);
@@ -18,6 +18,7 @@ function formatWhen(iso: string): string {
 export function AlertRow({ event, onAcked }: { event: HealthEvent; onAcked?: (id: number) => void }) {
   const [busy, setBusy] = useState(false);
   const [acked, setAcked] = useState(false);
+  const p = severityPalette(event.severity);
 
   const onAck = async () => {
     setBusy(true);
@@ -33,29 +34,31 @@ export function AlertRow({ event, onAcked }: { event: HealthEvent; onAcked?: (id
   };
 
   return (
-    <View style={[styles.row, acked && styles.rowAcked]}>
-      <View style={styles.left}>
-        <StatusBadge severity={event.severity} />
+    <View style={[styles.row, { borderLeftColor: p.accent }, acked && styles.rowAcked]}>
+      <View style={styles.topRow}>
+        <View style={[styles.sevPill, { backgroundColor: p.bg }]}>
+          <Text style={[styles.sevText, { color: p.fg }]}>{event.severity}</Text>
+        </View>
+        <Text style={styles.check} numberOfLines={1}>
+          {event.check_name}
+        </Text>
         <Text style={styles.when}>{formatWhen(event.created_at)}</Text>
       </View>
-      <View style={styles.body}>
-        <Text style={styles.check}>{event.check_name}</Text>
-        <Text style={styles.message} numberOfLines={4}>
-          {event.message}
-        </Text>
-        <View style={styles.footer}>
-          <Text style={styles.server}>{event.server_name}</Text>
-          {!acked && (
-            <Pressable onPress={onAck} disabled={busy} style={styles.ackBtn}>
-              {busy ? (
-                <ActivityIndicator size="small" color="#cbd5e1" />
-              ) : (
-                <Text style={styles.ackText}>Ack</Text>
-              )}
-            </Pressable>
-          )}
-          {acked && <Text style={styles.ackedLabel}>✓ acked</Text>}
-        </View>
+      <Text style={styles.message} numberOfLines={4}>
+        {event.message}
+      </Text>
+      <View style={styles.footer}>
+        <Text style={styles.server}>{event.server_name}</Text>
+        {!acked && (
+          <Pressable onPress={onAck} disabled={busy} style={styles.ackBtn}>
+            {busy ? (
+              <ActivityIndicator size="small" color={colors.action.ghostText} />
+            ) : (
+              <Text style={styles.ackText}>Acknowledge</Text>
+            )}
+          </Pressable>
+        )}
+        {acked && <Text style={styles.ackedLabel}>✓ acked</Text>}
       </View>
     </View>
   );
@@ -63,56 +66,44 @@ export function AlertRow({ event, onAcked }: { event: HealthEvent; onAcked?: (id
 
 const styles = StyleSheet.create({
   row: {
-    flexDirection: 'row',
-    backgroundColor: '#1e293b',
-    padding: 12,
-    borderRadius: 10,
-    marginBottom: 8,
-    alignItems: 'flex-start',
+    backgroundColor: colors.bgElev,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    borderRadius: radii.lg,
+    marginBottom: spacing.sm,
+    borderLeftWidth: 3,
   },
   rowAcked: { opacity: 0.55 },
-  left: {
-    width: 84,
-    alignItems: 'flex-start',
+  topRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: 6,
   },
-  when: {
-    color: '#94a3b8',
-    fontSize: 11,
-    marginTop: 4,
+  sevPill: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: radii.sm,
   },
-  body: {
-    flex: 1,
-    marginLeft: 8,
-  },
-  check: {
-    color: '#f8fafc',
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 2,
-  },
-  message: {
-    color: '#cbd5e1',
-    fontSize: 13,
-    lineHeight: 18,
-  },
+  sevText: { fontSize: 10, fontWeight: '800', letterSpacing: 0.6 },
+  check: { color: colors.text, fontSize: 14, fontWeight: '600', flex: 1 },
+  when: { color: colors.textDim, fontSize: 11 },
+  message: { color: colors.textMuted, fontSize: 13, lineHeight: 18 },
   footer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 6,
+    marginTop: spacing.sm,
   },
-  server: {
-    color: '#64748b',
-    fontSize: 11,
-  },
+  server: { color: colors.textDim, fontSize: 11 },
   ackBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    backgroundColor: '#0f172a',
-    borderRadius: 6,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 6,
+    backgroundColor: colors.action.ghost,
+    borderRadius: radii.sm,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: colors.action.ghostBorder,
   },
-  ackText: { color: '#cbd5e1', fontSize: 11, fontWeight: '600' },
-  ackedLabel: { color: '#34d399', fontSize: 11, fontWeight: '500' },
+  ackText: { color: colors.action.ghostText, fontSize: 11, fontWeight: '700' },
+  ackedLabel: { color: colors.ok, fontSize: 11, fontWeight: '600' },
 });

@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 
 import { fetchIncidentReport, type IncidentReport } from '../api/systemActions';
+import { colors, radii, spacing, text as t } from '../theme';
 
 export default function IncidentReportScreen({ onClose }: { onClose: () => void }) {
   const [report, setReport] = useState<IncidentReport | null>(null);
@@ -48,28 +49,40 @@ export default function IncidentReportScreen({ onClose }: { onClose: () => void 
   return (
     <View style={styles.flex}>
       <View style={styles.header}>
-        <Pressable onPress={onClose} style={styles.back}>
-          <Text style={styles.backText}>← back</Text>
+        <Pressable onPress={onClose} style={styles.back} hitSlop={10}>
+          <Text style={styles.backText}>‹ Back</Text>
         </Pressable>
         <Text style={styles.title}>Incident report</Text>
-        <Pressable onPress={load} disabled={loading} style={styles.refresh}>
-          {loading ? <ActivityIndicator size="small" color="#cbd5e1" /> : <Text style={styles.refreshText}>↻</Text>}
+        <Pressable onPress={load} disabled={loading} style={styles.refresh} hitSlop={10}>
+          {loading ? (
+            <ActivityIndicator size="small" color={colors.textMuted} />
+          ) : (
+            <Text style={styles.refreshText}>↻</Text>
+          )}
         </Pressable>
       </View>
 
       {report && (
         <View style={styles.actions}>
-          <Pressable onPress={onShare} style={styles.actionBtn}>
+          <Pressable
+            onPress={onShare}
+            style={({ pressed }) => [styles.actionBtn, pressed && { opacity: 0.7 }]}
+          >
             <Text style={styles.actionBtnText}>Share report</Text>
           </Pressable>
         </View>
       )}
 
       <ScrollView contentContainerStyle={styles.scroll}>
-        {error && <Text style={styles.error}>{error}</Text>}
+        {error && (
+          <View style={styles.errorBox}>
+            <Text style={styles.errorIcon}>!</Text>
+            <Text style={styles.errorText}>{error}</Text>
+          </View>
+        )}
         {loading && !report && (
           <View style={styles.center}>
-            <ActivityIndicator color="#3b82f6" />
+            <ActivityIndicator color={colors.action.primary} />
             <Text style={styles.dim}>Bundling logs, events, activity…</Text>
           </View>
         )}
@@ -174,15 +187,15 @@ function Row({ label, value }: { label: string; value: string }) {
 }
 
 function sevColor(sev: string): { color: string } {
-  if (sev === 'CRIT') return { color: '#f87171' };
-  if (sev === 'WARN') return { color: '#fbbf24' };
-  return { color: '#60a5fa' };
+  if (sev === 'CRIT') return { color: colors.crit };
+  if (sev === 'WARN') return { color: colors.warn };
+  return { color: colors.info };
 }
 
 function lineColor(line: string): string | null {
   const u = line.toUpperCase();
-  if (u.includes(' ERROR') || u.includes('TRACEBACK') || u.includes('CRITICAL')) return '#fca5a5';
-  if (u.includes(' WARN') || u.includes('WARNING')) return '#fcd34d';
+  if (u.includes(' ERROR') || u.includes('TRACEBACK') || u.includes('CRITICAL')) return colors.critText;
+  if (u.includes(' WARN') || u.includes('WARNING')) return colors.warnText;
   return null;
 }
 
@@ -215,84 +228,89 @@ function formatReportPlainText(r: IncidentReport): string {
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1, backgroundColor: '#0b1220' },
+  flex: { flex: 1, backgroundColor: colors.bg },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 12,
+    paddingHorizontal: spacing.md,
     paddingVertical: 10,
-    borderBottomColor: '#1e293b',
+    borderBottomColor: colors.border,
     borderBottomWidth: 1,
   },
   back: { paddingVertical: 4, paddingHorizontal: 6 },
-  backText: { color: '#cbd5e1', fontSize: 14 },
-  title: { color: '#f8fafc', fontSize: 17, fontWeight: '600' },
+  backText: { color: colors.action.primary, fontSize: 14, fontWeight: '600' },
+  title: { ...t.h1, fontSize: 17 },
   refresh: { padding: 8 },
-  refreshText: { color: '#cbd5e1', fontSize: 18 },
-  actions: { flexDirection: 'row', gap: 10, padding: 12 },
+  refreshText: { color: colors.textMuted, fontSize: 18 },
+  actions: { flexDirection: 'row', gap: 10, padding: spacing.md },
   actionBtn: {
     flex: 1,
-    backgroundColor: '#1e293b',
+    backgroundColor: colors.action.primary,
     borderWidth: 1,
-    borderColor: '#334155',
-    paddingVertical: 8,
-    borderRadius: 8,
+    borderColor: colors.action.primaryBorder,
+    paddingVertical: 10,
+    borderRadius: radii.md,
     alignItems: 'center',
   },
-  actionBtnText: { color: '#cbd5e1', fontSize: 12, fontWeight: '600' },
-  scroll: { padding: 16, paddingBottom: 40 },
+  actionBtnText: { color: colors.action.primaryText, fontSize: 13, fontWeight: '700' },
+  scroll: { padding: spacing.lg, paddingBottom: 40 },
   center: { paddingTop: 60, alignItems: 'center' },
-  dim: { color: '#94a3b8', fontSize: 12, marginTop: 4 },
-  error: {
-    color: '#ef4444',
-    backgroundColor: '#7f1d1d20',
-    padding: 10,
-    borderRadius: 8,
-    marginBottom: 12,
-    fontSize: 13,
+  dim: { ...t.meta, marginTop: 4 },
+  errorBox: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    backgroundColor: colors.critBg,
+    borderLeftWidth: 3,
+    borderLeftColor: colors.crit,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    borderRadius: radii.sm,
+    marginBottom: spacing.md,
   },
-  section: { marginBottom: 16 },
+  errorIcon: { color: colors.crit, fontWeight: '900', fontSize: 14, width: 14, textAlign: 'center' },
+  errorText: { color: colors.critText, fontSize: 13, flex: 1, lineHeight: 18 },
+  section: { marginBottom: spacing.md },
   sectionTitle: {
-    color: '#cbd5e1',
-    fontSize: 13,
-    fontWeight: '600',
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
-    marginBottom: 8,
+    ...t.section,
+    marginBottom: spacing.sm,
   },
   subBlock: {
-    backgroundColor: '#1e293b',
-    padding: 10,
-    borderRadius: 8,
+    backgroundColor: colors.bgElev,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: radii.md,
     marginBottom: 8,
+    borderLeftWidth: 2,
+    borderLeftColor: colors.border,
   },
-  subTitle: { color: '#f8fafc', fontSize: 13, fontWeight: '600', marginBottom: 6 },
-  row: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3 },
-  rowLabel: { color: '#94a3b8', fontSize: 12 },
-  rowValue: { color: '#e2e8f0', fontSize: 12, fontWeight: '500', maxWidth: '60%' },
-  errLine: { color: '#f87171', fontSize: 11 },
+  subTitle: { color: colors.text, fontSize: 13, fontWeight: '700', marginBottom: 6 },
+  row: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3, gap: spacing.md },
+  rowLabel: { color: colors.textMuted, fontSize: 12 },
+  rowValue: { color: colors.text, fontSize: 12, fontWeight: '600', maxWidth: '60%', textAlign: 'right' },
+  errLine: { color: colors.critText, fontSize: 11 },
   eventRow: {
     flexDirection: 'row',
-    backgroundColor: '#1e293b',
-    padding: 10,
-    borderRadius: 8,
+    backgroundColor: colors.bgElev,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: radii.md,
     marginBottom: 6,
   },
   sevDot: { fontSize: 16 },
   eventBody: { flex: 1, marginLeft: 4 },
-  eventTitle: { color: '#f8fafc', fontSize: 12, fontWeight: '600' },
-  eventMsg: { color: '#cbd5e1', fontSize: 12, marginTop: 2 },
+  eventTitle: { color: colors.text, fontSize: 12, fontWeight: '700' },
+  eventMsg: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
   activityRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     paddingVertical: 4,
-    paddingHorizontal: 10,
-    backgroundColor: '#1e293b',
-    borderRadius: 6,
+    paddingHorizontal: spacing.md,
+    backgroundColor: colors.bgElev,
+    borderRadius: radii.sm,
     marginBottom: 4,
   },
-  activityType: { color: '#cbd5e1', fontSize: 11, fontFamily: 'monospace' },
-  logBox: { backgroundColor: '#020617', padding: 8, borderRadius: 6 },
-  logLine: { color: '#cbd5e1', fontSize: 10, fontFamily: 'monospace', lineHeight: 13 },
+  activityType: { color: colors.textMuted, fontSize: 11, fontFamily: 'monospace' },
+  logBox: { backgroundColor: '#020617', padding: 8, borderRadius: radii.sm, borderWidth: 1, borderColor: colors.border },
+  logLine: { color: colors.textMuted, fontSize: 10, fontFamily: 'monospace', lineHeight: 13 },
 });

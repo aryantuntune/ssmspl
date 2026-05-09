@@ -15,6 +15,7 @@ import { login, getMe } from '../api/auth';
 import { DEFAULT_SERVERS, getActiveServerUrl, setActiveServerUrl } from '../lib/config';
 import { registerForPushNotifications } from '../lib/notifications';
 import { clearClientCache } from '../api/client';
+import { colors, radii, spacing, text as t } from '../theme';
 
 export default function LoginScreen({ onLoggedIn }: { onLoggedIn: () => void }) {
   const [serverUrl, setServerUrl] = useState<string>('');
@@ -40,13 +41,10 @@ export default function LoginScreen({ onLoggedIn }: { onLoggedIn: () => void }) 
       await login(username.trim(), password);
       const me = await getMe();
       if (!['SUPER_ADMIN', 'ADMIN'].includes(me.role)) {
-        setError(`Role ${me.role} can't use this app — SUPER_ADMIN/ADMIN only`);
+        setError(`Role ${me.role} can't use this app — System Administrator only`);
         setBusy(false);
         return;
       }
-      // Best-effort push registration; failures don't block login. The
-      // Settings screen surfaces the precise reason if registration didn't
-      // succeed (permission denied, EAS project ID missing, backend error…).
       registerForPushNotifications(`${me.username} (mobile)`).catch(() => {});
       onLoggedIn();
     } catch (e: any) {
@@ -57,32 +55,57 @@ export default function LoginScreen({ onLoggedIn }: { onLoggedIn: () => void }) 
     }
   };
 
+  // Friendly inferred host suffix for the chip subtitle (saves the user
+  // from squinting at the URL)
+  const hostFor = (u: string) => u.replace(/^https?:\/\//, '').replace(/\/$/, '');
+
   return (
     <KeyboardAvoidingView
       style={styles.flex}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
-        <Text style={styles.brand}>SSMSPL</Text>
-        <Text style={styles.subtitle}>SuperAdmin · System Health</Text>
-
-        <Text style={styles.label}>Server</Text>
-        <View style={styles.serverRow}>
-          {DEFAULT_SERVERS.map((s) => (
-            <Pressable
-              key={s.url}
-              onPress={() => setServerUrl(s.url)}
-              style={[
-                styles.serverChip,
-                serverUrl === s.url && styles.serverChipActive,
-              ]}
-            >
-              <Text style={[styles.serverChipText, serverUrl === s.url && styles.serverChipTextActive]}>
-                {s.name}
-              </Text>
-            </Pressable>
-          ))}
+        {/* Brand block — uses a small monogram tile so the screen feels
+            considered, not a stock form */}
+        <View style={styles.brandRow}>
+          <View style={styles.monogram}>
+            <Text style={styles.monogramText}>S</Text>
+          </View>
+          <View>
+            <Text style={styles.brand}>SSMSPL</Text>
+            <Text style={styles.subtitle}>Admin Console</Text>
+          </View>
         </View>
+
+        <Text style={styles.tagline}>System health & ops for both servers, in your pocket.</Text>
+
+        <Text style={styles.label}>Choose a server</Text>
+        <View style={styles.serverGrid}>
+          {DEFAULT_SERVERS.map((s) => {
+            const active = serverUrl === s.url;
+            const isProd = /carferry\.online$/.test(hostFor(s.url));
+            const tint = isProd ? colors.serverProd : colors.serverAdmin;
+            return (
+              <Pressable
+                key={s.url}
+                onPress={() => setServerUrl(s.url)}
+                style={({ pressed }) => [
+                  styles.serverCard,
+                  active && { borderColor: tint, backgroundColor: colors.bgElev2 },
+                  pressed && { opacity: 0.85 },
+                ]}
+              >
+                <View style={[styles.serverDot, { backgroundColor: tint }]} />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.serverName, active && { color: colors.text }]}>{s.name}</Text>
+                  <Text style={styles.serverHost}>{hostFor(s.url)}</Text>
+                </View>
+                {active && <Text style={[styles.checkMark, { color: tint }]}>●</Text>}
+              </Pressable>
+            );
+          })}
+        </View>
+
         <TextInput
           style={styles.input}
           value={serverUrl}
@@ -90,7 +113,7 @@ export default function LoginScreen({ onLoggedIn }: { onLoggedIn: () => void }) 
           autoCapitalize="none"
           autoCorrect={false}
           placeholder="https://admin.carferry.online"
-          placeholderTextColor="#64748b"
+          placeholderTextColor={colors.textFaint}
         />
 
         <Text style={styles.label}>Username</Text>
@@ -101,7 +124,7 @@ export default function LoginScreen({ onLoggedIn }: { onLoggedIn: () => void }) 
           autoCapitalize="none"
           autoCorrect={false}
           placeholder="superadmin"
-          placeholderTextColor="#64748b"
+          placeholderTextColor={colors.textFaint}
         />
 
         <Text style={styles.label}>Password</Text>
@@ -113,91 +136,123 @@ export default function LoginScreen({ onLoggedIn }: { onLoggedIn: () => void }) 
           autoCorrect={false}
           secureTextEntry
           placeholder="••••••••"
-          placeholderTextColor="#64748b"
+          placeholderTextColor={colors.textFaint}
         />
 
-        {error && <Text style={styles.error}>{error}</Text>}
+        {error && (
+          <View style={styles.errorBox}>
+            <Text style={styles.errorIcon}>!</Text>
+            <Text style={styles.errorText}>{error}</Text>
+          </View>
+        )}
 
-        <Pressable style={[styles.button, busy && { opacity: 0.6 }]} onPress={submit} disabled={busy}>
-          {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Sign in</Text>}
+        <Pressable
+          style={({ pressed }) => [styles.button, (busy || pressed) && { opacity: 0.7 }]}
+          onPress={submit}
+          disabled={busy}
+        >
+          {busy ? <ActivityIndicator color={colors.action.primaryText} /> : <Text style={styles.buttonText}>Sign in</Text>}
         </Pressable>
+
+        <Text style={styles.footer}>System Administrator access only</Text>
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1, backgroundColor: '#0b1220' },
+  flex: { flex: 1, backgroundColor: colors.bg },
   container: {
-    padding: 24,
-    paddingTop: 80,
+    paddingHorizontal: spacing.xl,
+    paddingTop: 56,
+    paddingBottom: spacing.xxl,
   },
-  brand: {
-    color: '#f8fafc',
-    fontSize: 32,
-    fontWeight: '800',
-    letterSpacing: 1,
-  },
-  subtitle: {
-    color: '#94a3b8',
-    fontSize: 14,
-    marginBottom: 32,
-  },
-  label: {
-    color: '#cbd5e1',
-    fontSize: 12,
-    fontWeight: '600',
-    marginTop: 16,
-    marginBottom: 6,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  serverRow: {
+  brandRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginBottom: 8,
+    alignItems: 'center',
+    gap: spacing.md,
+    marginBottom: spacing.md,
   },
-  serverChip: {
-    backgroundColor: '#1e293b',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 6,
-    marginRight: 8,
-    marginBottom: 8,
+  monogram: {
+    width: 48,
+    height: 48,
+    borderRadius: radii.lg,
+    backgroundColor: colors.action.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  serverChipActive: {
-    backgroundColor: '#3b82f6',
+  monogramText: { color: colors.action.primaryText, fontSize: 22, fontWeight: '800' },
+  brand: { ...t.h1, fontSize: 22, letterSpacing: 0.4 },
+  subtitle: { color: colors.textMuted, fontSize: 13, marginTop: 2, fontWeight: '500' },
+  tagline: { color: colors.textDim, fontSize: 13, marginBottom: spacing.xxl, lineHeight: 18 },
+
+  label: {
+    ...t.section,
+    marginTop: spacing.lg,
+    marginBottom: spacing.sm,
   },
-  serverChipText: {
-    color: '#cbd5e1',
-    fontSize: 12,
+  serverGrid: { gap: spacing.sm, marginBottom: spacing.sm },
+  serverCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    backgroundColor: colors.bgElev,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    borderRadius: radii.md,
   },
-  serverChipTextActive: {
-    color: '#fff',
-    fontWeight: '600',
-  },
+  serverDot: { width: 10, height: 10, borderRadius: 5 },
+  serverName: { color: colors.textMuted, fontSize: 14, fontWeight: '600' },
+  serverHost: { color: colors.textDim, fontSize: 11, marginTop: 2, fontFamily: 'monospace' },
+  checkMark: { fontSize: 12, fontWeight: '900' },
+
   input: {
-    backgroundColor: '#1e293b',
-    color: '#f8fafc',
-    borderRadius: 8,
+    backgroundColor: colors.bgElev,
+    color: colors.text,
+    borderRadius: radii.md,
     padding: 14,
     fontSize: 15,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginTop: spacing.xs,
   },
+  errorBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    marginTop: spacing.md,
+    backgroundColor: colors.critBg,
+    borderLeftWidth: 3,
+    borderLeftColor: colors.crit,
+    padding: spacing.md,
+    borderRadius: radii.sm,
+  },
+  errorIcon: {
+    color: colors.crit,
+    fontWeight: '900',
+    fontSize: 14,
+    width: 14,
+    textAlign: 'center',
+  },
+  errorText: { color: colors.critText, fontSize: 13, flex: 1, lineHeight: 18 },
+
   button: {
-    marginTop: 32,
-    backgroundColor: '#3b82f6',
-    padding: 16,
-    borderRadius: 8,
+    marginTop: spacing.xl,
+    backgroundColor: colors.action.primary,
+    paddingVertical: 14,
+    borderRadius: radii.md,
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.action.primaryBorder,
   },
-  buttonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  error: {
-    color: '#ef4444',
-    marginTop: 16,
-    fontSize: 13,
+  buttonText: { color: colors.action.primaryText, fontSize: 15, fontWeight: '700', letterSpacing: 0.3 },
+  footer: {
+    color: colors.textFaint,
+    fontSize: 11,
+    textAlign: 'center',
+    marginTop: spacing.lg,
+    letterSpacing: 0.5,
   },
 });

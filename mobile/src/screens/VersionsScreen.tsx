@@ -16,6 +16,7 @@ import {
   type ReleaseEntry,
   type VersionInfo,
 } from '../api/systemActions';
+import { colors, radii, spacing, text as t } from '../theme';
 
 export default function VersionsScreen({ onClose }: { onClose: () => void }) {
   const [current, setCurrent] = useState<VersionInfo | null>(null);
@@ -106,8 +107,8 @@ export default function VersionsScreen({ onClose }: { onClose: () => void }) {
   return (
     <View style={styles.flex}>
       <View style={styles.header}>
-        <Pressable onPress={onClose} style={styles.back}>
-          <Text style={styles.backText}>← back</Text>
+        <Pressable onPress={onClose} style={styles.back} hitSlop={10}>
+          <Text style={styles.backText}>‹ Back</Text>
         </Pressable>
         <Text style={styles.title}>Versions</Text>
         <View style={{ width: 60 }} />
@@ -118,7 +119,7 @@ export default function VersionsScreen({ onClose }: { onClose: () => void }) {
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
-            tintColor="#cbd5e1"
+            tintColor={colors.textMuted}
             onRefresh={() => {
               setRefreshing(true);
               load();
@@ -128,15 +129,20 @@ export default function VersionsScreen({ onClose }: { onClose: () => void }) {
       >
         {loading && !current ? (
           <View style={styles.center}>
-            <ActivityIndicator color="#3b82f6" />
+            <ActivityIndicator color={colors.action.primary} />
           </View>
         ) : (
           <>
-            {error && <Text style={styles.error}>{error}</Text>}
+            {error && (
+              <View style={styles.errorBox}>
+                <Text style={styles.errorIcon}>!</Text>
+                <Text style={styles.errorText}>{error}</Text>
+              </View>
+            )}
 
             {current && (
               <View style={styles.currentBox}>
-                <Text style={styles.label}>RUNNING NOW</Text>
+                <Text style={styles.currentLabel}>● RUNNING NOW</Text>
                 <Text style={styles.bigTag} numberOfLines={1}>
                   {current.image_tag === 'latest' ? '(untagged build)' : current.image_tag}
                 </Text>
@@ -158,7 +164,7 @@ export default function VersionsScreen({ onClose }: { onClose: () => void }) {
               </View>
             ) : (
               <>
-                <Text style={styles.sectionLabel}>ROLLBACK TARGETS</Text>
+                <Text style={styles.sectionLabel}>Rollback targets</Text>
                 {releases.map((r) => (
                   <View
                     key={r.image_tag}
@@ -184,12 +190,15 @@ export default function VersionsScreen({ onClose }: { onClose: () => void }) {
                     )}
                     {!r.is_current && r.image_present && (
                       <Pressable
-                        style={[styles.rollbackBtn, busyTag === r.image_tag && styles.rollbackBtnBusy]}
+                        style={({ pressed }) => [
+                          styles.rollbackBtn,
+                          (busyTag === r.image_tag || pressed) && styles.rollbackBtnBusy,
+                        ]}
                         onPress={() => onRollback(r)}
                         disabled={!!busyTag}
                       >
                         {busyTag === r.image_tag ? (
-                          <ActivityIndicator color="#fecaca" size="small" />
+                          <ActivityIndicator color={colors.action.dangerText} size="small" />
                         ) : (
                           <Text style={styles.rollbackBtnText}>Roll back to this version</Text>
                         )}
@@ -214,93 +223,106 @@ export default function VersionsScreen({ onClose }: { onClose: () => void }) {
 
 function fmtBuildTs(ts: string | undefined): string {
   if (!ts || ts === 'unknown') return 'unknown';
-  // Format like 20260509T020700Z
   const m = ts.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})/);
   if (m) return `${m[1]}-${m[2]}-${m[3]} ${m[4]}:${m[5]} UTC`;
   return ts;
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1, backgroundColor: '#0b1220' },
+  flex: { flex: 1, backgroundColor: colors.bg },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 12,
+    paddingHorizontal: spacing.md,
     paddingVertical: 10,
-    borderBottomColor: '#1e293b',
+    borderBottomColor: colors.border,
     borderBottomWidth: 1,
   },
   back: { paddingVertical: 4, paddingHorizontal: 6 },
-  backText: { color: '#cbd5e1', fontSize: 14 },
-  title: { color: '#f8fafc', fontSize: 17, fontWeight: '600' },
-  scroll: { padding: 16, paddingBottom: 40 },
+  backText: { color: colors.action.primary, fontSize: 14, fontWeight: '600' },
+  title: { ...t.h1, fontSize: 17 },
+  scroll: { padding: spacing.lg, paddingBottom: 40 },
   center: { paddingTop: 60, alignItems: 'center' },
-  error: {
-    color: '#ef4444',
-    backgroundColor: '#7f1d1d20',
-    padding: 10,
-    borderRadius: 8,
-    marginBottom: 12,
-    fontSize: 13,
+  errorBox: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    backgroundColor: colors.critBg,
+    borderLeftWidth: 3,
+    borderLeftColor: colors.crit,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    borderRadius: radii.sm,
+    marginBottom: spacing.md,
   },
+  errorIcon: { color: colors.crit, fontWeight: '900', fontSize: 14, width: 14, textAlign: 'center' },
+  errorText: { color: colors.critText, fontSize: 13, flex: 1, lineHeight: 18 },
   currentBox: {
-    backgroundColor: '#1e3a8a',
-    padding: 14,
-    borderRadius: 12,
-    marginBottom: 18,
-    borderWidth: 1,
-    borderColor: '#1d4ed8',
+    backgroundColor: colors.bgElev,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    borderRadius: radii.lg,
+    marginBottom: spacing.lg,
+    borderLeftWidth: 4,
+    borderLeftColor: colors.action.primary,
   },
-  label: { color: '#dbeafe', fontSize: 11, fontWeight: '600', letterSpacing: 0.8, marginBottom: 6 },
-  bigTag: { color: '#f8fafc', fontSize: 14, fontFamily: 'monospace', fontWeight: '600' },
-  metaRow: { flexDirection: 'row', gap: 12, marginTop: 6 },
-  meta: { color: '#cbd5e1', fontSize: 11 },
+  currentLabel: {
+    color: colors.action.primary,
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1.2,
+    marginBottom: 6,
+  },
+  bigTag: { color: colors.text, fontSize: 14, fontFamily: 'monospace', fontWeight: '700' },
+  metaRow: { flexDirection: 'row', gap: spacing.md, marginTop: 6 },
+  meta: { color: colors.textMuted, fontSize: 11 },
   sectionLabel: {
-    color: '#cbd5e1',
-    fontSize: 12,
-    fontWeight: '600',
-    letterSpacing: 0.8,
-    marginBottom: 8,
+    ...t.section,
+    marginBottom: spacing.sm,
   },
   emptyBox: {
-    backgroundColor: '#1e293b',
-    padding: 14,
-    borderRadius: 10,
+    backgroundColor: colors.bgElev,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
-  emptyTitle: { color: '#cbd5e1', fontSize: 14, fontWeight: '600' },
-  emptyBody: { color: '#94a3b8', fontSize: 12, marginTop: 6, lineHeight: 16 },
+  emptyTitle: { color: colors.textMuted, fontSize: 14, fontWeight: '700' },
+  emptyBody: { color: colors.textDim, fontSize: 12, marginTop: 6, lineHeight: 16 },
   releaseCard: {
-    backgroundColor: '#1e293b',
-    padding: 12,
-    borderRadius: 10,
-    marginBottom: 10,
+    backgroundColor: colors.bgElev,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    borderRadius: radii.md,
+    marginBottom: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   releaseCardCurrent: {
-    borderWidth: 1,
-    borderColor: '#34d399',
-    backgroundColor: '#064e3b30',
+    borderColor: colors.ok,
+    backgroundColor: colors.okBg,
   },
   releaseHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  releaseTag: { color: '#e2e8f0', fontSize: 12, fontFamily: 'monospace', flex: 1 },
-  currentBadge: { color: '#34d399', fontSize: 11, fontWeight: '700', letterSpacing: 0.5 },
-  releaseMeta: { flexDirection: 'row', gap: 12, marginTop: 6 },
-  warn: { color: '#fbbf24', fontSize: 11, marginTop: 6 },
+  releaseTag: { color: colors.text, fontSize: 12, fontFamily: 'monospace', flex: 1 },
+  currentBadge: { color: colors.ok, fontSize: 11, fontWeight: '800', letterSpacing: 0.5 },
+  releaseMeta: { flexDirection: 'row', gap: spacing.md, marginTop: 6 },
+  warn: { color: colors.warnText, fontSize: 11, marginTop: 6 },
   rollbackBtn: {
-    backgroundColor: '#3f1d1d',
+    backgroundColor: colors.action.danger,
     borderWidth: 1,
-    borderColor: '#7f1d1d',
+    borderColor: colors.action.dangerBorder,
     paddingVertical: 8,
-    borderRadius: 8,
+    borderRadius: radii.md,
     alignItems: 'center',
     marginTop: 10,
   },
   rollbackBtnBusy: { opacity: 0.7 },
-  rollbackBtnText: { color: '#fecaca', fontSize: 12, fontWeight: '600' },
+  rollbackBtnText: { color: colors.action.dangerText, fontSize: 12, fontWeight: '700' },
   helperNote: {
-    color: '#94a3b8',
+    color: colors.textDim,
     fontSize: 12,
-    marginTop: 16,
+    marginTop: spacing.lg,
     lineHeight: 16,
     fontStyle: 'italic',
   },
