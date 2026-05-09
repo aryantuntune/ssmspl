@@ -107,10 +107,30 @@ async def get_current_user(
                 detail="session_idle_timeout",
             )
 
-    # Update session activity (throttle to every 30s to reduce DB writes)
-    if not user.session_last_active or (now - user.session_last_active).total_seconds() > 30:
-        user.session_last_active = now
-        # Also update heartbeat in user_sessions table
+    # Update session activity (throttle to every 30s to reduce DB writes).
+    #
+    # Mobile JWTs skip this — they have their own auth boundary and don't
+    # participate in the desktop idle timer.
+    #
+    # For web JWTs, we issue a direct UPDATE rather than mutating
+    # `user.session_last_active` on the ORM object. The mutation path made
+    # the User row dirty; SQLAlchemy then autoflushed on the next execute(),
+    # which triggered users.updated_at's onupdate=func.now() and expired
+    # that attribute on the in-memory object. The next attribute read in
+    # /me (snap_updated = current_user.updated_at) would attempt a lazy
+    # reload OUTSIDE the original async greenlet → MissingGreenlet 500.
+    # A direct UPDATE bypasses ORM dirty tracking, so updated_at stays
+    # server-side only and the in-memory object is never expired.
+    from sqlalchemy import update as sa_update
+    if not is_mobile_jwt and (
+        not user.session_last_active
+        or (now - user.session_last_active).total_seconds() > 30
+    ):
+        await db.execute(
+            sa_update(User)
+            .where(User.id == user.id)
+            .values(session_last_active=now)
+        )
         if user.active_session_id:
             from app.services.user_session_service import update_heartbeat
             await update_heartbeat(db, user.active_session_id)
