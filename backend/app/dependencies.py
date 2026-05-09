@@ -68,19 +68,26 @@ async def get_current_user(
     if user is None or not user.is_active:
         raise credentials_exception
 
-    # Single-session enforcement: verify JWT session matches the active session
+    # Single-session enforcement: verify JWT session matches the active session.
+    # SuperAdmin mobile JWTs (mobile=True claim) skip this check so the operator
+    # can be logged into the app and the web admin portal at the same time
+    # without each login killing the other. The phone is a separate device
+    # with its own auth boundary (lock screen + biometric); a web login
+    # elsewhere shouldn't invalidate the phone session.
+    is_mobile_jwt = bool(payload.get("mobile"))
     sid = payload.get("sid")
-    if not sid or user.active_session_id != sid:
+    if not is_mobile_jwt and (not sid or user.active_session_id != sid):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="session_expired_elsewhere",
         )
 
     # Server-side idle timeout: force-logout if no activity for configured duration
-    # Skip for TICKET_CHECKER — mobile checker app has no heartbeat mechanism
+    # Skip for TICKET_CHECKER (no heartbeat) and for mobile JWTs (phone lock IS
+    # the idle boundary; a 10-min web timer doesn't fit a backgrounded app).
     now = datetime.now(timezone.utc)
     idle_limit = settings.SESSION_IDLE_TIMEOUT_MINUTES * 60  # seconds
-    if user.session_last_active and user.role != UserRole.TICKET_CHECKER:
+    if user.session_last_active and user.role != UserRole.TICKET_CHECKER and not is_mobile_jwt:
         idle_seconds = (now - user.session_last_active).total_seconds()
         if idle_seconds > idle_limit:
             # Full session teardown — revoke all tokens so session cannot resume

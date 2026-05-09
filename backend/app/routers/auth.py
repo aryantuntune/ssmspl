@@ -165,12 +165,15 @@ async def superadmin_login(
             detail="This app is for SUPER_ADMIN/ADMIN only.",
         )
 
-    from app.services.auth_service import _start_session
+    import uuid as _uuid
     from app.services import user_session_service
 
-    if user.active_session_id:
-        await user_session_service.end_session(db, user.active_session_id, "login_elsewhere")
-    sid = _start_session(user)
+    # Mobile login is a PARALLEL session — it does NOT touch
+    # user.active_session_id so an existing web session keeps working.
+    # We still record a row in user_sessions for audit, but the JWT's `sid`
+    # is its own UUID; dependencies.py skips the sid-match check for
+    # mobile=True JWTs.
+    sid = str(_uuid.uuid4())
     user.last_login = datetime.now(timezone.utc)
     await user_session_service.start_session(
         db, user.id, sid,
@@ -180,7 +183,10 @@ async def superadmin_login(
         route_id=user.route_id,
     )
 
-    extra = {"role": user.role.value, "sid": sid}
+    # `mobile: True` claim → dependencies.py skips the active_session_id match
+    # so logging in on the web portal doesn't invalidate the app's JWT (and
+    # vice versa). Same flag also bypasses the desktop-style idle timeout.
+    extra = {"role": user.role.value, "sid": sid, "mobile": True}
     # 24h access tokens for the SuperAdmin app — same pattern as mobile checkers, no idle timeout.
     access_token = create_access_token(subject=str(user.id), extra_claims=extra, expires_minutes=1440)
     refresh_token = create_refresh_token(subject=str(user.id))
