@@ -73,6 +73,40 @@ ok() {
     $VERBOSE && echo "  ✓ $1"
 }
 
+# ─── 0. EXTERNAL HTTPS PROBE ──────────────────────────────────────────────────
+# Catches outages that localhost-only checks miss: DNS, SSL, nginx upstream,
+# provider routing, anything between the public Internet and our backend.
+# Runs FIRST so even if a later check explodes, this one is already done.
+# Cross-server: each server also pings the other so when one is offline,
+# the OTHER server's monitor catches it and pushes the alert from its
+# own /api/system-health/events.
+echo "── External HTTPS probe ──"
+if [[ "$SERVER_NAME" == *"Server 1"* ]]; then
+    SELF_URL="https://carferry.online"
+    OTHER_URL="https://admin.carferry.online"
+    SELF_LABEL="prod"
+    OTHER_LABEL="admin"
+else
+    SELF_URL="https://admin.carferry.online"
+    OTHER_URL="https://carferry.online"
+    SELF_LABEL="admin"
+    OTHER_LABEL="prod"
+fi
+
+probe_url() {
+    local URL="$1" LABEL="$2"
+    local CODE
+    CODE=$(curl -sS --max-time 5 -o /dev/null -w '%{http_code}' "$URL/api/version" 2>/dev/null || echo "TIMEOUT")
+    if [ "$CODE" = "200" ]; then
+        ok "$LABEL public URL responding ($URL)"
+    else
+        issue "CRIT" "$LABEL public URL DOWN — HTTP $CODE on $URL/api/version"
+    fi
+}
+
+probe_url "$SELF_URL" "$SELF_LABEL (self)"
+probe_url "$OTHER_URL" "$OTHER_LABEL (peer)"
+
 # ─── 1. Container health ──────────────────────────────────────────────────
 echo "── Container health ──"
 if docker ps --filter "name=$BACKEND_CONTAINER" --filter "status=running" -q | grep -q .; then
