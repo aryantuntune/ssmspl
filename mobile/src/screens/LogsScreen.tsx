@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 
 import { tailContainerLogs } from '../api/systemActions';
+import { colors, radii, spacing, text as t } from '../theme';
 
 const REFRESH_MS = 5_000;
 const DEFAULT_LINES = 200;
@@ -58,14 +59,14 @@ export default function LogsScreen({
   return (
     <View style={styles.flex}>
       <View style={styles.header}>
-        <Pressable onPress={onClose} style={styles.back}>
-          <Text style={styles.backText}>← back</Text>
+        <Pressable onPress={onClose} style={styles.back} hitSlop={10}>
+          <Text style={styles.backText}>‹ Back</Text>
         </Pressable>
         <Text style={styles.title} numberOfLines={1}>
           {containerName}
         </Text>
-        <Pressable onPress={load} disabled={busy} style={styles.refresh}>
-          {busy ? <ActivityIndicator color="#cbd5e1" size="small" /> : <Text style={styles.refreshText}>↻</Text>}
+        <Pressable onPress={load} disabled={busy} style={styles.refresh} hitSlop={10}>
+          {busy ? <ActivityIndicator color={colors.textMuted} size="small" /> : <Text style={styles.refreshText}>↻</Text>}
         </Pressable>
       </View>
 
@@ -73,7 +74,7 @@ export default function LogsScreen({
         <TextInput
           style={styles.search}
           placeholder="Filter…"
-          placeholderTextColor="#64748b"
+          placeholderTextColor={colors.textFaint}
           value={filter}
           onChangeText={setFilter}
           autoCapitalize="none"
@@ -93,7 +94,10 @@ export default function LogsScreen({
       </View>
 
       <View style={styles.toggleRow}>
-        <Pressable onPress={() => setAutoRefresh((v) => !v)} style={styles.toggleBtn}>
+        <Pressable
+          onPress={() => setAutoRefresh((v) => !v)}
+          style={({ pressed }) => [styles.toggleBtn, pressed && { opacity: 0.6 }]}
+        >
           <Text style={styles.toggleText}>
             {autoRefresh ? '⏸ pause auto-refresh' : '▶ resume auto-refresh'}
           </Text>
@@ -101,7 +105,12 @@ export default function LogsScreen({
         <Text style={styles.lineCount}>{filtered.length} / {lines.length} lines</Text>
       </View>
 
-      {error && <Text style={styles.error}>{error}</Text>}
+      {error && (
+        <View style={styles.errorBox}>
+          <Text style={styles.errorIcon}>!</Text>
+          <Text style={styles.errorText}>{error}</Text>
+        </View>
+      )}
 
       <ScrollView
         ref={scrollRef}
@@ -109,11 +118,14 @@ export default function LogsScreen({
         contentContainerStyle={styles.logContent}
         horizontal={false}
       >
-        {filtered.map((ln, i) => (
-          <Text key={i} style={[styles.logLine, severity(ln) ? { color: severity(ln) } : null]} selectable>
-            {ln}
-          </Text>
-        ))}
+        {filtered.map((ln, i) => {
+          const sev = severity(ln);
+          return (
+            <Text key={i} style={[styles.logLine, sev ? { color: sev } : null]} selectable>
+              {ln}
+            </Text>
+          );
+        })}
         {filtered.length === 0 && !busy && (
           <Text style={styles.empty}>{filter ? 'no matches' : 'no log lines'}</Text>
         )}
@@ -124,68 +136,84 @@ export default function LogsScreen({
 
 function severity(line: string): string | null {
   const u = line.toUpperCase();
-  if (u.includes(' ERROR') || u.includes('TRACEBACK') || u.includes('CRITICAL')) return '#fca5a5';
-  if (u.includes(' WARN') || u.includes('WARNING')) return '#fcd34d';
-  if (u.includes(' INFO')) return '#cbd5e1';
+  if (u.includes(' ERROR') || u.includes('TRACEBACK') || u.includes('CRITICAL')) return colors.critText;
+  if (u.includes(' WARN') || u.includes('WARNING')) return colors.warnText;
+  if (u.includes(' INFO')) return colors.textMuted;
   return null;
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1, backgroundColor: '#0b1220' },
+  flex: { flex: 1, backgroundColor: colors.bg },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
+    paddingHorizontal: spacing.md,
     paddingVertical: 10,
-    borderBottomColor: '#1e293b',
+    borderBottomColor: colors.border,
     borderBottomWidth: 1,
   },
   back: { paddingVertical: 4, paddingHorizontal: 6 },
-  backText: { color: '#cbd5e1', fontSize: 14 },
-  title: { color: '#f8fafc', fontSize: 16, fontWeight: '600', flex: 1, textAlign: 'center' },
+  backText: { color: colors.action.primary, fontSize: 14, fontWeight: '600' },
+  title: { ...t.h2, flex: 1, textAlign: 'center', fontFamily: 'monospace', fontSize: 14 },
   refresh: { padding: 8 },
-  refreshText: { color: '#cbd5e1', fontSize: 18 },
-  controls: { paddingHorizontal: 12, paddingTop: 8, gap: 8 },
+  refreshText: { color: colors.textMuted, fontSize: 18 },
+  controls: { paddingHorizontal: spacing.md, paddingTop: spacing.sm, gap: spacing.sm },
   search: {
-    backgroundColor: '#1e293b',
-    color: '#e2e8f0',
-    borderRadius: 8,
-    paddingHorizontal: 12,
+    backgroundColor: colors.bgElev,
+    color: colors.text,
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.md,
     paddingVertical: 8,
     fontSize: 13,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   lineBtns: { flexDirection: 'row', gap: 6 },
   linePill: {
-    paddingHorizontal: 10,
+    paddingHorizontal: spacing.md,
     paddingVertical: 4,
-    backgroundColor: '#1e293b',
-    borderRadius: 14,
+    backgroundColor: colors.bgElev,
+    borderRadius: radii.pill,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: colors.border,
   },
-  linePillActive: { backgroundColor: '#1e3a8a', borderColor: '#1d4ed8' },
-  linePillText: { color: '#94a3b8', fontSize: 12 },
-  linePillTextActive: { color: '#dbeafe', fontWeight: '600' },
+  linePillActive: { backgroundColor: colors.action.primary, borderColor: colors.action.primaryBorder },
+  linePillText: { color: colors.textMuted, fontSize: 12 },
+  linePillTextActive: { color: colors.action.primaryText, fontWeight: '700' },
   toggleRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 12,
+    paddingHorizontal: spacing.md,
     paddingVertical: 8,
   },
   toggleBtn: { paddingVertical: 4 },
-  toggleText: { color: '#60a5fa', fontSize: 12 },
-  lineCount: { color: '#64748b', fontSize: 11 },
-  error: {
-    color: '#ef4444',
-    backgroundColor: '#7f1d1d20',
-    padding: 10,
-    borderRadius: 8,
-    margin: 12,
-    fontSize: 13,
+  toggleText: { color: colors.action.primary, fontSize: 12, fontWeight: '600' },
+  lineCount: { color: colors.textDim, fontSize: 11 },
+  errorBox: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    backgroundColor: colors.critBg,
+    borderLeftWidth: 3,
+    borderLeftColor: colors.crit,
+    paddingVertical: 10,
+    paddingHorizontal: spacing.md,
+    borderRadius: radii.sm,
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.sm,
   },
-  logBox: { flex: 1, backgroundColor: '#020617', marginHorizontal: 12, marginBottom: 12, borderRadius: 8 },
+  errorIcon: { color: colors.crit, fontWeight: '900', fontSize: 14, width: 14, textAlign: 'center' },
+  errorText: { color: colors.critText, fontSize: 13, flex: 1, lineHeight: 18 },
+  logBox: {
+    flex: 1,
+    backgroundColor: '#020617',
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.md,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
   logContent: { padding: 8 },
-  logLine: { color: '#cbd5e1', fontSize: 11, fontFamily: 'monospace', lineHeight: 14 },
-  empty: { color: '#475569', fontSize: 12, textAlign: 'center', padding: 20 },
+  logLine: { color: colors.textMuted, fontSize: 11, fontFamily: 'monospace', lineHeight: 14 },
+  empty: { color: colors.textFaint, fontSize: 12, textAlign: 'center', padding: 20 },
 });

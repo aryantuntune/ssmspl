@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { colors, radii, spacing } from '../theme';
+
 type Variant = 'primary' | 'warn' | 'danger' | 'ghost';
 
 type Props = {
@@ -65,7 +67,7 @@ export function ActionButton({
         style={({ pressed }) => [
           styles.btn,
           { backgroundColor: palette.bg, borderColor: palette.border },
-          pressed && { opacity: 0.7 },
+          pressed && { opacity: 0.75 },
           disabled && { opacity: 0.4 },
         ]}
       >
@@ -73,16 +75,16 @@ export function ActionButton({
           {busy ? (
             <ActivityIndicator color={palette.text} size="small" />
           ) : (
-            <Text style={[styles.icon, { color: palette.text }]}>{icon ?? '·'}</Text>
+            <Text style={[styles.icon, { color: palette.text }]}>{icon ?? '›'}</Text>
           )}
-          <Text style={[styles.label, { color: palette.text }]} numberOfLines={1}>
+          <Text style={[styles.label, { color: palette.text }]} numberOfLines={2}>
             {label}
           </Text>
         </View>
         {hint && <Text style={styles.hint}>{hint}</Text>}
       </Pressable>
       {last && (
-        <Text style={[styles.result, { color: last.ok ? '#34d399' : '#f87171' }]} numberOfLines={2}>
+        <Text style={[styles.result, { color: last.ok ? colors.ok : colors.crit }]} numberOfLines={2}>
           {last.ok ? '✓ ' : '✗ '}
           {last.text}
         </Text>
@@ -94,14 +96,30 @@ export function ActionButton({
 function paletteFor(v: Variant) {
   switch (v) {
     case 'danger':
-      return { bg: '#3f1d1d', border: '#7f1d1d', text: '#fecaca' };
+      return {
+        bg: colors.action.danger,
+        border: colors.action.dangerBorder,
+        text: colors.action.dangerText,
+      };
     case 'warn':
-      return { bg: '#3f2d0e', border: '#92400e', text: '#fcd34d' };
+      return {
+        bg: colors.action.warn,
+        border: colors.action.warnBorder,
+        text: colors.action.warnText,
+      };
     case 'ghost':
-      return { bg: '#0f172a', border: '#334155', text: '#cbd5e1' };
+      return {
+        bg: colors.action.ghost,
+        border: colors.action.ghostBorder,
+        text: colors.action.ghostText,
+      };
     case 'primary':
     default:
-      return { bg: '#1e3a8a', border: '#1d4ed8', text: '#dbeafe' };
+      return {
+        bg: colors.action.primary,
+        border: colors.action.primaryBorder,
+        text: colors.action.primaryText,
+      };
   }
 }
 
@@ -109,13 +127,13 @@ const styles = StyleSheet.create({
   wrap: { flex: 1, minWidth: 0 },
   btn: {
     borderWidth: 1,
-    borderRadius: 10,
-    paddingVertical: 12,
-    paddingHorizontal: 10,
+    borderRadius: radii.md,
+    paddingVertical: 11,
+    paddingHorizontal: spacing.md,
   },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  icon: { fontSize: 16 },
-  label: { fontSize: 13, fontWeight: '600', flexShrink: 1 },
-  hint: { color: '#94a3b8', fontSize: 11, marginTop: 4 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  icon: { fontSize: 16, fontWeight: '700' },
+  label: { fontSize: 13, fontWeight: '700', flexShrink: 1 },
+  hint: { color: colors.textMuted, fontSize: 11, marginTop: 4 },
   result: { fontSize: 11, marginTop: 4, paddingHorizontal: 4 },
 });

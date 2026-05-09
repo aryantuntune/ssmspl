@@ -65,6 +65,7 @@ export type HealthEvent = {
   message: string;
   details: Record<string, unknown> | null;
   created_at: string;
+  acked_at: string | null;
 };
 
 export type PushDeviceRead = {

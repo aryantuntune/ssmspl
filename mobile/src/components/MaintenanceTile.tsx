@@ -14,6 +14,7 @@ import {
   type MaintenanceState,
   type MaintenanceStatus,
 } from '../api/maintenance';
+import { colors, radii, spacing, text as t } from '../theme';
 
 const POLL_MS = 5000;
 
@@ -50,7 +51,6 @@ export function MaintenanceTile() {
         ],
       );
     } else {
-      // Disabling is fast-recovery — no confirm
       doFlip(false);
     }
   };
@@ -65,7 +65,6 @@ export function MaintenanceTile() {
       const detail = e?.response?.data?.detail || e?.message || 'Toggle failed';
       Alert.alert('Maintenance toggle failed', typeof detail === 'string' ? detail : JSON.stringify(detail));
       setError(typeof detail === 'string' ? detail : 'Toggle failed');
-      // Re-read state from server to know reality
       load();
     } finally {
       setBusy(false);
@@ -73,10 +72,10 @@ export function MaintenanceTile() {
   };
 
   const isOn = status?.state === 'maintenance' || status?.state === 'update';
-  const stateColor = stateToColor(status?.state);
+  const sc = stateToColor(status?.state);
 
   return (
-    <View style={[styles.tile, isOn && styles.tileOn]}>
+    <View style={[styles.tile, isOn && { borderColor: sc.accent }]}>
       <View style={styles.headerRow}>
         <View style={{ flex: 1 }}>
           <Text style={styles.title}>Maintenance Mode</Text>
@@ -84,8 +83,8 @@ export function MaintenanceTile() {
             {status?.server ? `${status.server} server` : 'Loading server name…'}
           </Text>
         </View>
-        <View style={[styles.statusPill, { backgroundColor: stateColor.bg, borderColor: stateColor.border }]}>
-          <Text style={[styles.statusText, { color: stateColor.text }]}>
+        <View style={[styles.statusPill, { backgroundColor: sc.bg, borderColor: sc.accent }]}>
+          <Text style={[styles.statusText, { color: sc.fg }]}>
             {(status?.state ?? '?').toUpperCase()}
           </Text>
         </View>
@@ -105,7 +104,7 @@ export function MaintenanceTile() {
           ]}
         >
           {busy && status?.state !== 'off' ? (
-            <ActivityIndicator size="small" color="#cbd5e1" />
+            <ActivityIndicator size="small" color={colors.action.ghostText} />
           ) : (
             <Text style={styles.btnOffText}>Turn OFF</Text>
           )}
@@ -122,7 +121,7 @@ export function MaintenanceTile() {
           ]}
         >
           {busy && !isOn ? (
-            <ActivityIndicator size="small" color="#fecaca" />
+            <ActivityIndicator size="small" color={colors.action.dangerText} />
           ) : (
             <Text style={styles.btnOnText}>Turn ON</Text>
           )}
@@ -130,67 +129,67 @@ export function MaintenanceTile() {
       </View>
 
       <Text style={styles.helper}>
-        Flips a flag file that nginx checks on every request. Visitors see the maintenance page
-        within ~1 second. No container restart required.
+        Flips an nginx flag — visitors see the maintenance page within ~1 second.
+        No container restart required.
       </Text>
     </View>
   );
 }
 
 function stateToColor(state: MaintenanceState | undefined) {
-  if (state === 'maintenance') return { bg: '#7f1d1d', border: '#ef4444', text: '#fecaca' };
-  if (state === 'update') return { bg: '#78350f', border: '#f59e0b', text: '#fcd34d' };
-  if (state === 'off') return { bg: '#064e3b', border: '#10b981', text: '#a7f3d0' };
-  return { bg: '#1e293b', border: '#334155', text: '#94a3b8' };
+  if (state === 'maintenance') return { bg: colors.critBg, accent: colors.crit, fg: colors.critText };
+  if (state === 'update') return { bg: colors.warnBg, accent: colors.warn, fg: colors.warnText };
+  if (state === 'off') return { bg: colors.okBg, accent: colors.ok, fg: colors.okText };
+  return { bg: colors.bgElev2, accent: colors.border, fg: colors.textMuted };
 }
 
 const styles = StyleSheet.create({
   tile: {
-    backgroundColor: '#1e293b',
-    padding: 14,
-    borderRadius: 12,
-    marginBottom: 12,
+    backgroundColor: colors.bgElev,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    borderRadius: radii.lg,
+    marginBottom: spacing.sm,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: colors.border,
   },
-  tileOn: { borderColor: '#ef4444' },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: spacing.md,
   },
-  title: { color: '#f8fafc', fontSize: 15, fontWeight: '600' },
-  subtitle: { color: '#94a3b8', fontSize: 12, marginTop: 2 },
+  title: { ...t.h2, fontSize: 14 },
+  subtitle: { ...t.meta, marginTop: 2 },
   statusPill: {
-    paddingHorizontal: 10,
+    paddingHorizontal: spacing.md,
     paddingVertical: 4,
-    borderRadius: 6,
+    borderRadius: radii.sm,
     borderWidth: 1,
   },
-  statusText: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5 },
+  statusText: { fontSize: 11, fontWeight: '800', letterSpacing: 0.6 },
   error: {
-    color: '#f87171',
+    color: colors.critText,
     fontSize: 12,
-    backgroundColor: '#7f1d1d20',
+    backgroundColor: colors.critBg,
     padding: 8,
-    borderRadius: 6,
+    borderRadius: radii.sm,
     marginBottom: 10,
   },
-  btnRow: { flexDirection: 'row', gap: 10 },
+  btnRow: { flexDirection: 'row', gap: spacing.sm },
   btn: {
     flex: 1,
     paddingVertical: 10,
-    borderRadius: 8,
+    borderRadius: radii.md,
     alignItems: 'center',
     borderWidth: 1,
   },
-  btnOff: { backgroundColor: '#0f172a', borderColor: '#334155' },
-  btnOffText: { color: '#cbd5e1', fontSize: 13, fontWeight: '600' },
-  btnOn: { backgroundColor: '#3f1d1d', borderColor: '#7f1d1d' },
-  btnOnText: { color: '#fecaca', fontSize: 13, fontWeight: '600' },
+  btnOff: { backgroundColor: colors.action.ghost, borderColor: colors.action.ghostBorder },
+  btnOffText: { color: colors.action.ghostText, fontSize: 13, fontWeight: '700' },
+  btnOn: { backgroundColor: colors.action.danger, borderColor: colors.action.dangerBorder },
+  btnOnText: { color: colors.action.dangerText, fontSize: 13, fontWeight: '700' },
   btnDisabled: { opacity: 0.4 },
   helper: {
-    color: '#94a3b8',
+    color: colors.textDim,
     fontSize: 11,
     marginTop: 10,
     lineHeight: 14,

@@ -13,6 +13,7 @@ import { logout, getMe, type Me } from '../api/auth';
 import { listDevices, unregisterDevice, type PushDeviceRead } from '../api/systemHealth';
 import { getActiveServerUrl } from '../lib/config';
 import { registerForPushNotifications } from '../lib/notifications';
+import { colors, radii, spacing, text as t } from '../theme';
 
 export default function SettingsScreen({
   onBack,
@@ -32,8 +33,8 @@ export default function SettingsScreen({
       setMe(m);
       setServer(s);
       setDevices(d);
-    } catch (e) {
-      // Ignore
+    } catch {
+      // ignore
     } finally {
       setLoading(false);
     }
@@ -78,32 +79,40 @@ export default function SettingsScreen({
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator color="#3b82f6" />
+        <ActivityIndicator color={colors.action.primary} />
       </View>
     );
   }
 
+  // Friendly role label — never expose "Super Admin" wording.
+  const roleLabel = (role: string | undefined) => {
+    if (!role) return '';
+    if (role === 'SUPER_ADMIN') return 'System Administrator';
+    if (role === 'ADMIN') return 'Administrator';
+    return role;
+  };
+
   return (
     <ScrollView style={styles.flex} contentContainerStyle={styles.scroll}>
       <View style={styles.headerRow}>
-        <Pressable onPress={onBack}>
+        <Pressable onPress={onBack} hitSlop={10}>
           <Text style={styles.backBtn}>‹ Back</Text>
         </Pressable>
         <Text style={styles.h1}>Settings</Text>
-        <View style={{ width: 50 }} />
+        <View style={{ width: 60 }} />
       </View>
 
       <Text style={styles.label}>Logged in as</Text>
       <View style={styles.box}>
         <Text style={styles.value}>{me?.full_name}</Text>
         <Text style={styles.dim}>
-          @{me?.username} · {me?.role}
+          @{me?.username} · {roleLabel(me?.role)}
         </Text>
       </View>
 
       <Text style={styles.label}>Server</Text>
       <View style={styles.box}>
-        <Text style={styles.value}>{server}</Text>
+        <Text style={styles.value} numberOfLines={1}>{server}</Text>
       </View>
 
       <Text style={styles.label}>Push devices</Text>
@@ -114,21 +123,39 @@ export default function SettingsScreen({
       )}
       {devices.map((d) => (
         <View key={d.id} style={[styles.box, !d.is_active && { opacity: 0.5 }]}>
-          <Text style={styles.value}>{d.device_label || 'Unnamed device'}</Text>
-          <Text style={styles.dim}>
-            {d.platform} · {d.is_active ? 'active' : 'inactive'} · token {d.expo_push_token.slice(0, 28)}…
+          <View style={styles.deviceTop}>
+            <Text style={styles.value} numberOfLines={1}>
+              {d.device_label || 'Unnamed device'}
+            </Text>
+            <View style={[styles.statusPill, d.is_active ? styles.statusActive : styles.statusInactive]}>
+              <Text style={[styles.statusText, d.is_active ? { color: colors.okText } : { color: colors.textMuted }]}>
+                {d.is_active ? 'ACTIVE' : 'INACTIVE'}
+              </Text>
+            </View>
+          </View>
+          <Text style={styles.dim} numberOfLines={1}>
+            {d.platform} · token {d.expo_push_token.slice(0, 28)}…
           </Text>
-          <Pressable onPress={() => removeDevice(d.id)} style={styles.miniBtn}>
+          <Pressable
+            onPress={() => removeDevice(d.id)}
+            style={({ pressed }) => [styles.miniBtn, pressed && { opacity: 0.6 }]}
+          >
             <Text style={styles.miniBtnText}>Remove</Text>
           </Pressable>
         </View>
       ))}
 
-      <Pressable style={styles.button} onPress={reRegisterPush}>
+      <Pressable
+        style={({ pressed }) => [styles.button, pressed && { opacity: 0.7 }]}
+        onPress={reRegisterPush}
+      >
         <Text style={styles.buttonText}>Re-register push notifications</Text>
       </Pressable>
 
-      <Pressable style={[styles.button, styles.danger]} onPress={doLogout}>
+      <Pressable
+        style={({ pressed }) => [styles.button, styles.danger, pressed && { opacity: 0.7 }]}
+        onPress={doLogout}
+      >
         <Text style={styles.buttonText}>Sign out</Text>
       </Pressable>
     </ScrollView>
@@ -136,56 +163,79 @@ export default function SettingsScreen({
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1, backgroundColor: '#0b1220' },
-  scroll: { padding: 16, paddingBottom: 60 },
+  flex: { flex: 1, backgroundColor: colors.bg },
+  scroll: { padding: spacing.lg, paddingBottom: 60 },
   center: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#0b1220',
+    backgroundColor: colors.bg,
   },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 24,
-    marginTop: 12,
+    marginBottom: spacing.xl,
+    marginTop: spacing.md,
   },
-  backBtn: { color: '#3b82f6', fontSize: 16 },
-  h1: { color: '#f8fafc', fontSize: 18, fontWeight: '700' },
+  backBtn: { color: colors.action.primary, fontSize: 16, fontWeight: '600' },
+  h1: { ...t.h1, fontSize: 18 },
   label: {
-    color: '#94a3b8',
-    fontSize: 11,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    marginTop: 16,
-    marginBottom: 6,
-    letterSpacing: 0.5,
+    ...t.section,
+    marginTop: spacing.md,
+    marginBottom: spacing.sm,
   },
   box: {
-    backgroundColor: '#1e293b',
-    padding: 12,
-    borderRadius: 8,
+    backgroundColor: colors.bgElev,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    borderRadius: radii.md,
     marginBottom: 6,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
-  value: { color: '#f8fafc', fontSize: 14, fontWeight: '500' },
-  dim: { color: '#94a3b8', fontSize: 12, marginTop: 2 },
-  button: {
-    backgroundColor: '#3b82f6',
-    padding: 14,
-    borderRadius: 8,
-    marginTop: 16,
+  value: { color: colors.text, fontSize: 14, fontWeight: '600' },
+  dim: { ...t.meta, marginTop: 2 },
+  deviceTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: 2,
   },
-  danger: { backgroundColor: '#ef4444', marginTop: 12 },
-  buttonText: { color: '#fff', fontSize: 14, fontWeight: '600' },
+  statusPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: radii.sm,
+    borderWidth: 1,
+  },
+  statusActive: { backgroundColor: colors.okBg, borderColor: colors.ok },
+  statusInactive: { backgroundColor: colors.bgElev2, borderColor: colors.borderStrong },
+  statusText: { fontSize: 10, fontWeight: '800', letterSpacing: 0.6 },
+  button: {
+    backgroundColor: colors.action.primary,
+    paddingVertical: 14,
+    borderRadius: radii.md,
+    marginTop: spacing.md,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.action.primaryBorder,
+  },
+  danger: {
+    backgroundColor: colors.action.danger,
+    borderColor: colors.action.dangerBorder,
+    marginTop: spacing.md,
+  },
+  buttonText: { color: colors.action.primaryText, fontSize: 14, fontWeight: '700', letterSpacing: 0.3 },
   miniBtn: {
     alignSelf: 'flex-start',
-    marginTop: 6,
-    paddingHorizontal: 10,
+    marginTop: 8,
+    paddingHorizontal: spacing.md,
     paddingVertical: 4,
-    backgroundColor: '#475569',
-    borderRadius: 4,
+    backgroundColor: colors.bgElev2,
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
   },
-  miniBtnText: { color: '#fff', fontSize: 11 },
+  miniBtnText: { color: colors.textMuted, fontSize: 11, fontWeight: '600' },
 });

@@ -2,12 +2,15 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import type { SystemInfo } from '../api/systemHealth';
+import { colors, radii, spacing, text as t, severityPalette } from '../theme';
 import { StatusBadge } from './StatusBadge';
 
 export function SystemInfoTile({ system }: { system: SystemInfo }) {
+  const p = severityPalette(system.severity);
+
   if (system.error) {
     return (
-      <View style={styles.tile}>
+      <View style={[styles.tile, { borderLeftColor: p.accent }]}>
         <View style={styles.header}>
           <Text style={styles.title}>System</Text>
           <StatusBadge severity={system.severity} />
@@ -22,31 +25,35 @@ export function SystemInfoTile({ system }: { system: SystemInfo }) {
     loadOver > 2 ? '· overloaded' : loadOver > 1.5 ? '· high' : loadOver > 1 ? '· busy' : '· idle';
 
   return (
-    <View style={styles.tile}>
+    <View style={[styles.tile, { borderLeftColor: p.accent }]}>
       <View style={styles.header}>
         <Text style={styles.title}>System</Text>
         <StatusBadge severity={system.severity} />
       </View>
-      <View style={styles.row}>
-        <Text style={styles.label}>Uptime</Text>
-        <Text style={styles.value}>{system.uptime_str}</Text>
+
+      {/* Headline metric block — uptime + cpu in one glance */}
+      <View style={styles.statsBlock}>
+        <View style={styles.stat}>
+          <Text style={styles.statValue}>{system.cpu_pct}%</Text>
+          <Text style={styles.statLabel}>CPU · {system.cpu_count} core{system.cpu_count === 1 ? '' : 's'}</Text>
+        </View>
+        <View style={styles.divider} />
+        <View style={styles.stat}>
+          <Text style={styles.statValue}>{system.uptime_str}</Text>
+          <Text style={styles.statLabel}>uptime</Text>
+        </View>
       </View>
+
       <View style={styles.row}>
-        <Text style={styles.label}>CPU usage</Text>
-        <Text style={styles.value}>
-          {system.cpu_pct}% across {system.cpu_count} core{system.cpu_count === 1 ? '' : 's'}
-        </Text>
-      </View>
-      <View style={styles.row}>
-        <Text style={styles.label}>Load average</Text>
-        <Text style={styles.value}>
+        <Text style={styles.label}>Load avg</Text>
+        <Text style={styles.value} numberOfLines={1}>
           {system.load_avg_1} · {system.load_avg_5} · {system.load_avg_15}
           <Text style={styles.dim}> {loadHint}</Text>
         </Text>
       </View>
       <View style={styles.row}>
         <Text style={styles.label}>Network now</Text>
-        <Text style={styles.value}>
+        <Text style={styles.value} numberOfLines={1}>
           ↓ {fmtKbs(system.net_rx_kbs)}  ↑ {fmtKbs(system.net_tx_kbs)}
         </Text>
       </View>
@@ -61,21 +68,41 @@ function fmtKbs(kbs: number): string {
 
 const styles = StyleSheet.create({
   tile: {
-    backgroundColor: '#1e293b',
-    padding: 14,
-    borderRadius: 12,
-    marginBottom: 12,
+    backgroundColor: colors.bgElev,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    borderRadius: radii.lg,
+    marginBottom: spacing.sm,
+    borderLeftWidth: 3,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: spacing.sm,
   },
-  title: { color: '#f8fafc', fontSize: 15, fontWeight: '600' },
-  row: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 },
-  label: { color: '#94a3b8', fontSize: 13 },
-  value: { color: '#e2e8f0', fontSize: 13, fontWeight: '500' },
-  dim: { color: '#64748b', fontWeight: '400' },
-  errorText: { color: '#f87171', fontSize: 12 },
+  title: { ...t.h2, fontSize: 14 },
+  statsBlock: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.bgElev2,
+    borderRadius: radii.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  stat: { flex: 1 },
+  divider: { width: 1, alignSelf: 'stretch', backgroundColor: colors.border, marginHorizontal: spacing.md },
+  statValue: { color: colors.text, fontSize: 18, fontWeight: '700' },
+  statLabel: { ...t.meta, marginTop: 2 },
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 3,
+    gap: spacing.md,
+  },
+  label: { ...t.label, flexShrink: 0 },
+  value: { ...t.value, flexShrink: 1, textAlign: 'right' },
+  dim: { color: colors.textDim, fontWeight: '400' },
+  errorText: { color: colors.critText, fontSize: 12 },
 });

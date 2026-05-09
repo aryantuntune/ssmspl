@@ -10,6 +10,7 @@ import {
   type ActionResult,
 } from '../api/systemActions';
 import { ActionButton } from './ActionButton';
+import { colors, radii, spacing, text as t } from '../theme';
 
 type Props = {
   hostQueueAvailable: boolean;
@@ -30,6 +31,7 @@ export function ActionsPanel({ hostQueueAvailable, onAfterAction }: Props) {
         <ActionButton
           label="Backup database now"
           variant="primary"
+          icon="⤓"
           confirm="Start a manual pg_dump? Runs in ~30s; non-blocking."
           hint="Triggers an immediate Postgres dump"
           onPress={() => wrap(triggerBackup)}
@@ -42,6 +44,7 @@ export function ActionsPanel({ hostQueueAvailable, onAfterAction }: Props) {
         <ActionButton
           label="Sync to Google Drive"
           variant="primary"
+          icon="↑"
           hint="Uploads pending backups offsite"
           onPress={() => wrap(forceSync)}
           resultLabel={(r) => (r?.ok ? 'Sync queued for next run' : r?.error ?? 'Failed')}
@@ -53,6 +56,7 @@ export function ActionsPanel({ hostQueueAvailable, onAfterAction }: Props) {
         <ActionButton
           label="Clean unused Docker images"
           variant="warn"
+          icon="✕"
           confirm="Delete dangling Docker images? Frees disk; safe — only removes what's no longer referenced."
           hint="Frees disk space"
           onPress={() => wrap(pruneImages)}
@@ -65,6 +69,7 @@ export function ActionsPanel({ hostQueueAvailable, onAfterAction }: Props) {
         <ActionButton
           label="Send test alert to phone"
           variant="ghost"
+          icon="🔔"
           hint="Verifies push notifications work"
           onPress={() => wrap(testPush)}
           resultLabel={(r) => {
@@ -82,13 +87,14 @@ export function ActionsPanel({ hostQueueAvailable, onAfterAction }: Props) {
         <>
           <Text style={styles.section}>Host-level fixes</Text>
           <Text style={styles.subtle}>
-            These run on the host machine itself, not in a container — used to recover from broken
+            Run on the host machine itself (not in a container) — used to recover from broken
             networking or stuck containers.
           </Text>
           <View style={styles.row}>
             <ActionButton
               label="Re-apply iptables rules"
               variant="warn"
+              icon="≣"
               hint="Fixes Docker FORWARD-chain breakage"
               onPress={() => submitHostAction('run_iptables_fix')}
               resultLabel={hostResultLabel}
@@ -96,6 +102,7 @@ export function ActionsPanel({ hostQueueAvailable, onAfterAction }: Props) {
             <ActionButton
               label="Run host health check"
               variant="ghost"
+              icon="✓"
               hint="Re-runs health_check.sh manually"
               onPress={() => submitHostAction('run_health_check', {}, 60)}
               resultLabel={hostResultLabel}
@@ -105,6 +112,7 @@ export function ActionsPanel({ hostQueueAvailable, onAfterAction }: Props) {
             <ActionButton
               label="Truncate large host logs"
               variant="ghost"
+              icon="✂"
               confirm="Truncate any /var/log file over 200MB on the host?"
               hint="Frees disk in /var/log"
               onPress={() => submitHostAction('cleanup_logs')}
@@ -113,6 +121,7 @@ export function ActionsPanel({ hostQueueAvailable, onAfterAction }: Props) {
             <ActionButton
               label="Force-recreate admin-backend"
               variant="danger"
+              icon="↻"
               confirm="Stop & recreate the admin-backend container? ~30s downtime — use when it's stuck."
               hint="Recovers from zombie container"
               onPress={() => submitHostAction('force_recreate_admin_backend', {}, 90)}
@@ -123,10 +132,13 @@ export function ActionsPanel({ hostQueueAvailable, onAfterAction }: Props) {
       )}
 
       {!hostQueueAvailable && (
-        <Text style={styles.note}>
-          Host-action daemon is not installed yet. Once set up, this panel gains buttons for
-          iptables fix, container force-recreate, and host log cleanup.
-        </Text>
+        <View style={styles.note}>
+          <Text style={styles.noteIcon}>i</Text>
+          <Text style={styles.noteText}>
+            Host-action daemon is not installed yet. Once set up, this panel gains buttons for
+            iptables fix, container force-recreate, and host log cleanup.
+          </Text>
+        </View>
       )}
     </View>
   );
@@ -141,25 +153,37 @@ function hostResultLabel(r: any): string {
 }
 
 const styles = StyleSheet.create({
-  wrap: { marginTop: 4 },
+  wrap: { marginTop: 0 },
   section: {
-    color: '#cbd5e1',
-    fontSize: 14,
-    fontWeight: '600',
-    marginTop: 18,
-    marginBottom: 8,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    ...t.section,
+    marginTop: spacing.md,
+    marginBottom: spacing.sm,
   },
-  subtle: { color: '#94a3b8', fontSize: 12, marginBottom: 10, lineHeight: 16 },
-  row: { flexDirection: 'row', gap: 10, marginBottom: 10 },
+  subtle: { ...t.bodyMuted, fontSize: 12, marginBottom: 10, lineHeight: 16 },
+  row: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.sm },
   note: {
-    color: '#94a3b8',
+    flexDirection: 'row',
+    gap: spacing.sm,
+    backgroundColor: colors.bgElev,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    borderRadius: radii.md,
+    marginTop: spacing.md,
+    borderLeftWidth: 3,
+    borderLeftColor: colors.info,
+  },
+  noteIcon: {
+    color: colors.info,
+    fontWeight: '900',
+    fontSize: 14,
+    width: 14,
+    textAlign: 'center',
+  },
+  noteText: {
+    color: colors.textMuted,
     fontSize: 12,
+    flex: 1,
+    lineHeight: 16,
     fontStyle: 'italic',
-    backgroundColor: '#1e293b',
-    padding: 10,
-    borderRadius: 8,
-    marginTop: 14,
   },
 });

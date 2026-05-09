@@ -34,6 +34,7 @@ import { MaintenanceTile } from '../components/MaintenanceTile';
 import { StatusBadge } from '../components/StatusBadge';
 import { SystemInfoTile } from '../components/SystemInfoTile';
 import { TodayTile } from '../components/TodayTile';
+import { colors, radii, spacing, text as t, severityPalette } from '../theme';
 
 const REFRESH_MS = 30_000;
 
@@ -65,9 +66,8 @@ export default function DashboardScreen({
       setSnapshot(s);
       setEvents(e);
 
-      // Fire foreground local notifications for any new CRIT events the user hasn't seen.
-      // No push token needed — this is a belt-and-suspenders alert path that complements
-      // the ntfy.sh server-side push relay.
+      // Fire foreground local notifications for any new CRIT events the user
+      // hasn't seen — belt-and-suspenders alongside the ntfy.sh server push.
       fireLocalAlertsForNewCrits(e).catch(() => {});
 
       try { setContainers(await listContainers()); } catch { setContainers([]); }
@@ -124,11 +124,22 @@ export default function DashboardScreen({
   if (loading && !snapshot) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator color="#3b82f6" />
+        <ActivityIndicator color={colors.action.primary} />
         <Text style={styles.dim}>Connecting…</Text>
       </View>
     );
   }
+
+  const overall = snapshot?.overall_severity ?? 'OK';
+  const overallPalette = severityPalette(overall);
+  const serverName = snapshot?.server ?? 'unknown';
+  // Heuristic: anything matching admin.* is the Admin Portal server
+  const isAdminPortal = /admin/i.test(serverName);
+  const serverTint = isAdminPortal ? colors.serverAdmin : colors.serverProd;
+  const serverLabel = isAdminPortal ? 'ADMIN PORTAL' : 'PRODUCTION';
+
+  const critCount = events.filter((e) => e.severity === 'CRIT').length;
+  const warnCount = events.filter((e) => e.severity === 'WARN').length;
 
   return (
     <ScrollView
@@ -137,7 +148,7 @@ export default function DashboardScreen({
       refreshControl={
         <RefreshControl
           refreshing={refreshing}
-          tintColor="#cbd5e1"
+          tintColor={colors.textMuted}
           onRefresh={() => {
             setRefreshing(true);
             load();
@@ -145,33 +156,66 @@ export default function DashboardScreen({
         />
       }
     >
-      <View style={styles.headerRow}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.h1}>System Health</Text>
-          <Text style={styles.dim}>{snapshot?.server ?? 'unknown'}</Text>
+      {/* ── Top bar: app title + settings cog ─────────────────────── */}
+      <View style={styles.topBar}>
+        <View>
+          <Text style={styles.appTitle}>Admin Console</Text>
+          <Text style={styles.appSub}>System health & ops</Text>
         </View>
-        <View style={styles.headerRight}>
-          {snapshot && <StatusBadge severity={snapshot.overall_severity} />}
-          <Pressable onPress={onSettings} style={styles.iconBtn}>
-            <Text style={styles.icon}>⚙</Text>
-          </Pressable>
+        <Pressable
+          onPress={onSettings}
+          style={({ pressed }) => [styles.iconBtn, pressed && { opacity: 0.6 }]}
+          hitSlop={10}
+        >
+          <Text style={styles.iconBtnText}>⚙</Text>
+        </Pressable>
+      </View>
+
+      {/* ── Server identity strip — always visible so you know which
+            box you're staring at ─────────────────────────────────── */}
+      <View style={[styles.serverStrip, { borderColor: serverTint }]}>
+        <View style={[styles.serverDot, { backgroundColor: serverTint }]} />
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.serverLabel, { color: serverTint }]}>{serverLabel}</Text>
+          <Text style={styles.serverHost} numberOfLines={1}>{serverName}</Text>
         </View>
       </View>
 
+      {/* ── Status hero — biggest, loudest thing on screen ────────── */}
+      <View style={[styles.hero, { borderColor: overallPalette.accent, backgroundColor: overallPalette.bg }]}>
+        <View style={styles.heroTop}>
+          <Text style={[styles.heroTitle, { color: overallPalette.fg }]}>{statusHeadline(overall, critCount)}</Text>
+          <StatusBadge severity={overall} large />
+        </View>
+        <Text style={[styles.heroSub, { color: overallPalette.fg }]}>
+          {statusSubtitle(overall, critCount, warnCount)}
+        </Text>
+      </View>
+
+      {error && (
+        <View style={styles.errorBox}>
+          <Text style={styles.errorIcon}>!</Text>
+          <Text style={styles.errorText}>{error}</Text>
+        </View>
+      )}
+
+      {/* ── Quick jumps ── */}
       <View style={styles.quickJump}>
-        <Pressable onPress={onIncidentReport} style={styles.jumpBtn}>
-          <Text style={styles.jumpTitle}>Incident report</Text>
-          <Text style={styles.jumpSub}>Logs · events · activity in one place</Text>
-        </Pressable>
-        <Pressable onPress={onVersions} style={styles.jumpBtn}>
-          <Text style={styles.jumpTitle}>Versions & rollback</Text>
-          <Text style={styles.jumpSub}>Switch admin-backend to a previous build</Text>
-        </Pressable>
+        <JumpCard
+          label="Incident report"
+          sub="Logs · events · activity"
+          icon="📋"
+          onPress={onIncidentReport}
+        />
+        <JumpCard
+          label="Versions"
+          sub="Switch to a previous build"
+          icon="↺"
+          onPress={onVersions}
+        />
       </View>
 
       <MaintenanceTile />
-
-      {error && <Text style={styles.error}>{error}</Text>}
 
       {snapshot && (
         <>
@@ -180,22 +224,30 @@ export default function DashboardScreen({
 
           <Text style={styles.sectionTitle}>Resources</Text>
           {snapshot.system && <SystemInfoTile system={snapshot.system} />}
-          <HealthTile
-            title="Disk"
-            severity={snapshot.disk.severity}
-            rows={[
-              { label: 'Used', value: `${snapshot.disk.pct_used}% of ${snapshot.disk.total_gb} GB` },
-              { label: 'Free', value: `${snapshot.disk.free_gb} GB` },
-            ]}
-          />
-          <HealthTile
-            title="Memory"
-            severity={snapshot.memory.severity}
-            rows={[
-              { label: 'Used', value: `${snapshot.memory.pct_used}% of ${snapshot.memory.total_mb} MB` },
-              { label: 'Available', value: `${snapshot.memory.available_mb} MB` },
-            ]}
-          />
+          <View style={styles.duo}>
+            <View style={styles.duoCol}>
+              <HealthTile
+                title="Disk"
+                severity={snapshot.disk.severity}
+                rows={[
+                  { label: 'Used', value: `${snapshot.disk.pct_used}%` },
+                  { label: 'Free', value: `${snapshot.disk.free_gb} GB` },
+                  { label: 'Total', value: `${snapshot.disk.total_gb} GB` },
+                ]}
+              />
+            </View>
+            <View style={styles.duoCol}>
+              <HealthTile
+                title="Memory"
+                severity={snapshot.memory.severity}
+                rows={[
+                  { label: 'Used', value: `${snapshot.memory.pct_used}%` },
+                  { label: 'Free', value: `${snapshot.memory.available_mb} MB` },
+                  { label: 'Total', value: `${snapshot.memory.total_mb} MB` },
+                ]}
+              />
+            </View>
+          </View>
 
           <Text style={styles.sectionTitle}>Database</Text>
           <HealthTile
@@ -268,11 +320,16 @@ export default function DashboardScreen({
         </>
       )}
 
-      <Text style={styles.sectionTitle}>Actions</Text>
-      <ActionsPanel hostQueueAvailable={hostQueueAvailable} onAfterAction={load} />
+      {/* ── Actions live in their own block, visually distinct from
+            readouts above ─────────────────────────────────────────── */}
+      <View style={styles.actionsBlock}>
+        <Text style={styles.actionsHeading}>Actions</Text>
+        <Text style={styles.actionsSub}>Ops you can take from your phone.</Text>
+        <ActionsPanel hostQueueAvailable={hostQueueAvailable} onAfterAction={load} />
+      </View>
 
       <View style={styles.alertsHeader}>
-        <View>
+        <View style={{ flex: 1 }}>
           <Text style={styles.sectionTitle}>Open alerts</Text>
           <Text style={styles.dim}>
             {events.length === 0
@@ -281,9 +338,13 @@ export default function DashboardScreen({
           </Text>
         </View>
         {events.length > 0 && (
-          <Pressable onPress={onAckAll} disabled={bulkAcking} style={styles.ackAllBtn}>
+          <Pressable
+            onPress={onAckAll}
+            disabled={bulkAcking}
+            style={({ pressed }) => [styles.ackAllBtn, pressed && { opacity: 0.7 }]}
+          >
             {bulkAcking ? (
-              <ActivityIndicator color="#cbd5e1" size="small" />
+              <ActivityIndicator color={colors.action.ghostText} size="small" />
             ) : (
               <Text style={styles.ackAllText}>Ack all</Text>
             )}
@@ -293,7 +354,7 @@ export default function DashboardScreen({
 
       {events.length === 0 ? (
         <View style={styles.emptyAlerts}>
-          <Text style={styles.emptyText}>All clear — no open alerts.</Text>
+          <Text style={styles.emptyText}>✓ All clear — no open alerts.</Text>
           <Text style={styles.emptySubText}>
             New CRIT events from the host health-check will appear here and trigger a push notification.
           </Text>
@@ -311,75 +372,180 @@ export default function DashboardScreen({
   );
 }
 
+function JumpCard({
+  label,
+  sub,
+  icon,
+  onPress,
+}: {
+  label: string;
+  sub: string;
+  icon: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.jumpBtn, pressed && { opacity: 0.7 }]}
+    >
+      <Text style={styles.jumpIcon}>{icon}</Text>
+      <Text style={styles.jumpTitle}>{label}</Text>
+      <Text style={styles.jumpSub} numberOfLines={1}>{sub}</Text>
+    </Pressable>
+  );
+}
+
+function statusHeadline(sev: string, crits: number): string {
+  if (sev === 'CRIT' || crits > 0) return crits > 0 ? `${crits} CRITICAL alert${crits === 1 ? '' : 's'}` : 'Critical issue';
+  if (sev === 'WARN') return 'Degraded — needs attention';
+  if (sev === 'INFO') return 'Information available';
+  return 'All systems healthy';
+}
+
+function statusSubtitle(sev: string, crits: number, warns: number): string {
+  if (crits > 0) return 'Investigate now — push notifications were sent.';
+  if (warns > 0) return `${warns} warning${warns === 1 ? '' : 's'} pending review.`;
+  if (sev === 'WARN') return 'A subsystem is reporting WARN — see tiles below.';
+  if (sev === 'INFO') return 'Everything operational. Routine checks below.';
+  return 'Last checked just now. Pull to refresh.';
+}
+
 const styles = StyleSheet.create({
-  flex: { flex: 1, backgroundColor: '#0b1220' },
-  scroll: { padding: 16, paddingBottom: 60 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#0b1220' },
-  headerRow: {
+  flex: { flex: 1, backgroundColor: colors.bg },
+  scroll: { padding: spacing.lg, paddingBottom: 60 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg },
+  dim: { ...t.meta, marginTop: 4 },
+
+  topBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    marginBottom: spacing.md,
+  },
+  appTitle: { ...t.h1, fontSize: 22 },
+  appSub: { ...t.bodyMuted, marginTop: 2 },
+  iconBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: radii.md,
+    backgroundColor: colors.bgElev,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconBtnText: { color: colors.textMuted, fontSize: 20 },
+
+  serverStrip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radii.md,
+    backgroundColor: colors.bgElev,
+    borderLeftWidth: 3,
+    borderTopWidth: 0,
+    borderRightWidth: 0,
+    borderBottomWidth: 0,
+    marginBottom: spacing.md,
+  },
+  serverDot: { width: 8, height: 8, borderRadius: 4 },
+  serverLabel: { fontSize: 10, fontWeight: '800', letterSpacing: 1.2 },
+  serverHost: { color: colors.text, fontSize: 13, fontWeight: '600', fontFamily: 'monospace', marginTop: 1 },
+
+  hero: {
+    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radii.lg,
+    borderLeftWidth: 4,
+    marginBottom: spacing.md,
+  },
+  heroTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 16,
+    gap: spacing.sm,
   },
-  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  h1: { color: '#f8fafc', fontSize: 22, fontWeight: '700' },
-  sectionTitle: {
-    color: '#cbd5e1',
-    fontSize: 14,
-    fontWeight: '600',
-    marginTop: 18,
-    marginBottom: 8,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  dim: { color: '#94a3b8', fontSize: 12, marginTop: 4 },
-  error: {
-    color: '#ef4444',
-    backgroundColor: '#7f1d1d20',
-    padding: 10,
-    borderRadius: 8,
-    marginBottom: 12,
-    fontSize: 13,
-  },
-  iconBtn: { padding: 6, marginLeft: 12 },
-  icon: { color: '#cbd5e1', fontSize: 22 },
-  quickJump: {
+  heroTitle: { fontSize: 18, fontWeight: '700', flexShrink: 1 },
+  heroSub: { fontSize: 13, marginTop: 6, opacity: 0.85, lineHeight: 18 },
+
+  errorBox: {
     flexDirection: 'row',
-    gap: 8,
-    marginBottom: 16,
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    backgroundColor: colors.critBg,
+    borderLeftWidth: 3,
+    borderLeftColor: colors.crit,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    borderRadius: radii.sm,
+    marginBottom: spacing.md,
   },
+  errorIcon: { color: colors.crit, fontWeight: '900', fontSize: 14, width: 14, textAlign: 'center' },
+  errorText: { color: colors.critText, fontSize: 13, flex: 1, lineHeight: 18 },
+
+  quickJump: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md },
   jumpBtn: {
     flex: 1,
-    backgroundColor: '#1e293b',
+    backgroundColor: colors.bgElev,
     borderWidth: 1,
-    borderColor: '#334155',
-    padding: 12,
-    borderRadius: 10,
+    borderColor: colors.border,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    borderRadius: radii.md,
   },
-  jumpTitle: { color: '#f8fafc', fontSize: 13, fontWeight: '600' },
-  jumpSub: { color: '#94a3b8', fontSize: 11, marginTop: 4, lineHeight: 14 },
+  jumpIcon: { fontSize: 18, marginBottom: 4 },
+  jumpTitle: { color: colors.text, fontSize: 13, fontWeight: '700' },
+  jumpSub: { color: colors.textDim, fontSize: 11, marginTop: 2 },
+
+  sectionTitle: {
+    ...t.section,
+    marginTop: spacing.lg,
+    marginBottom: spacing.sm,
+  },
+
+  duo: { flexDirection: 'row', gap: spacing.sm },
+  duoCol: { flex: 1 },
+
+  actionsBlock: {
+    backgroundColor: colors.bgElev2,
+    borderRadius: radii.lg,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    marginTop: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  actionsHeading: { ...t.h2, fontSize: 16, marginBottom: 2 },
+  actionsSub: { ...t.bodyMuted, fontSize: 12, marginBottom: spacing.sm },
+
   alertsHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    alignItems: 'flex-end',
     marginTop: 6,
+    gap: spacing.sm,
   },
   ackAllBtn: {
-    paddingHorizontal: 12,
+    paddingHorizontal: spacing.md,
     paddingVertical: 6,
-    backgroundColor: '#1e293b',
-    borderRadius: 8,
+    backgroundColor: colors.action.ghost,
+    borderRadius: radii.sm,
     borderWidth: 1,
-    borderColor: '#334155',
-    marginTop: 18,
+    borderColor: colors.action.ghostBorder,
+    marginTop: spacing.lg,
   },
-  ackAllText: { color: '#cbd5e1', fontSize: 12, fontWeight: '600' },
+  ackAllText: { color: colors.action.ghostText, fontSize: 12, fontWeight: '700' },
   emptyAlerts: {
-    backgroundColor: '#1e293b',
-    padding: 14,
-    borderRadius: 10,
+    backgroundColor: colors.bgElev,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    borderRadius: radii.md,
     marginBottom: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: colors.ok,
   },
-  emptyText: { color: '#34d399', fontSize: 14, fontWeight: '600' },
-  emptySubText: { color: '#94a3b8', fontSize: 12, marginTop: 6, lineHeight: 16 },
+  emptyText: { color: colors.okText, fontSize: 14, fontWeight: '700' },
+  emptySubText: { color: colors.textMuted, fontSize: 12, marginTop: 6, lineHeight: 16 },
 });
