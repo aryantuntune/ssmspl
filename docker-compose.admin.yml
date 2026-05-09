@@ -11,6 +11,9 @@ services:
       # Path inside the container; backend/app/routers/backup.py reads this.
       # The host-side cron writes backups to ./backups (mounted below).
       BACKUP_DIR: /app/backups
+      # Maintenance-flag dir + deployment label (read by /api/system-health/actions/maintenance).
+      MAINT_DIR: /app/maintenance
+      DEPLOYMENT_LABEL: admin
     env_file: ./backend/.env.admin
     # The host's docker group GID (snap-docker on Server 2 uses 987). Required
     # so the appuser (uid 1000) inside the container can read /var/run/docker.sock.
@@ -42,6 +45,10 @@ services:
       # directory (not file) because docker auto-creates non-existent file
       # paths as directories, which would break the manifest read.
       - /home/ssmspl-admin-releases:/app/releases
+      # Maintenance flags + HTML — RW so the backend can flip flags from the
+      # /api/system-health/actions/maintenance endpoint. Same dir is read by
+      # the host nginx (Server 2 uses host-installed nginx, not containerized).
+      - /home/ssmspl-admin-maintenance:/app/maintenance:rw
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:
