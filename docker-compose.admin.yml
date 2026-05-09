@@ -15,6 +15,19 @@ services:
       MAINT_DIR: /app/maintenance
       DEPLOYMENT_LABEL: admin
     env_file: ./backend/.env.admin
+    # The host's docker group GID (snap-docker on Server 2 uses 987). Required
+    # so the appuser (uid 1000) inside the container can read /var/run/docker.sock.
+    # If the host docker group GID changes, update this to match `stat -c %g
+    # /var/run/docker.sock` on the host.
+    group_add:
+      - "987"
+      # ssmspl-host-actions group GID — lets the backend write JSON request
+      # files into /var/lib/ssmspl-host-actions/queue/ for the host-side daemon
+      # to pick up. GID is host-specific (created by `groupadd --system`); on
+      # Server 2 it landed at 986. Update if `getent group ssmspl-host-actions`
+      # returns a different value. Without this, host-action endpoints stay
+      # disabled (is_queue_mounted() returns false for write-blocked dir).
+      - "986"
     volumes:
       # snap-docker on Server 2 cannot bind-mount paths outside /home, so
       # backups live at /home/ssmspl-admin-backups (NOT ./backups). Host

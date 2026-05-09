@@ -67,12 +67,19 @@ services:
       MAINT_DIR: /app/maintenance
       DEPLOYMENT_LABEL: prod
     env_file: ./backend/.env.production
-    # The host's docker group GID (Server 1 = 988). Required so the appuser
-    # (uid 1000) inside the container can read /var/run/docker.sock for the
-    # SuperAdmin remote-control endpoints. If the host docker group GID
-    # changes, update to match `stat -c %g /var/run/docker.sock` on the host.
+    # Two host groups must be granted to the backend (uid 1000):
+    # - 988: docker group (Server 1) — read /var/run/docker.sock for the
+    #   SuperAdmin remote-control endpoints. Match `stat -c %g
+    #   /var/run/docker.sock` on the host if it differs.
+    # - 986: ssmspl-host-actions — write JSON request files into
+    #   /var/lib/ssmspl-host-actions/queue for the host-side daemon.
+    #   Created by `groupadd --system ssmspl-host-actions` (run once via
+    #   scripts/install_host_actions_server1.sh). Match `getent group
+    #   ssmspl-host-actions | cut -d: -f3` if a fresh install lands on
+    #   something other than 986.
     group_add:
       - "988"
+      - "986"
     volumes:
       - ./backups:/app/backups
       # Docker socket — used by SuperAdmin remote-control endpoints
