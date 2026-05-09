@@ -374,4 +374,21 @@ print(json.dumps({
     fi
 fi
 
+# --- DIY uptime relay: push to ntfy.sh on CRIT (no EAS, no third-party signup)
+# Topic configured in /etc/ssmspl_monitor.conf as NTFY_TOPIC=...
+# User's phone subscribes via the free ntfy.sh Android app.
+if [ "$CRIT_COUNT" -gt 0 ] 2>/dev/null && [ -n "${NTFY_TOPIC:-}" ]; then
+    NTFY_BASE_URL="${NTFY_BASE:-https://ntfy.sh}"
+    NTFY_TITLE="ALERT [$SERVER_ID] $CRIT_COUNT CRIT"
+    FIRST_CRIT_LINE=$(printf '%s
+' "${ISSUES[@]}" | grep '\[CRIT\]' | head -1 | sed 's/^\[CRIT\] //' | head -c 240)
+    NTFY_HTTP=$(curl -sS -m 5 -o /dev/null -w '%{http_code}'         -H "Title: $NTFY_TITLE"         -H "Priority: max"         -H "Tags: rotating_light,warning"         -H "Click: https://carferry.online/dashboard"         -d "$FIRST_CRIT_LINE"         "$NTFY_BASE_URL/$NTFY_TOPIC" 2>>$LOG)
+    if [ "$NTFY_HTTP" = "200" ]; then
+        echo "[$TS] ntfy push OK ($NTFY_TOPIC)" >> $LOG
+    else
+        echo "[$TS] ntfy push FAILED HTTP $NTFY_HTTP" >> $LOG
+    fi
+fi
+
+
 exit 1

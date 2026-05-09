@@ -24,6 +24,7 @@ import {
   listContainers,
   type ContainerInspect,
 } from '../api/systemActions';
+import { fireLocalAlertsForNewCrits } from '../lib/localAlerts';
 import { ActionsPanel } from '../components/ActionsPanel';
 import { AlertRow } from '../components/AlertRow';
 import { BackupHistoryTile } from '../components/BackupHistoryTile';
@@ -63,6 +64,11 @@ export default function DashboardScreen({
       const [s, e] = await Promise.all([fetchStatus(), fetchEvents({ limit: 25, unacked_only: true })]);
       setSnapshot(s);
       setEvents(e);
+
+      // Fire foreground local notifications for any new CRIT events the user hasn't seen.
+      // No push token needed — this is a belt-and-suspenders alert path that complements
+      // the ntfy.sh server-side push relay.
+      fireLocalAlertsForNewCrits(e).catch(() => {});
 
       try { setContainers(await listContainers()); } catch { setContainers([]); }
       try { setBackups(await fetchBackupHistory(5)); } catch { setBackups([]); }
