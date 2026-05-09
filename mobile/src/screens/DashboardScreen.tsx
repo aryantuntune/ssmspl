@@ -29,6 +29,7 @@ import { AlertRow } from '../components/AlertRow';
 import { BackupHistoryTile } from '../components/BackupHistoryTile';
 import { ContainerCard } from '../components/ContainerCard';
 import { HealthTile } from '../components/HealthTile';
+import { MaintenanceTile } from '../components/MaintenanceTile';
 import { StatusBadge } from '../components/StatusBadge';
 import { SystemInfoTile } from '../components/SystemInfoTile';
 import { TodayTile } from '../components/TodayTile';
@@ -161,6 +162,8 @@ export default function DashboardScreen({
           <Text style={styles.jumpSub}>Switch admin-backend to a previous build</Text>
         </Pressable>
       </View>
+
+      <MaintenanceTile />
 
       {error && <Text style={styles.error}>{error}</Text>}
 

@@ -17,9 +17,11 @@ Mounting required (docker-compose.admin.yml admin-backend service):
 from __future__ import annotations
 
 import logging
-from typing import Annotated
+import os
+from pathlib import Path
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -586,3 +588,101 @@ async def submit_host_action(
         {"action": body.action, "params": body.params, "request_id": result.get("request_id")},
     )
     return ActionResult(ok=result.get("ok", False), detail=result, error=result.get("error"))
+
+
+# ─── maintenance mode (queue-bypass: just file writes) ───────────────
+#
+# Why this is queue-free per docs/plans/2026-05-09-maintenance-mode-toggle.md §4.1:
+# nginx watches `maintenance.flag` / `update.flag` in the maintenance dir and
+# rewrites every customer/admin route to the static HTML when present. Toggling
+# is just `Path.touch()` / `Path.unlink()` — no host privilege needed. Skipping
+# the host-action queue means: even if the daemon is down, maintenance toggle
+# still works. That's exactly when you most need it.
+
+MAINT_DIR = Path(os.environ.get("MAINT_DIR", "/app/maintenance"))
+MAINT_FLAG = MAINT_DIR / "maintenance.flag"
+UPDATE_FLAG = MAINT_DIR / "update.flag"
+
+
+class MaintenanceState(BaseModel):
+    state: Literal["off", "maintenance", "update"]
+    server: str
+
+
+class MaintenanceToggle(BaseModel):
+    enabled: bool
+    mode: Literal["maintenance", "update"] = "maintenance"
+
+
+def _current_maint_state() -> str:
+    if UPDATE_FLAG.exists():
+        return "update"
+    if MAINT_FLAG.exists():
+        return "maintenance"
+    return "off"
+
+
+def _deployment_label() -> str:
+    return os.environ.get("DEPLOYMENT_LABEL", "unknown")
+
+
+@router.get("/maintenance", response_model=MaintenanceState)
+async def get_maintenance(_user: Annotated[User, Depends(_super_admin_only)]):
+    """Return whether the site is currently in maintenance / update / off."""
+    return MaintenanceState(state=_current_maint_state(), server=_deployment_label())
+
+
+@router.post("/maintenance", response_model=MaintenanceState)
+async def set_maintenance(
+    body: MaintenanceToggle,
+    background_tasks: BackgroundTasks,
+    current_user: Annotated[User, Depends(_super_admin_only)],
+):
+    """Toggle maintenance mode. Sub-millisecond — just writes/unlinks a flag
+    file that nginx already polls per-request. No container restart."""
+    if not MAINT_DIR.exists():
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                f"maintenance dir {MAINT_DIR} not mounted. Add "
+                "'./nginx/maintenance:/app/maintenance:rw' to the backend's "
+                "compose volumes and recreate the container."
+            ),
+        )
+    if not os.access(MAINT_DIR, os.W_OK):
+        raise HTTPException(
+            status_code=503,
+            detail=f"{MAINT_DIR} is mounted but not writable by the backend container",
+        )
+
+    prev_state = _current_maint_state()
+    try:
+        if not body.enabled:
+            MAINT_FLAG.unlink(missing_ok=True)
+            UPDATE_FLAG.unlink(missing_ok=True)
+            new_state = "off"
+        elif body.mode == "update":
+            UPDATE_FLAG.touch()
+            MAINT_FLAG.unlink(missing_ok=True)
+            new_state = "update"
+        else:
+            MAINT_FLAG.touch()
+            UPDATE_FLAG.unlink(missing_ok=True)
+            new_state = "maintenance"
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"flag-file write failed: {e}")
+
+    background_tasks.add_task(
+        log_activity,
+        getattr(current_user, "active_session_id", None),
+        current_user.id,
+        ActivityAction.MAINTENANCE_TOGGLE,
+        {
+            "server": _deployment_label(),
+            "from": prev_state,
+            "to": new_state,
+            "by": current_user.username,
+        },
+    )
+
+    return MaintenanceState(state=new_state, server=_deployment_label())
