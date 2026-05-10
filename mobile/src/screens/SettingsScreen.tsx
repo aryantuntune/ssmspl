@@ -8,11 +8,13 @@ import {
   Text,
   View,
 } from 'react-native';
+import * as Notifications from 'expo-notifications';
 
 import { logout, getMe, type Me } from '../api/auth';
 import { listDevices, unregisterDevice, type PushDeviceRead } from '../api/systemHealth';
 import { getActiveServerUrl } from '../lib/config';
 import { registerForPushNotifications } from '../lib/notifications';
+import { bootstrapNotifications } from '../lib/bootstrapNotifications';
 import { colors, radii, spacing, text as t } from '../theme';
 
 export default function SettingsScreen({
@@ -54,6 +56,39 @@ export default function SettingsScreen({
         'Push registration failed',
         r.reason ?? 'Unknown error. Check device notification settings.',
       );
+    }
+  };
+
+  const sendTestAlert = async () => {
+    // Re-run bootstrap in case the user just granted permission from
+    // Android settings since app launch — idempotent.
+    const { permission, channel } = await bootstrapNotifications();
+    if (!permission) {
+      Alert.alert(
+        'Notifications blocked',
+        'Allow notifications in Android Settings → Apps → SSMSPL SuperAdmin → Notifications, then try again.',
+      );
+      return;
+    }
+    if (!channel) {
+      Alert.alert('Channel setup failed', 'Could not create the notification channel. Reinstall the app.');
+      return;
+    }
+    try {
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: '🚨 Test alert — looks like this',
+          body: 'CRIT events from your servers will arrive with this sound, vibration, and pop-up. If you can see this, standalone alerts are working.',
+          sound: 'default',
+          priority: Notifications.AndroidNotificationPriority.MAX,
+          vibrate: [0, 400, 200, 400],
+          data: { kind: 'test' },
+        },
+        trigger: null,
+      });
+      Alert.alert('Test sent', 'Check your notification shade. If nothing appears, OS-level Do Not Disturb may be on.');
+    } catch (e: any) {
+      Alert.alert('Test failed', e?.message ?? String(e));
     }
   };
 
@@ -145,11 +180,27 @@ export default function SettingsScreen({
         </View>
       ))}
 
+      <Text style={styles.label}>On-device alerts</Text>
+      <View style={styles.box}>
+        <Text style={styles.dim}>
+          The app fires its own local notifications on every CRIT event detected
+          by the dashboard poller — no external push service required. Tap below
+          to send a test so you can confirm sound + pop-up are reaching your
+          phone.
+        </Text>
+      </View>
       <Pressable
         style={({ pressed }) => [styles.button, pressed && { opacity: 0.7 }]}
+        onPress={sendTestAlert}
+      >
+        <Text style={styles.buttonText}>Send test alert</Text>
+      </Pressable>
+
+      <Pressable
+        style={({ pressed }) => [styles.button, styles.subtle, pressed && { opacity: 0.7 }]}
         onPress={reRegisterPush}
       >
-        <Text style={styles.buttonText}>Re-register push notifications</Text>
+        <Text style={styles.subtleText}>Re-register cloud push (advanced)</Text>
       </Pressable>
 
       <Pressable
@@ -226,6 +277,12 @@ const styles = StyleSheet.create({
     borderColor: colors.action.dangerBorder,
     marginTop: spacing.md,
   },
+  subtle: {
+    backgroundColor: colors.bgElev,
+    borderColor: colors.border,
+    marginTop: spacing.sm,
+  },
+  subtleText: { color: colors.textMuted, fontSize: 13, fontWeight: '600', letterSpacing: 0.2 },
   buttonText: { color: colors.action.primaryText, fontSize: 14, fontWeight: '700', letterSpacing: 0.3 },
   miniBtn: {
     alignSelf: 'flex-start',
