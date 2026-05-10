@@ -285,13 +285,22 @@ fi
 echo "✗ ${#ISSUES[@]} ISSUES found ($CRIT_COUNT CRIT)"
 SUMMARY=$(printf '%s\n' "${ISSUES[@]}")
 
-# State-based deduplication — only email if issue list changes
+# State-based deduplication — only email if the SET of distinct problems
+# changes. Compare on a stable signature: severity + the leading words of
+# each issue with all numbers stripped. Without this, a CRIT like
+# "N errors in last hour" produces a fresh signature every minute as the
+# error count climbs — that's how 36 emails went out during the /me-500
+# storm. The signature is also lowercased to ignore stylistic drift.
+SIGNATURE=$(printf '%s\n' "${ISSUES[@]}" \
+    | sed -E 's/[0-9]+//g; s/[[:space:]]+/ /g' \
+    | tr '[:upper:]' '[:lower:]' \
+    | sort -u)
 LAST_STATE=$(cat "$STATE" 2>/dev/null || echo "")
-if [ "$SUMMARY" = "$LAST_STATE" ]; then
-    echo "(same as previous alert — not re-sending email)"
+if [ "$SIGNATURE" = "$LAST_STATE" ]; then
+    echo "(same problems as previous alert — not re-sending email)"
     exit 1
 fi
-echo "$SUMMARY" > "$STATE"
+echo "$SIGNATURE" > "$STATE"
 
 echo "[$TS] $SERVER_NAME — ${#ISSUES[@]} issues ($CRIT_COUNT crit)" >> $LOG 2>/dev/null
 printf '%s\n' "${ISSUES[@]}" >> $LOG 2>/dev/null
