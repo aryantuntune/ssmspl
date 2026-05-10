@@ -12,6 +12,7 @@ import LogsScreen from './src/screens/LogsScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import VersionsScreen from './src/screens/VersionsScreen';
 import { tokens } from './src/lib/storage';
+import { bootstrapNotifications } from './src/lib/bootstrapNotifications';
 import { colors } from './src/theme';
 
 type Screen = 'login' | 'dashboard' | 'settings' | 'logs' | 'versions' | 'incident';
@@ -28,6 +29,10 @@ export default function App() {
 
   useEffect(() => {
     checkAuth();
+    // Standalone local notifications: request permission + create the
+    // high-importance channel so foreground CRIT alerts actually surface
+    // on the phone (no EAS, no FCM, no ntfy app required).
+    bootstrapNotifications().catch(() => {});
   }, [checkAuth]);
 
   // When user taps a push notification, jump to dashboard so they see live state.
