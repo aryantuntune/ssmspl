@@ -96,3 +96,6 @@ SECRETS_VITAL_DO_NOT_COMMIT.md
 
 # Maintenance mode flag files (created at runtime, not committed)
 nginx/maintenance/*.flag
+
+# Mobile build artifacts
+mobile/build.log
