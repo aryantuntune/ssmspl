@@ -195,7 +195,7 @@ async def _today_activity(db: AsyncSession) -> dict:
                 """
                 SELECT
                   count(*) AS total,
-                  COALESCE(sum(total_amount), 0) AS revenue,
+                  COALESCE(sum(net_amount), 0) AS revenue,
                   count(*) FILTER (WHERE created_at > now() - interval '1 hour') AS last_hour
                 FROM tickets
                 WHERE created_at >= :since
