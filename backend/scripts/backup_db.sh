@@ -7,12 +7,12 @@
 
 set -euo pipefail
 
-BACKUP_DIR="${BACKUP_DIR:-/backups}"
+BACKUP_DIR="${BACKUP_DIR:-${BACKUP_OUTPUT_DIR:-/backups}}"
 PGHOST="${PGHOST:-db}"
 PGPORT="${PGPORT:-5432}"
 PGUSER="${POSTGRES_USER:-ssmspl_user}"
 PGPASSWORD="${POSTGRES_PASSWORD:-ssmspl_prod_pass}"
-PGDATABASE="${POSTGRES_DB:-ssmspl_db_prod}"
+PGDATABASE="${POSTGRES_DB:-${BACKUP_DB_NAME:-ssmspl_db_prod}}"
 RETENTION_DAYS="${RETENTION_DAYS:-7}"
 
 export PGPASSWORD

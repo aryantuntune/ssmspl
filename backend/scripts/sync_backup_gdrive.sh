@@ -16,9 +16,9 @@
 set -euo pipefail
 
 # ── Config ──────────────────────────────────────────────────────────────────
-BACKUP_DIR="${BACKUP_DIR:-/var/www/ssmspl/backups}"
+BACKUP_DIR="${BACKUP_DIR:-${BACKUP_OUTPUT_DIR:-/var/www/ssmspl/backups}}"
 RCLONE_REMOTE="${RCLONE_REMOTE:-gdrive}"
-GDRIVE_FOLDER="${GDRIVE_FOLDER:-SSMSPL-Backups}"
+GDRIVE_FOLDER="${GDRIVE_FOLDER:-${BACKUP_GDRIVE_REMOTE_DIR:-SSMSPL-Backups}}"
 GDRIVE_RETENTION_DAYS="${GDRIVE_RETENTION_DAYS:-30}"
 LOG_FILE="${LOG_FILE:-/var/log/ssmspl-backup-sync.log}"
 NOTIFY_SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
