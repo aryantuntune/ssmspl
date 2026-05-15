@@ -53,11 +53,29 @@ misc/
 # AI prompts / scaffolding
 prompts/
 
-# Database dumps & backups
+# Database dumps & backups — none of these should ever land in git.
+# Carve-out for the intentional schema/seed SQL files that DO live in the
+# repo: backend/scripts/ddl.sql, backend/scripts/seed_data.sql,
+# scripts/phantom_recovery.sql, and any alembic migration .py — those are
+# code, not dumps. The patterns below are tight to dump/backup artifacts.
 backup.sql
 ssmspl_db_dev_back.sql
 data/ssmspl_db.sql
 *.sql.bak
+*.sql.gz
+*.dump
+*.dump.gz
+*.pgdump
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+# Any folder named "backups" or "backup" at any depth — covers a stray
+# laptop-sync output dir or someone scp-ing dumps into the repo.
+backups/
+backup/
+# Postgres pg_dump custom-format and partial restores
+*.pgdump
+*.pg_restore
 
 # Tests (local only, not deployed)
 backend/tests/
