@@ -9,30 +9,45 @@
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#0b1220"
+      "backgroundColor": "#0a0f1a"
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.ssmspl.superadmin"
+      "bundleIdentifier": "com.ssmspl.superadmin",
+      "infoPlist": {
+        "NSFaceIDUsageDescription": "Unlock the Admin Console with Face ID."
+      }
     },
     "android": {
       "package": "com.ssmspl.superadmin",
       "versionCode": 1,
       "adaptiveIcon": {
-        "foregroundImage": "./assets/icon.png",
-        "backgroundColor": "#0b1220"
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0a0f1a"
       },
-      "permissions": ["NOTIFICATIONS", "POST_NOTIFICATIONS", "INTERNET"]
+      "permissions": [
+        "NOTIFICATIONS",
+        "POST_NOTIFICATIONS",
+        "INTERNET",
+        "USE_BIOMETRIC",
+        "USE_FINGERPRINT"
+      ]
     },
     "plugins": [
       [
         "expo-notifications",
         {
-          "color": "#3b82f6",
+          "color": "#0891b2",
           "androidMode": "default"
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Unlock the Admin Console with Face ID."
+        }
+      ]
     ],
     "extra": {
       "eas": {

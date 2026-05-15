@@ -56,3 +56,29 @@ export function clearClientCache() {
   cachedClient = null;
   cachedBase = null;
 }
+
+/**
+ * Best-effort refresh against the currently active server.
+ *
+ * Used on cold-launch when the cached access token is stale (>= 12h old)
+ * so we can keep the session alive for the full 30-day window without
+ * making the user log in again. Returns true on success, false otherwise.
+ */
+export async function refreshActiveSession(): Promise<boolean> {
+  const refresh = await tokens.getRefresh();
+  if (!refresh) return false;
+  const base = await getActiveServerUrl();
+  try {
+    const r = await axios.post(`${base}/api/auth/superadmin-refresh`, {
+      refresh_token: refresh,
+    });
+    const newAccess = r.data?.access_token;
+    const newRefresh = r.data?.refresh_token;
+    if (newAccess) await tokens.setAccess(newAccess);
+    if (newRefresh) await tokens.setRefresh(newRefresh);
+    clearClientCache();
+    return !!newAccess;
+  } catch {
+    return false;
+  }
+}
