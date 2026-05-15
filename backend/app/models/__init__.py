@@ -32,6 +32,7 @@ from app.models.item_rate_history import ItemRateHistory
 from app.models.push_device import PushDevice
 from app.models.system_health_event import SystemHealthEvent
 from app.models.backup_event import BackupEvent
+from app.models.project_todo import ProjectTodo
 
 __all__ = [
     "User",
@@ -69,4 +70,5 @@ __all__ = [
     "PushDevice",
     "SystemHealthEvent",
     "BackupEvent",
+    "ProjectTodo",
 ]

@@ -155,6 +155,10 @@ app = FastAPI(
             "name": "Dashboard",
             "description": "Real-time dashboard statistics via HTTP and WebSocket.",
         },
+        {
+            "name": "Project Todos",
+            "description": "Persistent project-todo list for the System Administrator mobile app — requires **Admin** or **System Administrator** role.",
+        },
     ],
     contact={
         "name": "SSMSPL Engineering",
@@ -281,6 +285,12 @@ app.include_router(system_actions.router)
 # Mounted on both deployments so each backend stores its own slice.
 from app.routers import backup_events
 app.include_router(backup_events.router)
+
+# Project Todos — persistent follow-up list for the SuperAdmin mobile app.
+# Admin-only (this branch only deploys to Server 2, but the endpoint itself
+# is also RBAC-gated to ADMIN/SUPER_ADMIN).
+from app.routers import todos
+app.include_router(todos.router)
 
 # Customer-facing routers — disabled on admin portal (no public site / customer portal)
 if not settings.ADMIN_PORTAL_MODE:
