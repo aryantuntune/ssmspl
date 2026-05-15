@@ -23,6 +23,12 @@ class Settings(BaseSettings):
     # event ingestion is disabled (returns 503).
     HEALTH_INGEST_SECRET: str | None = None
 
+    # Shared secret for the laptop-side backup collector to POST events to
+    # /api/backups/events. Must match X-Backup-Ingest-Secret header. If
+    # unset, ingestion is disabled (returns 503). One value shared between
+    # admin + prod backends so the same laptop script can target either.
+    BACKUP_INGEST_SECRET: str | None = None
+
     # Security
     SECRET_KEY: str
     ALGORITHM: str = "HS256"
