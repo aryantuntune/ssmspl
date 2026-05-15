@@ -42,6 +42,7 @@ import { ServerSwitcher } from '../components/ServerSwitcher';
 import { StatusBadge } from '../components/StatusBadge';
 import { SystemInfoTile } from '../components/SystemInfoTile';
 import { TodayTile } from '../components/TodayTile';
+import { activeServer, type ServerId } from '../lib/storage';
 import { colors, radii, spacing, text as t, severityPalette } from '../theme';
 
 const REFRESH_MS = 30_000;
@@ -73,11 +74,26 @@ export default function DashboardScreen({
   // bumped by ServerSwitcher to force a remount of dependent children when
   // the active server changes, so cached state doesn't bleed across servers.
   const [serverEpoch, setServerEpoch] = useState(0);
+  // Mirror of activeServer.get() — drives the prominent "Showing data from"
+  // badge so the user is never in doubt which server's metrics are on screen.
+  // Events stored in Server 2's DB can carry server_name="Server 1 Prod"
+  // (because Server 2's health_check.sh probes Server 1's public URL); that
+  // makes the events feed look like it's "about Server 1" even when the
+  // active backend is Server 2. The badge cuts that ambiguity off at the top.
+  const [activeId, setActiveId] = useState<ServerId | null>(null);
 
+  // load() reads the current epoch when it starts. If the epoch has bumped
+  // by the time the response arrives (i.e. the user switched servers mid-
+  // flight), discard the result so server-A's slow response can't overwrite
+  // server-B's fresh data. The race manifested as "tile highlight swaps but
+  // metrics stay on old server" when the old server's fetch resolved AFTER
+  // the new server's setSnapshot.
   const load = useCallback(async () => {
+    const myEpoch = serverEpoch;
     setError(null);
     try {
       const [s, e] = await Promise.all([fetchStatus(), fetchEvents({ limit: 25, unacked_only: true })]);
+      if (myEpoch !== epochRef.current) return; // stale — discard
       setSnapshot(s);
       setEvents(e);
 
@@ -85,14 +101,19 @@ export default function DashboardScreen({
       // hasn't seen — belt-and-suspenders alongside the ntfy.sh server push.
       fireLocalAlertsForNewCrits(e).catch(() => {});
 
-      try { setContainers(await listContainers()); } catch { setContainers([]); }
+      try {
+        const cs = await listContainers();
+        if (myEpoch === epochRef.current) setContainers(cs);
+      } catch {
+        if (myEpoch === epochRef.current) setContainers([]);
+      }
 
       // Backup events: summary for the tile, full list for failure-detection.
       try {
         const summary = await fetchBackupSummary();
-        setBackupSummary(summary);
+        if (myEpoch === epochRef.current) setBackupSummary(summary);
       } catch {
-        setBackupSummary({ rows: [] });
+        if (myEpoch === epochRef.current) setBackupSummary({ rows: [] });
       }
       try {
         const recent: BackupEvent[] = await fetchBackupEvents({ limit: 25 });
@@ -104,24 +125,41 @@ export default function DashboardScreen({
 
       try {
         const h = await getHostDaemonStatus();
-        setHostQueueAvailable(!!h.detail?.queue_mounted);
+        if (myEpoch === epochRef.current) setHostQueueAvailable(!!h.detail?.queue_mounted);
       } catch {
-        setHostQueueAvailable(false);
+        if (myEpoch === epochRef.current) setHostQueueAvailable(false);
       }
     } catch (err: any) {
+      if (myEpoch !== epochRef.current) return;
       const detail = err?.response?.data?.detail || err?.message || 'Failed to load';
       setError(typeof detail === 'string' ? detail : 'Failed to load');
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (myEpoch === epochRef.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serverEpoch]);
+
+  // Mirror serverEpoch into a ref so in-flight loads can compare without
+  // capturing a stale closure value.
+  const epochRef = React.useRef(0);
+  useEffect(() => {
+    epochRef.current = serverEpoch;
+  }, [serverEpoch]);
 
   useEffect(() => {
     load();
     const id = setInterval(load, REFRESH_MS);
     return () => clearInterval(id);
   }, [load, serverEpoch]);
+
+  // Re-read the active server whenever the epoch bumps. Keeps the visible
+  // "Showing data from" badge synced with whatever the switcher just did.
+  useEffect(() => {
+    (async () => setActiveId(await activeServer.get()))();
+  }, [serverEpoch]);
 
   const onAckAll = () => {
     Alert.alert(
@@ -217,6 +255,32 @@ export default function DashboardScreen({
         <Text style={[styles.heroSub, { color: overallPalette.fg }]}>
           {statusSubtitle(overall, critCount, warnCount)}
         </Text>
+        {activeId != null && (
+          <View
+            style={[
+              styles.heroServerBadge,
+              {
+                backgroundColor: activeId === 'server2' ? colors.serverAdminBg : colors.serverProdBg,
+                borderColor: activeId === 'server2' ? colors.serverAdmin : colors.serverProd,
+              },
+            ]}
+          >
+            <View
+              style={[
+                styles.heroServerDot,
+                { backgroundColor: activeId === 'server2' ? colors.serverAdmin : colors.serverProd },
+              ]}
+            />
+            <Text
+              style={[
+                styles.heroServerText,
+                { color: activeId === 'server2' ? colors.serverAdmin : colors.serverProd },
+              ]}
+            >
+              SHOWING DATA FROM · {activeId === 'server2' ? 'ADMIN PORTAL' : 'PRODUCTION'}
+            </Text>
+          </View>
+        )}
       </View>
 
       {error && (
@@ -488,6 +552,19 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     gap: spacing.sm,
   },
+  heroServerBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    alignSelf: 'flex-start',
+    marginTop: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+  },
+  heroServerDot: { width: 8, height: 8, borderRadius: 4 },
+  heroServerText: { fontSize: 10, fontWeight: '800', letterSpacing: 0.8 },
   heroTitle: { fontSize: 18, fontWeight: '700', flexShrink: 1 },
   heroSub: { fontSize: 13, marginTop: 6, opacity: 0.85, lineHeight: 18 },
 
