@@ -51,12 +51,14 @@ export default function DashboardScreen({
   onVersions,
   onIncidentReport,
   onBackups,
+  onTodos,
   onTailLogs,
 }: {
   onSettings: () => void;
   onVersions: () => void;
   onIncidentReport: () => void;
   onBackups: () => void;
+  onTodos: () => void;
   onTailLogs: (containerName: string) => void;
 }) {
   const [snapshot, setSnapshot] = useState<StatusSnapshot | null>(null);
@@ -227,11 +229,19 @@ export default function DashboardScreen({
       {/* ── Quick jumps ── */}
       <View style={styles.quickJump}>
         <JumpCard
+          label="Todos"
+          sub="Follow-ups & fixes"
+          icon="✓"
+          onPress={onTodos}
+        />
+        <JumpCard
           label="Incident report"
           sub="Logs · events · activity"
           icon="📋"
           onPress={onIncidentReport}
         />
+      </View>
+      <View style={styles.quickJump}>
         <JumpCard
           label="Versions"
           sub="Switch to a previous build"

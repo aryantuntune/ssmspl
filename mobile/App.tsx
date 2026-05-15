@@ -13,6 +13,7 @@ import SettingsScreen from './src/screens/SettingsScreen';
 import VersionsScreen from './src/screens/VersionsScreen';
 import BackupsScreen from './src/screens/BackupsScreen';
 import LockedScreen from './src/screens/LockedScreen';
+import TodosScreen from './src/screens/TodosScreen';
 import { tokens } from './src/lib/storage';
 import { bootstrapNotifications } from './src/lib/bootstrapNotifications';
 import { requireBiometric } from './src/lib/biometric';
@@ -41,6 +42,7 @@ type Screen =
   | 'versions'
   | 'incident'
   | 'backups'
+  | 'todos'
   | 'locked';
 
 // Refresh the access token on launch if it's older than this. 12h means
@@ -151,12 +153,14 @@ export default function App() {
             onVersions={() => setScreen('versions')}
             onIncidentReport={() => setScreen('incident')}
             onBackups={() => setScreen('backups')}
+            onTodos={() => setScreen('todos')}
             onTailLogs={(name) => {
               setLogsContainer(name);
               setScreen('logs');
             }}
           />
         )}
+        {screen === 'todos' && <TodosScreen onClose={() => setScreen('dashboard')} />}
         {screen === 'logs' && logsContainer && (
           <LogsScreen
             containerName={logsContainer}

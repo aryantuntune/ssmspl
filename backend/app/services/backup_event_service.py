@@ -18,24 +18,50 @@ from app.schemas.backup_event import BackupEventCreate, BackupSummaryRow
 async def find_duplicate(
     db: AsyncSession, payload: BackupEventCreate
 ) -> BackupEvent | None:
-    """Return an existing event matching (server_id, file_name, sha256).
+    """Return an existing event that's effectively the same as ``payload``.
 
-    Only dedupes when ``sha256`` is non-null — failed attempts with the same
-    file_name should still produce distinct rows so the operator can see the
-    retry history.
+    Two dedupe modes:
+
+    1. Strong match (sha256 present): ``(server_id, file_name, sha256)``. Two
+       successful uploads of the exact same byte sequence are one event.
+
+    2. Weak match (sha256 None, common on failed downloads): same
+       ``(server_id, file_name, status)`` within a 1-hour window. Retry loops
+       on the laptop side often POST the same failure 3–4 times in seconds
+       (network blip, scp timeout); we don't want each retry as its own row.
+       file_name itself must be non-null — a generic "host unreachable" with
+       no file context still gets its own row so operators see every attempt.
     """
-    if not payload.sha256:
+    if payload.sha256:
+        stmt = (
+            select(BackupEvent)
+            .where(
+                and_(
+                    BackupEvent.server_id == payload.server_id,
+                    BackupEvent.file_name == payload.file_name,
+                    BackupEvent.sha256 == payload.sha256,
+                )
+            )
+            .limit(1)
+        )
+        return (await db.execute(stmt)).scalar_one_or_none()
+
+    if not payload.file_name:
         return None
 
+    window_start = payload.occurred_at - timedelta(hours=1)
     stmt = (
         select(BackupEvent)
         .where(
             and_(
                 BackupEvent.server_id == payload.server_id,
                 BackupEvent.file_name == payload.file_name,
-                BackupEvent.sha256 == payload.sha256,
+                BackupEvent.status == payload.status,
+                BackupEvent.sha256.is_(None),
+                BackupEvent.occurred_at >= window_start,
             )
         )
+        .order_by(desc(BackupEvent.occurred_at))
         .limit(1)
     )
     return (await db.execute(stmt)).scalar_one_or_none()
