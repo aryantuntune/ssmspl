@@ -276,6 +276,12 @@ app.include_router(system_health.router)
 from app.routers import system_actions
 app.include_router(system_actions.router)
 
+# Backup events — laptop-side collector POSTs one event per backup attempt
+# (db_dump + snapshot, both servers), mobile app reads the unified feed.
+# Mounted on both deployments so each backend stores its own slice.
+from app.routers import backup_events
+app.include_router(backup_events.router)
+
 # Customer-facing routers — disabled on admin portal (no public site / customer portal)
 if not settings.ADMIN_PORTAL_MODE:
     app.include_router(portal_auth.router)
