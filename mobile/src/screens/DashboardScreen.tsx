@@ -11,26 +11,34 @@ import {
 } from 'react-native';
 
 import {
-  fetchBackupHistory,
   fetchEvents,
   fetchStatus,
-  type BackupHistoryEntry,
   type HealthEvent,
   type StatusSnapshot,
 } from '../api/systemHealth';
+import {
+  fetchBackupEvents,
+  fetchBackupSummary,
+  type BackupEvent,
+  type BackupSummary,
+} from '../api/backupEvents';
 import {
   ackAllEvents,
   getHostDaemonStatus,
   listContainers,
   type ContainerInspect,
 } from '../api/systemActions';
-import { fireLocalAlertsForNewCrits } from '../lib/localAlerts';
+import {
+  fireLocalAlertsForNewBackupFailures,
+  fireLocalAlertsForNewCrits,
+} from '../lib/localAlerts';
 import { ActionsPanel } from '../components/ActionsPanel';
 import { AlertRow } from '../components/AlertRow';
 import { BackupHistoryTile } from '../components/BackupHistoryTile';
 import { ContainerCard } from '../components/ContainerCard';
 import { HealthTile } from '../components/HealthTile';
 import { MaintenanceTile } from '../components/MaintenanceTile';
+import { ServerSwitcher } from '../components/ServerSwitcher';
 import { StatusBadge } from '../components/StatusBadge';
 import { SystemInfoTile } from '../components/SystemInfoTile';
 import { TodayTile } from '../components/TodayTile';
@@ -42,22 +50,27 @@ export default function DashboardScreen({
   onSettings,
   onVersions,
   onIncidentReport,
+  onBackups,
   onTailLogs,
 }: {
   onSettings: () => void;
   onVersions: () => void;
   onIncidentReport: () => void;
+  onBackups: () => void;
   onTailLogs: (containerName: string) => void;
 }) {
   const [snapshot, setSnapshot] = useState<StatusSnapshot | null>(null);
   const [events, setEvents] = useState<HealthEvent[]>([]);
   const [containers, setContainers] = useState<ContainerInspect[]>([]);
-  const [backups, setBackups] = useState<BackupHistoryEntry[]>([]);
+  const [backupSummary, setBackupSummary] = useState<BackupSummary>({ rows: [] });
   const [hostQueueAvailable, setHostQueueAvailable] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [bulkAcking, setBulkAcking] = useState(false);
+  // bumped by ServerSwitcher to force a remount of dependent children when
+  // the active server changes, so cached state doesn't bleed across servers.
+  const [serverEpoch, setServerEpoch] = useState(0);
 
   const load = useCallback(async () => {
     setError(null);
@@ -71,7 +84,22 @@ export default function DashboardScreen({
       fireLocalAlertsForNewCrits(e).catch(() => {});
 
       try { setContainers(await listContainers()); } catch { setContainers([]); }
-      try { setBackups(await fetchBackupHistory(5)); } catch { setBackups([]); }
+
+      // Backup events: summary for the tile, full list for failure-detection.
+      try {
+        const summary = await fetchBackupSummary();
+        setBackupSummary(summary);
+      } catch {
+        setBackupSummary({ rows: [] });
+      }
+      try {
+        const recent: BackupEvent[] = await fetchBackupEvents({ limit: 25 });
+        fireLocalAlertsForNewBackupFailures(recent).catch(() => {});
+      } catch {
+        // backup events endpoint may not be deployed everywhere yet; tolerate
+        // its absence rather than red-erroring the whole dashboard.
+      }
+
       try {
         const h = await getHostDaemonStatus();
         setHostQueueAvailable(!!h.detail?.queue_mounted);
@@ -91,7 +119,7 @@ export default function DashboardScreen({
     load();
     const id = setInterval(load, REFRESH_MS);
     return () => clearInterval(id);
-  }, [load]);
+  }, [load, serverEpoch]);
 
   const onAckAll = () => {
     Alert.alert(
@@ -132,11 +160,6 @@ export default function DashboardScreen({
 
   const overall = snapshot?.overall_severity ?? 'OK';
   const overallPalette = severityPalette(overall);
-  const serverName = snapshot?.server ?? 'unknown';
-  // Heuristic: anything matching admin.* is the Admin Portal server
-  const isAdminPortal = /admin/i.test(serverName);
-  const serverTint = isAdminPortal ? colors.serverAdmin : colors.serverProd;
-  const serverLabel = isAdminPortal ? 'ADMIN PORTAL' : 'PRODUCTION';
 
   const critCount = events.filter((e) => e.severity === 'CRIT').length;
   const warnCount = events.filter((e) => e.severity === 'WARN').length;
@@ -171,15 +194,17 @@ export default function DashboardScreen({
         </Pressable>
       </View>
 
-      {/* ── Server identity strip — always visible so you know which
-            box you're staring at ─────────────────────────────────── */}
-      <View style={[styles.serverStrip, { borderColor: serverTint }]}>
-        <View style={[styles.serverDot, { backgroundColor: serverTint }]} />
-        <View style={{ flex: 1 }}>
-          <Text style={[styles.serverLabel, { color: serverTint }]}>{serverLabel}</Text>
-          <Text style={styles.serverHost} numberOfLines={1}>{serverName}</Text>
-        </View>
-      </View>
+      {/* ── Server switcher: tap the OTHER tile to swap ─────────── */}
+      <ServerSwitcher
+        onSwitched={() => {
+          setSnapshot(null);
+          setEvents([]);
+          setContainers([]);
+          setBackupSummary({ rows: [] });
+          setLoading(true);
+          setServerEpoch((x) => x + 1);
+        }}
+      />
 
       {/* ── Status hero — biggest, loudest thing on screen ────────── */}
       <View style={[styles.hero, { borderColor: overallPalette.accent, backgroundColor: overallPalette.bg }]}>
@@ -302,7 +327,11 @@ export default function DashboardScreen({
                 : [{ label: 'Status', value: snapshot.backup.message ?? 'backup dir not mounted' }]
             }
           />
-          <BackupHistoryTile entries={backups} />
+          <BackupHistoryTile
+            rows={backupSummary.rows}
+            onOpen={onBackups}
+            loading={loading && backupSummary.rows.length === 0}
+          />
         </>
       )}
 
@@ -435,24 +464,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   iconBtnText: { color: colors.textMuted, fontSize: 20 },
-
-  serverStrip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radii.md,
-    backgroundColor: colors.bgElev,
-    borderLeftWidth: 3,
-    borderTopWidth: 0,
-    borderRightWidth: 0,
-    borderBottomWidth: 0,
-    marginBottom: spacing.md,
-  },
-  serverDot: { width: 8, height: 8, borderRadius: 4 },
-  serverLabel: { fontSize: 10, fontWeight: '800', letterSpacing: 1.2 },
-  serverHost: { color: colors.text, fontSize: 13, fontWeight: '600', fontFamily: 'monospace', marginTop: 1 },
 
   hero: {
     paddingVertical: spacing.lg,

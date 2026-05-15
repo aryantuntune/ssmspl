@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -15,6 +16,7 @@ import { listDevices, unregisterDevice, type PushDeviceRead } from '../api/syste
 import { getActiveServerUrl } from '../lib/config';
 import { registerForPushNotifications } from '../lib/notifications';
 import { bootstrapNotifications } from '../lib/bootstrapNotifications';
+import { activeServer, credentials, tokens } from '../lib/storage';
 import { colors, radii, spacing, text as t } from '../theme';
 
 export default function SettingsScreen({
@@ -26,15 +28,22 @@ export default function SettingsScreen({
 }) {
   const [me, setMe] = useState<Me | null>(null);
   const [server, setServer] = useState('');
+  const [activeId, setActiveId] = useState<'server1' | 'server2'>('server2');
   const [devices, setDevices] = useState<PushDeviceRead[]>([]);
   const [loading, setLoading] = useState(true);
 
   const load = async () => {
     try {
-      const [m, s, d] = await Promise.all([getMe(), getActiveServerUrl(), listDevices()]);
+      const [m, s, d, id] = await Promise.all([
+        getMe(),
+        getActiveServerUrl(),
+        listDevices().catch(() => [] as PushDeviceRead[]),
+        activeServer.get(),
+      ]);
       setMe(m);
       setServer(s);
       setDevices(d);
+      setActiveId(id);
     } catch {
       // ignore
     } finally {
@@ -63,6 +72,20 @@ export default function SettingsScreen({
     // Re-run bootstrap in case the user just granted permission from
     // Android settings since app launch — idempotent.
     const { permission, channel } = await bootstrapNotifications();
+    // Diagnostic line: visible via `adb logcat | grep ReactNativeJS` if
+    // the user reports nothing surfacing post-fix.  Records the actual
+    // runtime state of the three things that could silently swallow the
+    // notification.  We don't have a public API to introspect the handler,
+    // but we DO register it at top-level of App.tsx so anything that gets
+    // this far has had a handler attached at module-load time.
+    // eslint-disable-next-line no-console
+    console.warn('SSMSPL test-alert dispatch state:', {
+      permission,
+      channel,
+      hasHandler: true,
+      platform: Platform.OS,
+    });
+
     if (!permission) {
       Alert.alert(
         'Notifications blocked',
@@ -83,6 +106,12 @@ export default function SettingsScreen({
           priority: Notifications.AndroidNotificationPriority.MAX,
           vibrate: [0, 400, 200, 400],
           data: { kind: 'test' },
+          // CRITICAL: target the high-importance channel created in
+          // bootstrapNotifications.ts.  Without this, expo-notifications
+          // dispatches to its own internal default channel which is LOW
+          // importance — so no heads-up popup and the user thinks the
+          // app is broken.
+          ...(Platform.OS === 'android' ? { channelId: 'default' } : {}),
         },
         trigger: null,
       });
@@ -106,9 +135,41 @@ export default function SettingsScreen({
     ]);
   };
 
-  const doLogout = async () => {
-    await logout();
-    onLoggedOut();
+  const doLogout = () => {
+    Alert.alert(
+      'Sign out of this server?',
+      `This clears the access tokens for ${activeId === 'server2' ? 'Admin Portal' : 'Production'} only. Your saved credentials and the OTHER server's session stay intact.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Sign out',
+          style: 'destructive',
+          onPress: async () => {
+            await logout();
+            onLoggedOut();
+          },
+        },
+      ],
+    );
+  };
+
+  const forgetEverything = () => {
+    Alert.alert(
+      'Forget ALL credentials?',
+      "Removes saved usernames and passwords for BOTH servers from this device's secure storage. You'll have to re-enter everything next launch.",
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Forget all',
+          style: 'destructive',
+          onPress: async () => {
+            await tokens.clearAll();
+            await credentials.clearAll();
+            onLoggedOut();
+          },
+        },
+      ],
+    );
   };
 
   if (loading) {
@@ -145,9 +206,12 @@ export default function SettingsScreen({
         </Text>
       </View>
 
-      <Text style={styles.label}>Server</Text>
+      <Text style={styles.label}>Active server</Text>
       <View style={styles.box}>
-        <Text style={styles.value} numberOfLines={1}>{server}</Text>
+        <Text style={styles.value} numberOfLines={1}>
+          {activeId === 'server2' ? 'Admin Portal' : 'Production'}
+        </Text>
+        <Text style={styles.dim} numberOfLines={1}>{server}</Text>
       </View>
 
       <Text style={styles.label}>Push devices</Text>
@@ -207,7 +271,16 @@ export default function SettingsScreen({
         style={({ pressed }) => [styles.button, styles.danger, pressed && { opacity: 0.7 }]}
         onPress={doLogout}
       >
-        <Text style={styles.buttonText}>Sign out</Text>
+        <Text style={styles.buttonText}>
+          Sign out of {activeId === 'server2' ? 'Admin Portal' : 'Production'}
+        </Text>
+      </Pressable>
+
+      <Pressable
+        style={({ pressed }) => [styles.button, styles.subtle, pressed && { opacity: 0.7 }]}
+        onPress={forgetEverything}
+      >
+        <Text style={styles.subtleText}>Forget all credentials (both servers)</Text>
       </Pressable>
     </ScrollView>
   );
