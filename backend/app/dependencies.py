@@ -126,10 +126,23 @@ async def get_current_user(
         not user.session_last_active
         or (now - user.session_last_active).total_seconds() > 30
     ):
+        # synchronize_session=False is CRITICAL. The May-10 fix correctly
+        # avoided ORM dirty tracking by going through bulk-UPDATE, BUT
+        # SQLAlchemy 2.x's default `synchronize_session='auto'` then
+        # *expired* every in-session object matching the WHERE clause —
+        # which is exactly `current_user`. Pydantic's model_validate then
+        # touched an expired attribute (updated_at) from inside its Rust
+        # core where no greenlet context exists, raising MissingGreenlet
+        # and 500-ing every /me call. Telling synchronize_session=False
+        # leaves the in-memory User object untouched; the DB-side
+        # `updated_at` (via onupdate=func.now()) is still bumped correctly,
+        # we just don't reflect that staleness back to this request's
+        # user object — it gets re-read fresh on the next request anyway.
         await db.execute(
             sa_update(User)
             .where(User.id == user.id)
             .values(session_last_active=now)
+            .execution_options(synchronize_session=False)
         )
         if user.active_session_id:
             from app.services.user_session_service import update_heartbeat
