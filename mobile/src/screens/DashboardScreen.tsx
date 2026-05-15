@@ -402,9 +402,9 @@ export default function DashboardScreen({
             }
           />
           <BackupHistoryTile
-            rows={backupSummary.rows}
+            rows={backupSummary.rows ?? []}
             onOpen={onBackups}
-            loading={loading && backupSummary.rows.length === 0}
+            loading={loading && (backupSummary.rows?.length ?? 0) === 0}
           />
         </>
       )}
