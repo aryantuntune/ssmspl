@@ -48,9 +48,10 @@ from app.reporting.reports.admin_date_branch_summary import (
     get_date_branch_summary,
 )
 from app.reporting.reports.admin_itemwise_daily_charges import (
-    POS_MODE_IDS,
+    CASH_UPI_IDS as DAILY_CHARGES_MODES,
     get_itemwise_daily_charges,
 )
+from app.reporting.reports.admin_itemwise_levy import POS_MODE_IDS
 from app.reporting.reports.admin_itemwise_levy import get_itemwise_levy_summary
 from app.reporting.reports.admin_month_branch_summary import (
     get_month_branch_summary,
@@ -101,8 +102,12 @@ async def run_itemwise_daily_charges(
     route_id: int,
 ) -> dict:
     data = await get_itemwise_daily_charges(db, date_from, date_to, route_id)
+    # Daily Charges now filters Cash+UPI only (matches Date-Wise Branch), so
+    # the integrity check must scope to the same modes — otherwise it would
+    # compare apples (item totals across Cash+UPI+Card) to oranges (daily
+    # charges subtotal across Cash+UPI only).
     warning = await _check_integrity(
-        db, date_from, date_to, route_id, POS_MODE_IDS, context="itemwise_daily_charges"
+        db, date_from, date_to, route_id, DAILY_CHARGES_MODES, context="itemwise_daily_charges"
     )
     if warning:
         data["integrity_warning"] = warning
