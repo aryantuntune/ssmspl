@@ -12,6 +12,13 @@ import type {
   SessionActivitySummary,
 } from "@/types/user-session";
 
+// Build-time constant — true only on the admin portal (Server 2).
+// On Server 1 the page hides the admin/main filter toggle and shows
+// only main-portal sessions, because admin-portal sessions live on
+// Server 2's DB (one-way replication, Server 1 -> Server 2) and would
+// not be relevant to a Server 1 viewer even if some leaked through.
+const isAdminPortal = process.env.NEXT_PUBLIC_ADMIN_PORTAL === "true";
+
 /* ───── helpers ───── */
 
 function formatDuration(
@@ -260,7 +267,9 @@ function LiveSessions() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [portalFilter, setPortalFilter] = useState<"all" | "admin" | "main">("all");
+  const [portalFilter, setPortalFilter] = useState<"all" | "admin" | "main">(
+    isAdminPortal ? "all" : "main"
+  );
 
   const fetchSessions = useCallback(async () => {
     setLoading(true);
@@ -340,38 +349,40 @@ function LiveSessions() {
             {filteredSessions.length} of {sessions.length} active session
             {sessions.length !== 1 ? "s" : ""}
           </p>
-          <div className="flex rounded-md border overflow-hidden text-xs">
-            <button
-              onClick={() => setPortalFilter("all")}
-              className={`px-3 py-1.5 transition ${
-                portalFilter === "all"
-                  ? "bg-gray-800 text-white"
-                  : "bg-white text-gray-600 hover:bg-gray-50"
-              }`}
-            >
-              All ({sessions.length})
-            </button>
-            <button
-              onClick={() => setPortalFilter("admin")}
-              className={`px-3 py-1.5 border-l transition ${
-                portalFilter === "admin"
-                  ? "bg-blue-600 text-white"
-                  : "bg-white text-gray-600 hover:bg-gray-50"
-              }`}
-            >
-              Admin Portal ({adminCount})
-            </button>
-            <button
-              onClick={() => setPortalFilter("main")}
-              className={`px-3 py-1.5 border-l transition ${
-                portalFilter === "main"
-                  ? "bg-gray-600 text-white"
-                  : "bg-white text-gray-600 hover:bg-gray-50"
-              }`}
-            >
-              Main Site ({mainCount})
-            </button>
-          </div>
+          {isAdminPortal && (
+            <div className="flex rounded-md border overflow-hidden text-xs">
+              <button
+                onClick={() => setPortalFilter("all")}
+                className={`px-3 py-1.5 transition ${
+                  portalFilter === "all"
+                    ? "bg-gray-800 text-white"
+                    : "bg-white text-gray-600 hover:bg-gray-50"
+                }`}
+              >
+                All ({sessions.length})
+              </button>
+              <button
+                onClick={() => setPortalFilter("admin")}
+                className={`px-3 py-1.5 border-l transition ${
+                  portalFilter === "admin"
+                    ? "bg-blue-600 text-white"
+                    : "bg-white text-gray-600 hover:bg-gray-50"
+                }`}
+              >
+                Admin Portal ({adminCount})
+              </button>
+              <button
+                onClick={() => setPortalFilter("main")}
+                className={`px-3 py-1.5 border-l transition ${
+                  portalFilter === "main"
+                    ? "bg-gray-600 text-white"
+                    : "bg-white text-gray-600 hover:bg-gray-50"
+                }`}
+              >
+                Main Site ({mainCount})
+              </button>
+            </div>
+          )}
         </div>
         <Button
           variant="outline"
@@ -588,7 +599,7 @@ function HistoryTab() {
 
       <DataTable
         columns={columns}
-        data={sessions}
+        data={isAdminPortal ? sessions : sessions.filter((s) => s.portal !== "admin")}
         totalCount={totalCount}
         page={page}
         pageSize={pageSize}
