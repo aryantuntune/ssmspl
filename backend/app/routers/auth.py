@@ -346,12 +346,15 @@ async def select_branch(
 async def me(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     menu = list(ROLE_MENU_ITEMS.get(current_user.role, []))
 
-    # Admin-portal-only items are stripped on the main portal (Server 1). Their
-    # backend routers are gated by ADMIN_PORTAL_MODE too, so the menu entries
-    # would just bounce to /dashboard via Sidebar.tsx's fallback otherwise.
+    # Admin-portal-only items are stripped on the main portal (Server 1).
+    # - D Drive / Parameter Master: their backend routers are gated by
+    #   ADMIN_PORTAL_MODE in main.py:296, so the pages would 404 anyway.
+    # - User Sessions: backend endpoints work on both servers, but the page
+    #   surfaces cross-portal session oversight (portalFilter = admin|main)
+    #   intended for Server 2 supervisors; hide on Server 1 per user request.
     # Admin Reports stays visible on BOTH portals — the statutory reports were
     # exposed on the main domain in commit 4567374.
-    ADMIN_ONLY_MENU_ITEMS = {"D Drive", "Parameter Master"}
+    ADMIN_ONLY_MENU_ITEMS = {"D Drive", "Parameter Master", "User Sessions"}
     if not settings.ADMIN_PORTAL_MODE:
         menu = [item for item in menu if item not in ADMIN_ONLY_MENU_ITEMS]
 
