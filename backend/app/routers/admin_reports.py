@@ -23,6 +23,7 @@ from app.schemas.admin_report import (
     DateBranchSummaryReport,
     ItemwiseDailyChargesReport,
     ItemwiseLevyReport,
+    MonthBranchSummaryReport,
 )
 from app.services import admin_pdf_service, admin_report_service, admin_xlsx_service
 from app.services.activity_log_service import ActivityAction, log_activity
@@ -303,6 +304,95 @@ async def itemwise_daily_charges_xlsx(
         headers={
             "Content-Disposition": (
                 f"attachment; filename=itemwise_daily_charges_{date_from}_{date_to}.xlsx"
+            )
+        },
+    )
+
+
+# ── Report D: Month-Wise Branch Summary (cross-route) ─────────────────────────
+
+
+@limiter.limit("10/minute")
+@router.get(
+    "/month-branch-summary",
+    response_model=MonthBranchSummaryReport,
+    summary="Month-Wise Branch Summary (Cash + UPI)",
+)
+async def month_branch_summary(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    date_from: datetime.date = Query(...),
+    date_to: datetime.date = Query(...),
+    branch_ids: list[int] | None = Query(None,
+        description="Filter to a subset of branches. Omit to include all active branches."),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(_admin_roles),
+):
+    _log(background_tasks, current_user, "month_branch_summary", "json",
+         date_from=date_from, date_to=date_to,
+         branch_ids=",".join(str(i) for i in (branch_ids or [])))
+    return await admin_report_service.run_month_branch_summary(
+        db, date_from, date_to, branch_ids
+    )
+
+
+@limiter.limit("10/minute")
+@router.get(
+    "/month-branch-summary/pdf",
+    summary="Month-Wise Branch Summary (PDF)",
+)
+async def month_branch_summary_pdf(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    date_from: datetime.date = Query(...),
+    date_to: datetime.date = Query(...),
+    branch_ids: list[int] | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(_admin_roles),
+):
+    data = await admin_report_service.run_month_branch_summary(
+        db, date_from, date_to, branch_ids
+    )
+    _log(background_tasks, current_user, "month_branch_summary", "pdf",
+         date_from=date_from, date_to=date_to,
+         branch_ids=",".join(str(i) for i in (branch_ids or [])))
+    return StreamingResponse(
+        admin_pdf_service.generate_month_branch_summary_pdf(data),
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": (
+                f"attachment; filename=month_branch_summary_{date_from}_{date_to}.pdf"
+            )
+        },
+    )
+
+
+@limiter.limit("10/minute")
+@router.get(
+    "/month-branch-summary/xlsx",
+    summary="Month-Wise Branch Summary (Excel)",
+)
+async def month_branch_summary_xlsx(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    date_from: datetime.date = Query(...),
+    date_to: datetime.date = Query(...),
+    branch_ids: list[int] | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(_admin_roles),
+):
+    data = await admin_report_service.run_month_branch_summary(
+        db, date_from, date_to, branch_ids
+    )
+    _log(background_tasks, current_user, "month_branch_summary", "xlsx",
+         date_from=date_from, date_to=date_to,
+         branch_ids=",".join(str(i) for i in (branch_ids or [])))
+    return StreamingResponse(
+        admin_xlsx_service.generate_month_branch_summary_xlsx(data),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": (
+                f"attachment; filename=month_branch_summary_{date_from}_{date_to}.xlsx"
             )
         },
     )

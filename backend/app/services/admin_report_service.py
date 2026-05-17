@@ -52,6 +52,9 @@ from app.reporting.reports.admin_itemwise_daily_charges import (
     get_itemwise_daily_charges,
 )
 from app.reporting.reports.admin_itemwise_levy import get_itemwise_levy_summary
+from app.reporting.reports.admin_month_branch_summary import (
+    get_month_branch_summary,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -106,7 +109,97 @@ async def run_itemwise_daily_charges(
     return data
 
 
+async def run_month_branch_summary(
+    db: AsyncSession,
+    date_from: datetime.date,
+    date_to: datetime.date,
+    branch_ids: list[int] | None = None,
+) -> dict:
+    """Cross-route monthly aggregate. No route_id filter — spans every
+    selected branch across whatever routes they belong to."""
+    data = await get_month_branch_summary(db, date_from, date_to, branch_ids)
+    warning = await _check_integrity_cross_route(
+        db, date_from, date_to, branch_ids, CASH_UPI_IDS,
+        context="month_branch_summary",
+    )
+    if warning:
+        data["integrity_warning"] = warning
+    return data
+
+
 # ── Integrity check ───────────────────────────────────────────────────────────
+
+
+async def _check_integrity_cross_route(
+    db: AsyncSession,
+    date_from: datetime.date,
+    date_to: datetime.date,
+    branch_ids: list[int] | None,
+    mode_ids: tuple[int, ...],
+    context: str,
+) -> dict | None:
+    """Cross-route variant: no route filter; optional branch_ids filter.
+
+    Used by the Month-Wise Branch Summary which aggregates across all
+    routes. Same semantics as ``_check_integrity`` — items_total includes
+    cancelled items so it matches Ticket.amount, which is set at creation
+    from the full item tree.
+    """
+    try:
+        items_q = (
+            select(
+                func.coalesce(
+                    func.sum(TicketItem.quantity * (TicketItem.rate + TicketItem.levy)),
+                    0,
+                )
+            )
+            .select_from(TicketItem)
+            .join(Ticket, TicketItem.ticket_id == Ticket.id)
+            .where(Ticket.is_cancelled == False)  # noqa: E712
+            .where(TicketItem.quantity > 0)
+            .where(TicketItem.rate >= 0)
+            .where(TicketItem.levy >= 0)
+            .where(Ticket.ticket_date >= date_from)
+            .where(Ticket.ticket_date <= date_to)
+            .where(Ticket.payment_mode_id.in_(mode_ids))
+        )
+        tickets_q = (
+            select(func.coalesce(func.sum(Ticket.amount), 0))
+            .where(Ticket.is_cancelled == False)  # noqa: E712
+            .where(Ticket.amount >= 0)
+            .where(Ticket.ticket_date >= date_from)
+            .where(Ticket.ticket_date <= date_to)
+            .where(Ticket.payment_mode_id.in_(mode_ids))
+        )
+        if branch_ids:
+            items_q = items_q.where(Ticket.branch_id.in_(branch_ids))
+            tickets_q = tickets_q.where(Ticket.branch_id.in_(branch_ids))
+
+        items_total = Decimal(str((await db.scalar(items_q)) or 0))
+        tickets_total = Decimal(str((await db.scalar(tickets_q)) or 0))
+    except Exception as e:
+        logger.warning("integrity check query failed for %s: %s", context, e)
+        return None
+
+    diff = items_total - tickets_total
+    if abs(diff) <= TOLERANCE:
+        return None
+
+    msg = (
+        f"Totals show a ₹{abs(diff):.2f} drift between ticket_items and "
+        f"ticket headers over the selected range."
+    )
+    logger.warning(
+        "integrity drift in %s: items=%s tickets=%s diff=%s",
+        context, items_total, tickets_total, diff,
+    )
+    return {
+        "items_total": f"{items_total:.2f}",
+        "tickets_total": f"{tickets_total:.2f}",
+        "diff": f"{diff:.2f}",
+        "message": msg,
+        "sample_tickets": [],
+    }
 
 
 async def _check_integrity(

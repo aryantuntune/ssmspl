@@ -576,3 +576,88 @@ def generate_itemwise_daily_charges_pdf(data: dict) -> BytesIO:
     doc.build(elements)
     buf.seek(0)
     return buf
+
+
+# ── Report D: Month-Wise Branch Summary ──────────────────────────────────────
+
+
+def generate_month_branch_summary_pdf(data: dict) -> BytesIO:
+    """Landscape A4. Columns: Month | <branch>-CASH | <branch>-UPI … | Total.
+
+    Mirrors the legacy Excel layout in
+    ``data/Report_format/Month Wise Branch Amount Summary Mar 26.xls``.
+    Body cells use a compact number format (no ₹ prefix) at 7.5pt because
+    a 6-branch route has 12 mode columns + Month + Total = 14 columns
+    competing for ~25cm of usable landscape width — the Rupee prefix
+    repeated 14 times would not fit.
+    """
+    buf = BytesIO()
+    doc = _build_doc(buf, landscape_mode=True)
+    elements: list = _header_block(
+        data, "Month-Wise Branch Summary  —  Cash & UPI (all amounts in ₹)"
+    )
+
+    cols = data["columns"]
+    headers: list = ["Month"] + [c["label"] for c in cols] + ["Total"]
+    body: list = [headers]
+
+    # Compact number style for body cells: small enough to fit a 12-column
+    # grid, right-aligned to keep digit columns visually consistent.
+    compact_style = ParagraphStyle(
+        "MonthBranchNum",
+        fontName=FONT_BODY, fontSize=7.5, leading=9.5,
+        textColor=_COLOR_TEXT, alignment=TA_RIGHT,
+    )
+    compact_bold_style = ParagraphStyle(
+        "MonthBranchNumBold",
+        fontName=FONT_BOLD, fontSize=8, leading=10,
+        textColor=_COLOR_TEXT, alignment=TA_RIGHT,
+    )
+
+    def num(v: str) -> Paragraph:
+        return Paragraph(_fmt_amount(v), compact_style) if float(v or 0) else Paragraph("—", compact_style)
+
+    def num_total(v: str) -> Paragraph:
+        return Paragraph(_fmt_amount(v), compact_bold_style)
+
+    for row in data["rows"]:
+        line: list = [row["month_label"]]
+        for c in cols:
+            line.append(num(row["cells"].get(c["key"], "0.00")))
+        line.append(num_total(row["total"]))
+        body.append(line)
+
+    total_line: list = ["Total"]
+    for c in cols:
+        total_line.append(num_total(data["column_totals"].get(c["key"], "0")))
+    total_line.append(num_total(data["grand_total"]))
+    body.append(total_line)
+
+    # Landscape A4 usable width ≈25.7cm. Drop the ₹ prefix in body cells
+    # so a 12-character grouped number ("10,00,475.00") fits a ~1.8cm cell
+    # at 7.5pt.
+    month_w = 1.8 * cm
+    total_w = 2.4 * cm
+    remaining = 25.7 - (month_w / cm + total_w / cm)
+    mode_w = max(1.6, remaining / max(1, len(cols))) * cm
+    col_widths = [month_w] + [mode_w] * len(cols) + [total_w]
+
+    tbl = Table(body, colWidths=col_widths, repeatRows=1)
+    tbl.setStyle(
+        _base_table_style(
+            n_cols=len(headers),
+            n_rows=len(body),
+            right_align_from=1,
+            has_total_row=True,
+        )
+    )
+    # Slightly tighter padding to give body cells more breathing room.
+    tbl.setStyle(TableStyle([
+        ("LEFTPADDING", (0, 1), (-1, -1), 3),
+        ("RIGHTPADDING", (0, 1), (-1, -1), 3),
+    ]))
+    elements.append(tbl)
+
+    doc.build(elements)
+    buf.seek(0)
+    return buf
