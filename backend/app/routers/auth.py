@@ -346,9 +346,14 @@ async def select_branch(
 async def me(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     menu = list(ROLE_MENU_ITEMS.get(current_user.role, []))
 
-    # "Admin Reports" is scoped to the admin subdomain only — hide it on the main portal.
+    # Admin-portal-only items are stripped on the main portal (Server 1). Their
+    # backend routers are gated by ADMIN_PORTAL_MODE too, so the menu entries
+    # would just bounce to /dashboard via Sidebar.tsx's fallback otherwise.
+    # Admin Reports stays visible on BOTH portals — the statutory reports were
+    # exposed on the main domain in commit 4567374.
+    ADMIN_ONLY_MENU_ITEMS = {"D Drive", "Parameter Master"}
     if not settings.ADMIN_PORTAL_MODE:
-        menu = [item for item in menu if item != "Admin Reports"]
+        menu = [item for item in menu if item not in ADMIN_ONLY_MENU_ITEMS]
 
     # Admin portal: filter menu for non-SUPER_ADMIN users based on screen toggles
     if settings.ADMIN_PORTAL_MODE and current_user.role != UserRole.SUPER_ADMIN:
