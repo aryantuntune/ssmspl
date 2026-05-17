@@ -86,6 +86,7 @@ export interface DailyChargeRow {
   item_name: string;
   charges: string;
   quantity: number;
+  levy: string;
   amount: string;
 }
 

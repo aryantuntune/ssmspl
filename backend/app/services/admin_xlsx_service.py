@@ -277,7 +277,7 @@ def generate_date_branch_summary_xlsx(data: dict) -> BytesIO:
     cols = data["columns"]
     col_span = 2 + len(cols)  # Date + mode cols + Total
     next_row = _write_title_block(
-        ws, data, "Date-Wise Branch Summary  —  Cash & GPay", col_span
+        ws, data, "Date-Wise Branch Summary  —  Cash & UPI", col_span
     )
 
     header = ["Date"] + [c["label"] for c in cols] + ["Total"]
@@ -350,12 +350,12 @@ def generate_itemwise_daily_charges_xlsx(data: dict) -> BytesIO:
     ws.sheet_view.showGridLines = False
     f = _fonts()
 
-    col_span = 6  # Date | Branch | Item | Charges | Quantity | Amount
+    col_span = 7  # Date | Branch | Item | Charges | Quantity | Levy | Amount
     next_row = _write_title_block(
         ws, data, "Itemwise Daily Collection Charges Summary", col_span
     )
 
-    header = ["Date", "Branch", "Item", "Charges", "Quantity", "Amount"]
+    header = ["Date", "Branch", "Item", "Charges", "Quantity", "Levy", "Amount"]
     for i, h in enumerate(header, start=1):
         ws.cell(row=next_row, column=i, value=h)
     _style_header_row(ws, next_row, col_span)
@@ -391,31 +391,37 @@ def generate_itemwise_daily_charges_xlsx(data: dict) -> BytesIO:
                 q.number_format = _INT_FMT
                 q.alignment = _RIGHT
 
-                am = ws.cell(row=next_row, column=6, value=_to_number(r["amount"]))
+                lv = ws.cell(row=next_row, column=6, value=_to_number(r["levy"]))
+                lv.number_format = _CUR_FMT
+                lv.alignment = _RIGHT
+
+                am = ws.cell(row=next_row, column=7, value=_to_number(r["amount"]))
                 am.number_format = _CUR_FMT
                 am.alignment = _RIGHT
                 next_row += 1
 
-            # Branch subtotal line
+            # Branch subtotal line — subtotal = sum(Ticket.net_amount), shown
+            # in the Amount column; item Amount cells may sum higher if a
+            # ticket carried a discount.
             ws.cell(
                 row=next_row, column=3, value=f"{bs['branch_name']} subtotal"
             ).font = f["total"]
-            sub = ws.cell(row=next_row, column=6, value=_to_number(bs["subtotal"]))
+            sub = ws.cell(row=next_row, column=7, value=_to_number(bs["subtotal"]))
             sub.number_format = _CUR_FMT
             sub.alignment = _RIGHT
             sub.font = f["total"]
-            ws.cell(row=next_row, column=6).border = _BORDER_TOP_DARK
+            ws.cell(row=next_row, column=7).border = _BORDER_TOP_DARK
             next_row += 1
 
-        # Day total strip (merged Date+Branch+Item columns)
+        # Day total strip (merged Date+Branch+Item+Charges+Quantity+Levy columns)
         label = ws.cell(
             row=next_row, column=1,
             value=f"Total for {d:%d %b %Y}" if isinstance(d, datetime.date) else f"Total for {d}",
         )
         label.font = f["total"]
         label.alignment = _LEFT
-        ws.merge_cells(start_row=next_row, end_row=next_row, start_column=1, end_column=5)
-        day_total = ws.cell(row=next_row, column=6, value=_to_number(ds["day_total"]))
+        ws.merge_cells(start_row=next_row, end_row=next_row, start_column=1, end_column=6)
+        day_total = ws.cell(row=next_row, column=7, value=_to_number(ds["day_total"]))
         day_total.number_format = _CUR_FMT
         day_total.alignment = _RIGHT
         _style_total_row(ws, next_row, col_span)
@@ -425,8 +431,8 @@ def generate_itemwise_daily_charges_xlsx(data: dict) -> BytesIO:
     label = ws.cell(row=next_row, column=1, value="GRAND TOTAL")
     label.font = f["grand"]
     label.alignment = _LEFT
-    ws.merge_cells(start_row=next_row, end_row=next_row, start_column=1, end_column=5)
-    gt = ws.cell(row=next_row, column=6, value=_to_number(data["grand_total"]))
+    ws.merge_cells(start_row=next_row, end_row=next_row, start_column=1, end_column=6)
+    gt = ws.cell(row=next_row, column=7, value=_to_number(data["grand_total"]))
     gt.number_format = _CUR_FMT
     gt.alignment = _RIGHT
     gt.font = f["grand"]
@@ -440,7 +446,7 @@ def generate_itemwise_daily_charges_xlsx(data: dict) -> BytesIO:
         )
 
     ws.freeze_panes = ws.cell(row=header_row + 1, column=1).coordinate
-    _autosize(ws, [14, 20, 36, 14, 14, 18])
+    _autosize(ws, [14, 20, 36, 14, 14, 14, 18])
 
     buf = BytesIO()
     wb.save(buf)

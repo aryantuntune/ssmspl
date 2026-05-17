@@ -55,6 +55,7 @@ export default function ItemwiseDailyChargesReport({ data }: { data: DailyCharge
                       <TableHead>ItemCategoryName</TableHead>
                       <TableHead className="text-right">Charges</TableHead>
                       <TableHead className="text-right">Quantity</TableHead>
+                      <TableHead className="text-right">Levy</TableHead>
                       <TableHead className="text-right">Amount</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -66,11 +67,12 @@ export default function ItemwiseDailyChargesReport({ data }: { data: DailyCharge
                         <TableCell className="text-right">
                           {r.quantity.toLocaleString("en-IN")}
                         </TableCell>
+                        <TableCell className="text-right">{fmt(r.levy)}</TableCell>
                         <TableCell className="text-right">{fmt(r.amount)}</TableCell>
                       </TableRow>
                     ))}
                     <TableRow className="font-semibold bg-gray-50">
-                      <TableCell colSpan={3}>{bs.branch_name}</TableCell>
+                      <TableCell colSpan={4}>{bs.branch_name}</TableCell>
                       <TableCell className="text-right">{fmt(bs.subtotal)}</TableCell>
                     </TableRow>
                   </TableBody>

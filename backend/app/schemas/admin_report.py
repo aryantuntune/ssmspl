@@ -99,7 +99,8 @@ class DailyChargeRow(BaseModel):
     item_name: str
     charges: str
     quantity: int
-    amount: str
+    levy: str = Field(..., description="Total levy collected = sum(levy * qty)")
+    amount: str = Field(..., description="Total = (charges + levy) * qty per row")
 
 
 class DailyBranchSection(BaseModel):
