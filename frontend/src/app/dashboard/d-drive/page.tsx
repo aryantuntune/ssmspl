@@ -41,6 +41,7 @@ interface TicketPageData {
 }
 
 export default function DDrivePage() {
+  const [paymentMode, setPaymentMode] = useState<"CASH" | "UPI">("CASH");
   const [mode, setMode] = useState<Mode>(null);
   const [filters, setFilters] = useState<Filters | null>(null);
   const [branches, setBranches] = useState<{ id: number; name: string }[]>([]);
@@ -152,7 +153,41 @@ export default function DDrivePage() {
         </div>
       </div>
 
-      {/* Mode toggle — always visible at the top */}
+      {/* Step 1 — Payment mode. Chosen FIRST, before the action. */}
+      <div className="space-y-1.5">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Step 1 · Payment Mode
+        </p>
+        <div className="inline-flex rounded-lg border bg-muted/30 p-1">
+          <button
+            type="button"
+            onClick={() => setPaymentMode("CASH")}
+            className={`px-5 py-2 rounded-md text-sm font-medium transition-colors ${
+              paymentMode === "CASH"
+                ? "bg-emerald-600 text-white shadow"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Cash
+          </button>
+          <button
+            type="button"
+            onClick={() => setPaymentMode("UPI")}
+            className={`px-5 py-2 rounded-md text-sm font-medium transition-colors ${
+              paymentMode === "UPI"
+                ? "bg-blue-600 text-white shadow"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            UPI
+          </button>
+        </div>
+      </div>
+
+      {/* Step 2 — Action. Reconciliation or Transfer, applied to the mode chosen above. */}
+      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground -mb-3">
+        Step 2 · Action ({paymentMode})
+      </p>
       <div className="inline-flex rounded-lg border bg-muted/30 p-1">
         <button
           type="button"
@@ -206,7 +241,7 @@ export default function DDrivePage() {
               summaries={summaries}
               loading={summaryLoading}
               showTransferButton={false}
-              paymentMode={filters.paymentMode as "CASH" | "UPI"}
+              paymentMode={paymentMode}
               onReconcile={(branchId, branchName, cashTotal) =>
                 setReconcileTarget({ branchId, branchName, cashTotal })
               }
@@ -265,7 +300,7 @@ export default function DDrivePage() {
               summaries={summaries}
               loading={summaryLoading}
               showTransferButton={false}
-              paymentMode={filters.paymentMode as "CASH" | "UPI"}
+              paymentMode={paymentMode}
               onReconcile={() => {}}
               onTransfer={() => {}}
             />
@@ -293,7 +328,7 @@ export default function DDrivePage() {
           branchId={reconcileTarget.branchId}
           branchName={reconcileTarget.branchName}
           cashTotal={reconcileTarget.cashTotal}
-          paymentMode={filters.paymentMode as "CASH" | "UPI"}
+          paymentMode={paymentMode}
           dateStart={filters.dateStart}
           dateEnd={filters.dateEnd}
           onClose={() => setReconcileTarget(null)}
@@ -307,7 +342,7 @@ export default function DDrivePage() {
           mode="route"
           routeId={transferTarget.routeId}
           routeLabel={transferTarget.routeLabel}
-          paymentMode={filters.paymentMode as "CASH" | "UPI"}
+          paymentMode={paymentMode}
           dateStart={filters.dateStart}
           dateEnd={filters.dateEnd}
           onClose={() => setTransferTarget(null)}

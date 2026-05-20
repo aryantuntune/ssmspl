@@ -24,7 +24,6 @@ export interface Filters {
   scopeMode: ScopeMode;
   branchId: string;
   routeId: string;
-  paymentMode: string;
   itemId: string;
 }
 
@@ -45,7 +44,6 @@ export default function FilterBar({ mode, branches, routes, onApply }: Props) {
   const [rangeMode, setRangeMode] = useState(false);
   const [branchId, setBranchId] = useState<string>("all");
   const [routeId, setRouteId] = useState<string>("all");
-  const [paymentMode, setPaymentMode] = useState<string>("CASH");
 
   const handleApply = () => {
     onApply({
@@ -54,7 +52,6 @@ export default function FilterBar({ mode, branches, routes, onApply }: Props) {
       scopeMode: mode === "transfer" ? "route" : "branch",
       branchId,
       routeId,
-      paymentMode,
       itemId: "all",
     });
   };
@@ -146,17 +143,6 @@ export default function FilterBar({ mode, branches, routes, onApply }: Props) {
           </Select>
         </div>
       )}
-
-      <div className="flex flex-col gap-1.5">
-        <Label>Payment Mode</Label>
-        <Select value={paymentMode} onValueChange={setPaymentMode}>
-          <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="CASH">Cash</SelectItem>
-            <SelectItem value="UPI">UPI</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
 
       <Button onClick={handleApply} disabled={applyDisabled}>
         Apply Filters
