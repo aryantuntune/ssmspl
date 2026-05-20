@@ -1136,9 +1136,17 @@ async def update_ticket(db: AsyncSession, ticket_id: int, data: TicketUpdate) ->
         if field in update_data:
             setattr(ticket, field, update_data[field])
 
-    # Collision check: ticket_no must remain unique within (branch_id, ticket_date) once we
-    # allow date or branch edits. No DB constraint enforces this, so we check explicitly.
+    # Renumber-on-collision: ticket_no must remain unique within (branch_id, ticket_date).
+    # No DB constraint enforces this. When a date or branch edit would land the ticket on a
+    # number already taken in the target (branch, date), we do NOT reject — instead we append
+    # the moved ticket to the end of that day's sequence (MAX(ticket_no)+1), mirroring the
+    # create-path numbering. If the original number is still free on the target, it is kept.
     if "ticket_date" in update_data or "branch_id" in update_data:
+        # Lock the target branch row to serialize numbering with create_ticket and any other
+        # concurrent move into the same day, so two writers can't grab the same MAX+1.
+        await db.execute(
+            select(Branch.id).where(Branch.id == ticket.branch_id).with_for_update()
+        )
         collision = await db.execute(
             select(Ticket.id).where(
                 Ticket.branch_id == ticket.branch_id,
@@ -1148,13 +1156,17 @@ async def update_ticket(db: AsyncSession, ticket_id: int, data: TicketUpdate) ->
             ).limit(1)
         )
         if collision.scalar_one_or_none() is not None:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=(
-                    f"Ticket #{ticket.ticket_no} already exists for branch {ticket.branch_id} "
-                    f"on {ticket.ticket_date}. Pick a different date or branch."
-                ),
+            # Append after the last ticket of the target day. MAX is taken over ALL other
+            # rows in scope (including cancelled ones — they still occupy their number), so
+            # the new number can never re-collide.
+            max_result = await db.execute(
+                select(func.coalesce(func.max(Ticket.ticket_no), 0)).where(
+                    Ticket.branch_id == ticket.branch_id,
+                    Ticket.ticket_date == ticket.ticket_date,
+                    Ticket.id != ticket.id,
+                )
             )
+            ticket.ticket_no = max_result.scalar() + 1
 
     if "items" in update_data and data.items is not None:
         active_update_items = [i for i in data.items if not i.is_cancelled]

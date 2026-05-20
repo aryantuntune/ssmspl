@@ -463,7 +463,17 @@ export default function MultiTicketingPage() {
     payload.version = editingTicket.version;
     setEditSubmitting(true);
     try {
-      await api.patch(`/api/tickets/${editingTicket.id}`, payload);
+      const resp = await api.patch(`/api/tickets/${editingTicket.id}`, payload);
+      const newNo = resp?.data?.ticket_no;
+      // Backend renumbers on collision when a date move hits a number already used that day.
+      if (payload.ticket_date && newNo != null && newNo !== editingTicket.ticket_no) {
+        const d = String(payload.ticket_date);
+        const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d);
+        const shown = m ? `${m[3]}-${m[2]}-${m[1]}` : d;
+        alert(
+          `Ticket #${editingTicket.ticket_no} moved to ${shown}. Its old number was already used that day, so it became #${newNo} (added after the day's last ticket).`,
+        );
+      }
       setEditingTicket(null);
       fetchMultiTickets();
     } catch (e: unknown) {

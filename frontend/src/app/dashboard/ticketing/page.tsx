@@ -343,6 +343,9 @@ export default function TicketingPage() {
   const [editingTicket, setEditingTicket] = useState<Ticket | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
+  // Set after an edit that moved a ticket to a date where its number was taken; the
+  // backend appended it as a new number, so we tell the operator what it became.
+  const [renumberNotice, setRenumberNotice] = useState("");
 
   // View modal
   const [viewTicket, setViewTicket] = useState<Ticket | null>(null);
@@ -1026,7 +1029,19 @@ export default function TicketingPage() {
           vehicle_name: fi.vehicle_name || null,
           is_cancelled: fi.is_cancelled,
         }));
-        await api.patch(`/api/tickets/${editingTicket.id}`, update);
+        const resp = await api.patch(`/api/tickets/${editingTicket.id}`, update);
+        const newNo = resp?.data?.ticket_no;
+        // Backend renumbers on collision when a date move hits a taken number.
+        if (update.ticket_date && newNo != null && newNo !== editingTicket.ticket_no) {
+          const d = update.ticket_date;
+          const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d);
+          const shown = m ? `${m[3]}-${m[2]}-${m[1]}` : d;
+          setRenumberNotice(
+            `Ticket #${editingTicket.ticket_no} moved to ${shown}. Its old number was already used that day, so it became #${newNo} (added after the day's last ticket).`,
+          );
+        } else {
+          setRenumberNotice("");
+        }
         closeModal();
         await fetchTickets();
       } catch (err: unknown) {
@@ -1489,6 +1504,21 @@ export default function TicketingPage() {
       {isNormalTicketingLocked && (
         <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-sm font-medium">
           Ferry hours have ended for your branch. Please use <a href="/dashboard/multiticketing" className="underline font-bold">Multi-Ticketing</a> for off-hours ticket generation.
+        </div>
+      )}
+
+      {/* Renumber notice (date move hit a taken number → appended to end of target day) */}
+      {renumberNotice && (
+        <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-blue-800 text-sm flex items-start justify-between gap-3">
+          <span>{renumberNotice}</span>
+          <button
+            type="button"
+            onClick={() => setRenumberNotice("")}
+            className="shrink-0 font-bold text-blue-600 hover:text-blue-800"
+            aria-label="Dismiss"
+          >
+            ✕
+          </button>
         </div>
       )}
 

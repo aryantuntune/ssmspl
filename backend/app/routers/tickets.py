@@ -417,9 +417,16 @@ async def update_ticket(
             {"ticket_id": str(ticket_id)},
         )
     elif body.ticket_date is not None and body.ticket_date != old_date:
+        old_no = existing.get("ticket_no")
+        new_no = result.get("ticket_no")
+        payload = {"ticket_id": str(ticket_id), "old_date": str(old_date), "new_date": str(body.ticket_date)}
+        # Record the renumber when a collision on the target date forced a new ticket_no.
+        if old_no != new_no:
+            payload["old_ticket_no"] = str(old_no)
+            payload["new_ticket_no"] = str(new_no)
         background_tasks.add_task(
             log_activity, current_user.active_session_id, current_user.id,
             ActivityAction.TICKET_DATE_EDIT,
-            {"ticket_id": str(ticket_id), "old_date": str(old_date), "new_date": str(body.ticket_date)},
+            payload,
         )
     return result
