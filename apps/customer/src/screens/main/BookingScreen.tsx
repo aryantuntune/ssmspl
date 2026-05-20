@@ -208,15 +208,15 @@ export default function BookingScreen() {
         }),
       ).unwrap();
 
-      // Create payment order on backend (returns encrypted CCAvenue data)
+      // Create payment order on backend (returns Airpay checksummed data)
       const order = await createPaymentOrder(result.id);
       setIsProcessingPayment(false);
 
-      // Build the backend-hosted checkout URL that auto-submits to CCAvenue
+      // Build the backend-hosted checkout URL that auto-submits to Airpay
       const checkoutUrl = getCheckoutUrl(order.order_id);
 
       // Open in external browser — the backend serves an auto-submitting
-      // HTML form that POSTs the encrypted payload to CCAvenue.
+      // HTML form that POSTs the checksummed payload to Airpay.
       const canOpen = await Linking.canOpenURL(checkoutUrl);
       if (canOpen) {
         await Linking.openURL(checkoutUrl);

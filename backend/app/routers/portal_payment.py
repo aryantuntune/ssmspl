@@ -16,13 +16,21 @@ from app.dependencies import get_current_portal_user
 from app.models.booking import Booking
 from app.models.payment_transaction import PaymentTransaction
 from app.models.portal_user import PortalUser
-from app.services import ccavenue_service, booking_service
+from app.services import airpay_service, booking_service
 from app.services.email_service import send_booking_confirmation
-from app.services.ccavenue_service import is_payment_successful
 
 logger = logging.getLogger(__name__)
 
 PAYMENT_EXPIRY_MINUTES = 30
+
+# Airpay requires buyer address fields; PortalUser has none, so use generic
+# placeholders. They must be identical wherever a request is (re)built so the
+# checksum stays consistent.
+_DEFAULT_ADDRESS = "NA"
+_DEFAULT_CITY = "NA"
+_DEFAULT_STATE = "NA"
+_DEFAULT_COUNTRY = "India"
+_DEFAULT_PINCODE = "000000"
 
 router = APIRouter(prefix="/api/portal/payment", tags=["Portal Payment"])
 
@@ -36,9 +44,8 @@ class CreateOrderRequest(BaseModel):
 
 
 class CreateOrderResponse(BaseModel):
-    ccavenue_url: str
-    enc_request: str
-    access_code: str
+    airpay_url: str
+    fields: dict = {}
     order_id: str
     simulated: bool = False
 
@@ -62,25 +69,126 @@ def _redirect_to_frontend(
     return RedirectResponse(url=url, status_code=302)
 
 
-# ── Endpoints ────────────────────────────────────────────────────────────────
-
-
 def _simulation_allowed() -> bool:
     """Simulation is allowed when:
-    - PAYMENT_SIMULATION=true (hard override — works even with CCAvenue configured), OR
-    - CCAvenue is NOT configured AND DEBUG=true (dev convenience)
+    - PAYMENT_SIMULATION=true (hard override — works even with Airpay configured), OR
+    - Airpay is NOT configured AND DEBUG=true (dev convenience)
     """
     if settings.PAYMENT_SIMULATION:
         return True
-    return not ccavenue_service.is_configured() and settings.DEBUG
+    return not airpay_service.is_configured() and settings.DEBUG
+
+
+def _airpay_request_for_txn(txn: PaymentTransaction, portal_user: PortalUser | None) -> dict:
+    """Build the Airpay payment request for a stored transaction."""
+    backend_base = settings.BACKEND_URL.rstrip("/")
+    return_url = f"{backend_base}/api/portal/payment/callback"
+    return airpay_service.build_payment_request(
+        order_id=txn.client_txn_id,
+        amount=float(txn.amount),
+        buyer_email=portal_user.email if portal_user else "customer@example.com",
+        buyer_first_name=portal_user.first_name if portal_user else "Customer",
+        buyer_last_name=portal_user.last_name if portal_user else "",
+        buyer_address=_DEFAULT_ADDRESS,
+        buyer_city=_DEFAULT_CITY,
+        buyer_state=_DEFAULT_STATE,
+        buyer_country=_DEFAULT_COUNTRY,
+        buyer_pincode=_DEFAULT_PINCODE,
+        buyer_phone=portal_user.mobile if portal_user else "",
+        return_url=return_url,
+    )
+
+
+async def _finalize_transaction(
+    txn: PaymentTransaction,
+    parsed: dict,
+    db: AsyncSession,
+    background_tasks: BackgroundTasks,
+) -> None:
+    """Apply an Airpay result to a transaction and, on success, confirm the booking.
+
+    Caller must have already verified the response hash. Idempotent: no-op if the
+    transaction is already in a terminal state.
+    """
+    if txn.status in ("SUCCESS", "FAILED", "ABORTED"):
+        return
+
+    order_status = str(parsed.get("TRANSACTIONSTATUS", "")).strip()
+    txn.gateway_txn_id = parsed.get("APTRANSACTIONID", "")
+    txn.payment_mode = parsed.get("CHMOD", "")
+    txn.bank_name = parsed.get("BANKNAME") or parsed.get("CARDISSUER", "")
+    txn.gateway_message = parsed.get("MESSAGE", "")
+    txn.raw_response = "&".join(
+        f"{k}={v}" for k, v in parsed.items() if k not in ("ap_SecureHash",)
+    )
+
+    new_status = airpay_service.map_status(order_status)
+
+    # Anti-tamper: amount must match on success.
+    if new_status == "SUCCESS":
+        callback_amount = parsed.get("AMOUNT", "")
+        try:
+            if callback_amount and abs(float(callback_amount) - float(txn.amount)) > 0.01:
+                logger.error(
+                    "Amount mismatch for %s: expected %s, got %s",
+                    txn.client_txn_id, txn.amount, callback_amount,
+                )
+                new_status = "FAILED"
+                txn.gateway_message = f"Amount mismatch: expected {txn.amount}, got {callback_amount}"
+        except (ValueError, TypeError):
+            pass
+
+    # SECURITY: the callback hash is NOT secret-keyed, so a SUCCESS callback could
+    # be forged. Treat Airpay's server-side verify.php as the source of truth — only
+    # confirm a booking when the authoritative server-side status is also 200.
+    # Fail closed: any error / non-200 / unparseable response leaves the txn pending.
+    if new_status == "SUCCESS":
+        confirm = await airpay_service.confirm_order(txn.client_txn_id)
+        server_status = confirm.get("status")
+        if server_status != "200":
+            logger.error(
+                "Server-side verify did NOT confirm SUCCESS for %s (server_status=%r, error=%r) "
+                "— holding transaction as pending, NOT confirming booking.",
+                txn.client_txn_id, server_status, confirm.get("error"),
+            )
+            await db.flush()  # persist the gateway fields; status stays INITIATED
+            return
+
+    if new_status == "INITIATED":
+        # Pending/incomplete — leave the transaction open for a later webhook.
+        await db.flush()
+        return
+
+    txn.status = new_status
+    await db.flush()
+
+    if txn.status == "SUCCESS":
+        booking_result = await db.execute(select(Booking).where(Booking.id == txn.booking_id))
+        booking = booking_result.scalar_one_or_none()
+        if booking and booking.status == "PENDING":
+            booking.status = "CONFIRMED"
+            await db.flush()
+            await db.refresh(booking)
+            logger.info("Booking %s confirmed via Airpay payment", booking.id)
+
+            enriched = await booking_service._enrich_booking(db, booking, include_items=True)
+            portal_user_result = await db.execute(
+                select(PortalUser).where(PortalUser.id == booking.portal_user_id)
+            )
+            portal_user = portal_user_result.scalar_one_or_none()
+            if portal_user:
+                background_tasks.add_task(send_booking_confirmation, enriched, portal_user.email)
+
+
+# ── Endpoints ────────────────────────────────────────────────────────────────
 
 
 @router.get("/config", summary="Get payment gateway config")
 async def payment_config():
     sim = _simulation_allowed()
     return {
-        "gateway": "ccavenue",
-        "configured": ccavenue_service.is_configured(),
+        "gateway": "airpay",
+        "configured": airpay_service.is_configured(),
         "simulation": sim,
         "mode": "simulation" if sim else "live",
     }
@@ -96,20 +204,16 @@ async def create_order(
     db: AsyncSession = Depends(get_db),
     current_user: PortalUser = Depends(get_current_portal_user),
 ):
-    is_configured = ccavenue_service.is_configured()
+    is_configured = airpay_service.is_configured()
     use_simulation = _simulation_allowed()
 
-    # Block if not configured AND simulation not allowed
     if not is_configured and not use_simulation:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Payment gateway is not configured",
         )
 
-    booking_data = await booking_service.get_booking_by_id(
-        db, body.booking_id, current_user.id
-    )
-
+    booking_data = await booking_service.get_booking_by_id(db, body.booking_id, current_user.id)
     if booking_data["status"] != "PENDING":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -117,11 +221,9 @@ async def create_order(
         )
 
     # Lock the booking row to prevent amount changes during payment flow (TOCTOU)
-    await db.execute(
-        select(Booking).where(Booking.id == body.booking_id).with_for_update()
-    )
+    await db.execute(select(Booking).where(Booking.id == body.booking_id).with_for_update())
 
-    # Check for an existing non-expired INITIATED transaction for this booking
+    # Reuse a non-expired INITIATED transaction if one exists.
     expiry_cutoff = datetime.now(timezone.utc) - timedelta(minutes=PAYMENT_EXPIRY_MINUTES)
     existing_result = await db.execute(
         select(PaymentTransaction).where(
@@ -136,7 +238,7 @@ async def create_order(
         order_id = existing_txn.client_txn_id
         txn = existing_txn
     else:
-        order_id = ccavenue_service.generate_order_id(body.booking_id)
+        order_id = airpay_service.generate_order_id(body.booking_id)
         txn = PaymentTransaction(
             booking_id=body.booking_id,
             client_txn_id=order_id,
@@ -147,64 +249,32 @@ async def create_order(
         db.add(txn)
         await db.flush()
 
-    # Simulation mode: PAYMENT_SIMULATION=true override, or CCAvenue not configured
     if use_simulation:
         backend_base = settings.BACKEND_URL.rstrip("/")
         simulate_url = f"{backend_base}/api/portal/payment/simulate/{order_id}"
-        logger.info(
-            "Payment order created (SIMULATED) — booking_id=%s order_id=%s",
-            body.booking_id,
-            order_id,
-        )
+        logger.info("Payment order created (SIMULATED) — booking_id=%s order_id=%s",
+                    body.booking_id, order_id)
         return {
-            "ccavenue_url": simulate_url,
-            "enc_request": "SIMULATED",
-            "access_code": "SIMULATED",
+            "airpay_url": simulate_url,
+            "fields": {},
             "order_id": order_id,
             "simulated": True,
         }
 
-    # Real CCAvenue flow
-    backend_base = settings.BACKEND_URL.rstrip("/")
-    redirect_url = f"{backend_base}/api/portal/payment/callback"
-    cancel_url = f"{backend_base}/api/portal/payment/callback"
-
-    payer_name = f"{current_user.first_name} {current_user.last_name}".strip()
-    result = ccavenue_service.build_payment_request(
-        order_id=order_id,
-        amount=float(booking_data["net_amount"]),
-        billing_name=payer_name,
-        billing_email=current_user.email,
-        billing_tel=current_user.mobile,
-        redirect_url=redirect_url,
-        cancel_url=cancel_url,
-        merchant_param1=body.platform,
-    )
-
-    logger.info(
-        "Payment order created — booking_id=%s order_id=%s",
-        body.booking_id,
-        order_id,
-    )
-
-    return result
+    result = _airpay_request_for_txn(txn, current_user)
+    logger.info("Payment order created — booking_id=%s order_id=%s", body.booking_id, order_id)
+    return {
+        "airpay_url": result["airpay_url"],
+        "fields": result["fields"],
+        "order_id": order_id,
+        "simulated": False,
+    }
 
 
-@router.get(
-    "/initiate/{order_id}",
-    include_in_schema=False,
-)
-async def initiate_checkout(
-    order_id: str,
-    db: AsyncSession = Depends(get_db),
-):
-    """Serve auto-submitting HTML form for CCAvenue checkout (or redirect to
-    simulation page when gateway is not configured).
-
-    Used by the mobile app: after calling /create-order, the app opens this
-    URL via Linking.openURL to POST the encrypted payment data to CCAvenue
-    without needing a WebView or native SDK.
-    """
+@router.get("/initiate/{order_id}", include_in_schema=False)
+async def initiate_checkout(order_id: str, db: AsyncSession = Depends(get_db)):
+    """Serve an auto-submitting HTML form for Airpay checkout (mobile app uses this
+    via Linking.openURL), or redirect to the simulation page when in simulation mode."""
     expiry_cutoff = datetime.now(timezone.utc) - timedelta(minutes=PAYMENT_EXPIRY_MINUTES)
     txn_result = await db.execute(
         select(PaymentTransaction).where(
@@ -217,15 +287,13 @@ async def initiate_checkout(
     if not txn:
         return HTMLResponse("<h1>Invalid or expired payment link</h1>", status_code=404)
 
-    # Simulation mode — redirect to mock checkout page
     if _simulation_allowed():
         backend_base = settings.BACKEND_URL.rstrip("/")
-        sim_url = f"{backend_base}/api/portal/payment/simulate/{order_id}"
-        return RedirectResponse(url=sim_url, status_code=302)
+        return RedirectResponse(
+            url=f"{backend_base}/api/portal/payment/simulate/{order_id}", status_code=302
+        )
 
-    booking_result = await db.execute(
-        select(Booking).where(Booking.id == txn.booking_id)
-    )
+    booking_result = await db.execute(select(Booking).where(Booking.id == txn.booking_id))
     booking = booking_result.scalar_one_or_none()
     if not booking:
         return HTMLResponse("<h1>Booking not found</h1>", status_code=404)
@@ -235,62 +303,30 @@ async def initiate_checkout(
     )
     portal_user = portal_user_result.scalar_one_or_none()
 
-    backend_base = settings.BACKEND_URL.rstrip("/")
-    redirect_url = f"{backend_base}/api/portal/payment/callback"
-    cancel_url = f"{backend_base}/api/portal/payment/callback"
-
-    result = ccavenue_service.build_payment_request(
-        order_id=order_id,
-        amount=float(txn.amount),
-        billing_name=(
-            f"{portal_user.first_name} {portal_user.last_name}".strip()
-            if portal_user
-            else "Customer"
-        ),
-        billing_email=portal_user.email if portal_user else "",
-        billing_tel=portal_user.mobile if portal_user else "",
-        redirect_url=redirect_url,
-        cancel_url=cancel_url,
-        merchant_param1=txn.platform,
+    result = _airpay_request_for_txn(txn, portal_user)
+    airpay_url = html_mod.escape(result["airpay_url"])
+    inputs = "".join(
+        f'<input type="hidden" name="{html_mod.escape(k)}" value="{html_mod.escape(str(v))}">'
+        for k, v in result["fields"].items()
     )
 
-    ccavenue_url = html_mod.escape(result["ccavenue_url"])
-    enc_request = html_mod.escape(result["enc_request"])
-    access_code = html_mod.escape(result["access_code"])
-
     html_content = (
-        "<!DOCTYPE html>"
-        "<html>"
-        "<head><title>Redirecting to payment...</title>"
+        "<!DOCTYPE html><html><head><title>Redirecting to payment...</title>"
         '<meta name="viewport" content="width=device-width,initial-scale=1">'
         "<style>body{display:flex;align-items:center;justify-content:center;"
         "min-height:100vh;margin:0;font-family:sans-serif;background:#f5f5f5}"
-        "p{font-size:18px;color:#333}</style>"
-        "</head>"
+        "p{font-size:18px;color:#333}</style></head>"
         '<body onload="document.getElementById(\'pf\').submit()">'
         "<p>Redirecting to payment gateway&#8230;</p>"
-        f'<form id="pf" method="POST" action="{ccavenue_url}">'
-        f'<input type="hidden" name="encRequest" value="{enc_request}">'
-        f'<input type="hidden" name="access_code" value="{access_code}">'
-        "</form>"
-        "</body>"
-        "</html>"
+        f'<form id="pf" method="POST" action="{airpay_url}">{inputs}</form>'
+        "</body></html>"
     )
     return HTMLResponse(html_content)
 
 
-@router.get(
-    "/simulate/{order_id}",
-    include_in_schema=False,
-)
-async def simulate_checkout(
-    order_id: str,
-    db: AsyncSession = Depends(get_db),
-):
-    """Mock CCAvenue checkout page for testing when credentials aren't available.
-
-    Only works when DEBUG=true. Shows booking details with Pay / Cancel buttons.
-    """
+@router.get("/simulate/{order_id}", include_in_schema=False)
+async def simulate_checkout(order_id: str, db: AsyncSession = Depends(get_db)):
+    """Mock checkout page for testing when running in simulation mode."""
     if not _simulation_allowed():
         return HTMLResponse("<h1>Not available — simulation mode is off</h1>", status_code=403)
 
@@ -306,19 +342,16 @@ async def simulate_checkout(
     if not txn:
         return HTMLResponse("<h1>Invalid or expired payment link</h1>", status_code=404)
 
-    booking_result = await db.execute(
-        select(Booking).where(Booking.id == txn.booking_id)
-    )
+    booking_result = await db.execute(select(Booking).where(Booking.id == txn.booking_id))
     booking = booking_result.scalar_one_or_none()
-
-    portal_user_result = await db.execute(
-        select(PortalUser).where(PortalUser.id == booking.portal_user_id)
-    ) if booking else None
+    portal_user_result = (
+        await db.execute(select(PortalUser).where(PortalUser.id == booking.portal_user_id))
+        if booking else None
+    )
     portal_user = portal_user_result.scalar_one_or_none() if portal_user_result else None
 
     payer_name = html_mod.escape(
-        f"{portal_user.first_name} {portal_user.last_name}".strip()
-        if portal_user else "Customer"
+        f"{portal_user.first_name} {portal_user.last_name}".strip() if portal_user else "Customer"
     )
     amount = f"{txn.amount:.2f}"
     backend_base = settings.BACKEND_URL.rstrip("/")
@@ -394,16 +427,13 @@ async def simulate_checkout(
     return HTMLResponse(html_content)
 
 
-@router.post(
-    "/simulate-callback",
-    include_in_schema=False,
-)
+@router.post("/simulate-callback", include_in_schema=False)
 async def simulate_callback(
     request: Request,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ):
-    """Process simulated payment callback. Only works when DEBUG=true."""
+    """Process a simulated payment callback. Only works in simulation mode."""
     if not _simulation_allowed():
         return HTMLResponse("<h1>Not available — simulation mode is off</h1>", status_code=403)
 
@@ -415,32 +445,24 @@ async def simulate_callback(
         return _redirect_to_frontend(success=False, error="Missing order_id")
 
     result = await db.execute(
-        select(PaymentTransaction).where(
-            PaymentTransaction.client_txn_id == order_id
-        )
+        select(PaymentTransaction).where(PaymentTransaction.client_txn_id == order_id)
     )
     txn = result.scalar_one_or_none()
-
     if not txn:
         return _redirect_to_frontend(success=False, error="Transaction not found")
 
     if txn.status in ("SUCCESS", "FAILED", "ABORTED"):
         return _redirect_to_frontend(
-            success=(txn.status == "SUCCESS"),
-            booking_id=txn.booking_id,
-            platform=txn.platform,
+            success=(txn.status == "SUCCESS"), booking_id=txn.booking_id, platform=txn.platform
         )
 
-    # Update transaction
     txn.gateway_txn_id = f"SIM_{order_id}"
     txn.payment_mode = "Simulated"
     txn.bank_name = "Test Bank"
     txn.gateway_message = f"Simulated {sim_status}"
     txn.raw_response = f"order_id={order_id}&order_status={sim_status}&simulated=true"
 
-    is_success = sim_status == "Success"
-
-    if is_success:
+    if sim_status == "Success":
         txn.status = "SUCCESS"
     elif sim_status == "Aborted":
         txn.status = "ABORTED"
@@ -449,166 +471,86 @@ async def simulate_callback(
 
     await db.flush()
 
-    # If SUCCESS, confirm booking and send email (same as real callback)
     if txn.status == "SUCCESS":
-        booking_result = await db.execute(
-            select(Booking).where(Booking.id == txn.booking_id)
-        )
+        booking_result = await db.execute(select(Booking).where(Booking.id == txn.booking_id))
         booking = booking_result.scalar_one_or_none()
-
         if booking and booking.status == "PENDING":
             booking.status = "CONFIRMED"
             await db.flush()
             await db.refresh(booking)
-
             logger.info("Booking %s confirmed via simulated payment", booking.id)
-
-            enriched = await booking_service._enrich_booking(
-                db, booking, include_items=True
-            )
-
+            enriched = await booking_service._enrich_booking(db, booking, include_items=True)
             portal_user_result = await db.execute(
                 select(PortalUser).where(PortalUser.id == booking.portal_user_id)
             )
             portal_user = portal_user_result.scalar_one_or_none()
             if portal_user:
-                background_tasks.add_task(
-                    send_booking_confirmation, enriched, portal_user.email
-                )
+                background_tasks.add_task(send_booking_confirmation, enriched, portal_user.email)
 
     return _redirect_to_frontend(
-        success=(txn.status == "SUCCESS"),
-        booking_id=txn.booking_id,
-        platform=txn.platform,
+        success=(txn.status == "SUCCESS"), booking_id=txn.booking_id, platform=txn.platform
     )
 
 
-@router.post(
-    "/callback",
-    summary="CCAvenue payment callback",
-    include_in_schema=False,
-)
+async def _handle_airpay_result(
+    request: Request, background_tasks: BackgroundTasks, db: AsyncSession
+) -> PaymentTransaction | None:
+    """Shared handler for the Airpay redirect callback and the IPN webhook.
+
+    Returns the transaction on success of processing (verified), else None.
+    Raises nothing — callers decide how to respond.
+    """
+    form = dict(await request.form())
+    order_id = form.get("TRANSACTIONID", "")
+
+    logger.info(
+        "Airpay result — order_id=%s status=%s ap_txn=%s",
+        order_id, form.get("TRANSACTIONSTATUS", ""), form.get("APTRANSACTIONID", ""),
+    )
+
+    if not order_id:
+        logger.error("Airpay result missing TRANSACTIONID")
+        return None
+
+    if not airpay_service.verify_response(form):
+        logger.error("Airpay result hash verification FAILED for order_id=%s", order_id)
+        return None
+
+    result = await db.execute(
+        select(PaymentTransaction).where(PaymentTransaction.client_txn_id == order_id)
+    )
+    txn = result.scalar_one_or_none()
+    if not txn:
+        logger.error("No PaymentTransaction for order_id=%s", order_id)
+        return None
+
+    await _finalize_transaction(txn, form, db, background_tasks)
+    return txn
+
+
+@router.post("/callback", summary="Airpay payment callback", include_in_schema=False)
 async def payment_callback(
     request: Request,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ):
-    """Handle CCAvenue redirect POST with encrypted response."""
-    form = await request.form()
-    enc_resp = form.get("encResp", "")
-
-    if not enc_resp:
-        logger.error("Callback missing encResp form field")
-        return _redirect_to_frontend(success=False, error="Missing encResp")
-
-    parsed = ccavenue_service.decrypt_response(enc_resp)
-
-    order_id = parsed.get("order_id", "")
-    order_status = parsed.get("order_status", "")
-
-    logger.info(
-        "Payment callback — order_id=%s order_status=%s tracking_id=%s",
-        order_id,
-        order_status,
-        parsed.get("tracking_id", ""),
-    )
-
-    if not order_id:
-        logger.error("Callback missing order_id — cannot process")
-        return _redirect_to_frontend(success=False, error="Invalid callback data")
-
-    # Find PaymentTransaction by order_id (stored as client_txn_id)
-    result = await db.execute(
-        select(PaymentTransaction).where(
-            PaymentTransaction.client_txn_id == order_id
-        )
-    )
-    txn = result.scalar_one_or_none()
-
-    if not txn:
-        logger.error("No PaymentTransaction found for order_id=%s", order_id)
-        return _redirect_to_frontend(success=False, error="Transaction not found")
-
-    # Idempotency — if already processed, just redirect
-    if txn.status in ("SUCCESS", "FAILED", "ABORTED"):
-        return _redirect_to_frontend(
-            success=(txn.status == "SUCCESS"),
-            booking_id=txn.booking_id,
-            platform=txn.platform,
-        )
-
-    # Update transaction with callback data
-    txn.gateway_txn_id = parsed.get("tracking_id", "")
-    txn.payment_mode = parsed.get("payment_mode", "")
-    txn.bank_name = parsed.get("card_name", "")
-    txn.gateway_message = parsed.get("status_message", "")
-
-    # Store raw response (exclude sensitive fields)
-    raw_pairs = [
-        f"{k}={v}" for k, v in parsed.items()
-        if k not in ("encResp",)
-    ]
-    txn.raw_response = "&".join(raw_pairs)
-
-    # Determine success
-    is_success = is_payment_successful(order_status)
-
-    if is_success:
-        # Verify amount matches
-        callback_amount = parsed.get("amount", "")
-        if callback_amount:
-            try:
-                if abs(float(callback_amount) - float(txn.amount)) > 0.01:
-                    logger.error(
-                        "Amount mismatch for %s: expected %s, got %s",
-                        order_id, txn.amount, callback_amount,
-                    )
-                    is_success = False
-                    txn.gateway_message = f"Amount mismatch: expected {txn.amount}, got {callback_amount}"
-            except (ValueError, TypeError):
-                pass
-
-    if is_success:
-        txn.status = "SUCCESS"
-    elif order_status == "Aborted":
-        txn.status = "ABORTED"
-    else:
-        txn.status = "FAILED"
-
-    await db.flush()
-
-    # If SUCCESS, confirm the booking and send email
-    if txn.status == "SUCCESS":
-        booking_result = await db.execute(
-            select(Booking).where(Booking.id == txn.booking_id)
-        )
-        booking = booking_result.scalar_one_or_none()
-
-        if booking and booking.status == "PENDING":
-            booking.status = "CONFIRMED"
-            await db.flush()
-            await db.refresh(booking)
-
-            logger.info("Booking %s confirmed via payment callback", booking.id)
-
-            enriched = await booking_service._enrich_booking(
-                db, booking, include_items=True
-            )
-
-            portal_user_result = await db.execute(
-                select(PortalUser).where(PortalUser.id == booking.portal_user_id)
-            )
-            portal_user = portal_user_result.scalar_one_or_none()
-            if portal_user:
-                background_tasks.add_task(
-                    send_booking_confirmation, enriched, portal_user.email
-                )
-
-    # Determine platform from merchant_param1 or stored value
-    platform = parsed.get("merchant_param1", txn.platform) or "web"
-
+    """Handle Airpay's redirect POST, then bounce the user back to the frontend."""
+    txn = await _handle_airpay_result(request, background_tasks, db)
+    if txn is None:
+        return _redirect_to_frontend(success=False, error="Invalid or unverified payment response")
     return _redirect_to_frontend(
-        success=(txn.status == "SUCCESS"),
-        booking_id=txn.booking_id,
-        platform=platform,
+        success=(txn.status == "SUCCESS"), booking_id=txn.booking_id, platform=txn.platform
     )
+
+
+@router.post("/webhook", summary="Airpay IPN webhook", include_in_schema=False)
+async def payment_webhook(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+):
+    """Server-to-server IPN PUSH from Airpay (source of truth). Idempotent."""
+    txn = await _handle_airpay_result(request, background_tasks, db)
+    if txn is None:
+        return {"status": "ignored"}
+    return {"status": "ok", "transaction_status": txn.status}

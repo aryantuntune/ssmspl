@@ -375,24 +375,22 @@ export default function BookingViewPage() {
 
                       if (res.data.simulated) {
                         // Simulated mode — redirect to mock checkout page
-                        window.location.href = res.data.ccavenue_url;
+                        window.location.href = res.data.airpay_url;
                       } else {
-                        // Real CCAvenue — create hidden form and POST
+                        // Real Airpay — build hidden form from returned fields and POST
                         const form = document.createElement("form");
                         form.method = "POST";
-                        form.action = res.data.ccavenue_url;
+                        form.action = res.data.airpay_url;
 
-                        const encInput = document.createElement("input");
-                        encInput.type = "hidden";
-                        encInput.name = "encRequest";
-                        encInput.value = res.data.enc_request;
-                        form.appendChild(encInput);
-
-                        const codeInput = document.createElement("input");
-                        codeInput.type = "hidden";
-                        codeInput.name = "access_code";
-                        codeInput.value = res.data.access_code;
-                        form.appendChild(codeInput);
+                        Object.entries(res.data.fields || {}).forEach(
+                          ([name, value]) => {
+                            const input = document.createElement("input");
+                            input.type = "hidden";
+                            input.name = name;
+                            input.value = String(value);
+                            form.appendChild(input);
+                          }
+                        );
 
                         document.body.appendChild(form);
                         form.submit();

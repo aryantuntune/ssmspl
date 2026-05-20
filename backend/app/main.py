@@ -73,7 +73,7 @@ app = FastAPI(
         "- JWT-based authentication with access & refresh tokens\n"
         "- Role-Based Access Control (RBAC) with 4 roles: Admin, Manager, Billing Operator, Ticket Checker\n"
         "- User management (CRUD) restricted to admin roles\n"
-        "- Online payment integration via CCAvenue\n\n"
+        "- Online payment integration via Airpay\n\n"
         "### Authentication\n"
         "1. Call `POST /api/auth/login` with username & password to get tokens\n"
         "2. Include the access token as `Authorization: Bearer <token>` header\n"

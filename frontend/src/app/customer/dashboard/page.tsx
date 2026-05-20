@@ -311,24 +311,20 @@ export default function BookingPage() {
 
         if (payRes.data.simulated) {
           // Simulated mode — GET redirect to mock checkout
-          window.location.href = payRes.data.ccavenue_url;
+          window.location.href = payRes.data.airpay_url;
         } else {
-          // Real CCAvenue — create hidden form and POST
+          // Real Airpay — build hidden form from returned fields and POST
           const form = document.createElement("form");
           form.method = "POST";
-          form.action = payRes.data.ccavenue_url;
+          form.action = payRes.data.airpay_url;
 
-          const encInput = document.createElement("input");
-          encInput.type = "hidden";
-          encInput.name = "encRequest";
-          encInput.value = payRes.data.enc_request;
-          form.appendChild(encInput);
-
-          const codeInput = document.createElement("input");
-          codeInput.type = "hidden";
-          codeInput.name = "access_code";
-          codeInput.value = payRes.data.access_code;
-          form.appendChild(codeInput);
+          Object.entries(payRes.data.fields || {}).forEach(([name, value]) => {
+            const input = document.createElement("input");
+            input.type = "hidden";
+            input.name = name;
+            input.value = String(value);
+            form.appendChild(input);
+          });
 
           document.body.appendChild(form);
           form.submit();

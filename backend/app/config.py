@@ -62,11 +62,16 @@ class Settings(BaseSettings):
     # Backend URL (used for payment callbacks, etc.)
     BACKEND_URL: str = "http://localhost:8000"
 
-    # CCAvenue Payment Gateway
-    CCAVENUE_MERCHANT_ID: str = ""
-    CCAVENUE_ACCESS_CODE: str = ""
-    CCAVENUE_WORKING_KEY: str = ""
-    CCAVENUE_BASE_URL: str = "https://test.ccavenue.com"
+    # Airpay Payment Gateway (classic redirect kit)
+    AIRPAY_MERCHANT_ID: str = ""
+    AIRPAY_USERNAME: str = ""
+    AIRPAY_PASSWORD: str = ""
+    AIRPAY_SECRET_KEY: str = ""
+    # api_key / client_id are issued by Airpay but unused by the classic kit;
+    # kept for the record and for a possible future Sanctum-API migration.
+    AIRPAY_API_KEY: str = ""
+    AIRPAY_CLIENT_ID: str = ""
+    AIRPAY_BASE_URL: str = "https://payments.airpay.co.in"
 
     @field_validator("SECRET_KEY")
     @classmethod
@@ -79,8 +84,8 @@ class Settings(BaseSettings):
     QZ_PRIVATE_KEY_PEM: str = ""
 
     # Payment simulation — hard override toggle.
-    # When true, ALL payments use the simulator regardless of CCAvenue credentials.
-    # Use as a fallback if CCAvenue is down. Set back to false to resume real payments.
+    # When true, ALL payments use the simulator regardless of Airpay credentials.
+    # Use as a fallback if Airpay is down. Set back to false to resume real payments.
     PAYMENT_SIMULATION: bool = False
 
     # Email (SMTP)

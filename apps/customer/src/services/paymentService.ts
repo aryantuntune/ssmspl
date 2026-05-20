@@ -7,10 +7,10 @@ export interface PaymentConfig {
 }
 
 export interface PaymentOrder {
-  ccavenue_url: string;
-  enc_request: string;
-  access_code: string;
+  airpay_url: string;
+  fields: Record<string, string>;
   order_id: string;
+  simulated?: boolean;
 }
 
 export async function getPaymentConfig(): Promise<PaymentConfig> {
@@ -29,7 +29,7 @@ export async function createPaymentOrder(bookingId: number): Promise<PaymentOrde
 /**
  * Build the URL for the backend-hosted auto-submitting checkout form.
  * The mobile app opens this via Linking.openURL — the backend rebuilds the
- * encrypted payload and POSTs it to CCAvenue on the user's behalf.
+ * checksummed payload and POSTs it to Airpay on the user's behalf.
  */
 export function getCheckoutUrl(orderId: string): string {
   const apiUrl =
