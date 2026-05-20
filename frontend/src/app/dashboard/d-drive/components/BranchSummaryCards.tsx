@@ -23,6 +23,11 @@ interface Props {
    * above the cards.
    */
   showTransferButton?: boolean;
+  /**
+   * When false (e.g. in Transfer mode) the per-branch Reconcile button is
+   * hidden — these cards are informational only in that mode.
+   */
+  showReconcileButton?: boolean;
   /** Selected payment mode — the Reconcile amount + the highlighted cell follow this. */
   paymentMode?: "CASH" | "UPI";
 }
@@ -31,7 +36,7 @@ const fmt = (n: number) =>
   "₹" + n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export default function BranchSummaryCards({
-  summaries, onReconcile, onTransfer, loading, showTransferButton = true, paymentMode = "CASH",
+  summaries, onReconcile, onTransfer, loading, showTransferButton = true, showReconcileButton = true, paymentMode = "CASH",
 }: Props) {
   if (loading) return <div className="text-muted-foreground py-6">Loading summaries…</div>;
   if (!summaries.length) return <div className="text-muted-foreground py-6">No data for selected filters.</div>;
@@ -46,13 +51,15 @@ export default function BranchSummaryCards({
               <p className="text-xs text-muted-foreground mt-0.5">{s.ticket_count} tickets</p>
             </div>
             <div className="flex gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => onReconcile(s.branch_id, s.branch_name, paymentMode === "UPI" ? s.upi : s.cash)}
-              >
-                Reconcile
-              </Button>
+              {showReconcileButton && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => onReconcile(s.branch_id, s.branch_name, paymentMode === "UPI" ? s.upi : s.cash)}
+                >
+                  Reconcile
+                </Button>
+              )}
               {showTransferButton && (
                 <Button
                   size="sm"

@@ -302,6 +302,7 @@ export default function DDrivePage() {
               summaries={summaries}
               loading={summaryLoading}
               showTransferButton={false}
+              showReconcileButton={false}
               paymentMode={paymentMode}
               onReconcile={() => {}}
               onTransfer={() => {}}
