@@ -185,32 +185,34 @@ export default function DDrivePage() {
       </div>
 
       {/* Step 2 — Action. Reconciliation or Transfer, applied to the mode chosen above. */}
-      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground -mb-3">
-        Step 2 · Action ({paymentMode})
-      </p>
-      <div className="inline-flex rounded-lg border bg-muted/30 p-1">
-        <button
-          type="button"
-          onClick={() => handleModeChange("reconcile")}
-          className={`px-5 py-2 rounded-md text-sm font-medium transition-colors ${
-            mode === "reconcile"
-              ? "bg-background shadow text-foreground"
-              : "text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          Reconciliation
-        </button>
-        <button
-          type="button"
-          onClick={() => handleModeChange("transfer")}
-          className={`px-5 py-2 rounded-md text-sm font-medium transition-colors ${
-            mode === "transfer"
-              ? "bg-background shadow text-foreground"
-              : "text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          Transfer
-        </button>
+      <div className="space-y-1.5">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Step 2 · Action ({paymentMode})
+        </p>
+        <div className="inline-flex rounded-lg border bg-muted/30 p-1">
+          <button
+            type="button"
+            onClick={() => handleModeChange("reconcile")}
+            className={`px-5 py-2 rounded-md text-sm font-medium transition-colors ${
+              mode === "reconcile"
+                ? "bg-background shadow text-foreground"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Reconciliation
+          </button>
+          <button
+            type="button"
+            onClick={() => handleModeChange("transfer")}
+            className={`px-5 py-2 rounded-md text-sm font-medium transition-colors ${
+              mode === "transfer"
+                ? "bg-background shadow text-foreground"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Transfer
+          </button>
+        </div>
       </div>
 
       {/* Empty state */}
