@@ -50,6 +50,7 @@ class DryRunRequest(BaseModel):
     date_start: date
     date_end: date
     adjustment_amount: float
+    payment_mode: str = "CASH"  # "CASH" or "UPI"
 
 
 class CommitRequest(BaseModel):
@@ -71,6 +72,7 @@ async def adjustment_dry_run(
         date_end=body.date_end,
         adjustment_amount=body.adjustment_amount,
         created_by=current_user.id,
+        payment_mode=body.payment_mode,
     )
 
 
@@ -102,6 +104,7 @@ async def get_adjustment(
     return {
         "id": str(log.id),
         "branch_id": log.branch_id,
+        "payment_mode": log.payment_mode,
         "date_start": str(log.date_range_start),
         "date_end": str(log.date_range_end),
         "adjustment_amount": float(log.adjustment_amount),

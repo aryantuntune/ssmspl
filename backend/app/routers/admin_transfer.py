@@ -53,14 +53,18 @@ async def scope_data(
     date_start: date = Query(...),
     date_end: date = Query(...),
     from_item_id: int | None = Query(None),
+    payment_mode: str = Query("CASH"),
     db: AsyncSession = Depends(get_db),
     current_user=Depends(_admin_or_super),
 ):
     """Return total quantity + representative rate/levy for the FROM item in scope.
 
     Scope can be a single branch (`branch_id`) or a route (`route_id`, both
-    endpoint branches).
+    endpoint branches). `payment_mode` ('CASH' or 'UPI') selects which tickets count.
     """
+    pm = (payment_mode or "CASH").upper()
+    if pm not in ("CASH", "UPI"):
+        raise HTTPException(status_code=400, detail="payment_mode must be 'CASH' or 'UPI'")
     branch_ids = await _resolve_scope_branch_ids(db, branch_id, route_id)
 
     if from_item_id is None:
@@ -88,7 +92,7 @@ async def scope_data(
             TicketItem.item_id == from_item_id,
             Ticket.is_cancelled == False,
             TicketItem.is_cancelled == False,
-            func.upper(PaymentMode.description) == "CASH",
+            func.upper(PaymentMode.description) == pm,
         )
     )
     row = (await db.execute(totals_q)).one()
@@ -108,7 +112,7 @@ async def scope_data(
             TicketItem.item_id == from_item_id,
             Ticket.is_cancelled == False,
             TicketItem.is_cancelled == False,
-            func.upper(PaymentMode.description) == "CASH",
+            func.upper(PaymentMode.description) == pm,
         )
         .group_by(Ticket.route_id)
     )
@@ -127,7 +131,7 @@ async def scope_data(
             TicketItem.item_id == from_item_id,
             Ticket.is_cancelled == False,
             TicketItem.is_cancelled == False,
-            func.upper(PaymentMode.description) == "CASH",
+            func.upper(PaymentMode.description) == pm,
         )
         .group_by(TicketItem.levy)
         .order_by(func.count().desc())
@@ -190,6 +194,7 @@ class DryRunRequest(BaseModel):
     to_item_id: int
     input_mode: str  # "percentage" or "quantity"
     input_value: float
+    payment_mode: str = "CASH"  # "CASH" or "UPI"
 
     @model_validator(mode="after")
     def _validate_scope(self):
@@ -219,6 +224,7 @@ async def transfer_dry_run(
         input_mode=body.input_mode,
         input_value=body.input_value,
         created_by=current_user.id,
+        payment_mode=body.payment_mode,
     )
 
 

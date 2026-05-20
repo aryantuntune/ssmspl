@@ -43,7 +43,7 @@ def _round_down_to_clean(amount: Decimal) -> Decimal:
 
 
 async def _count_eligible_unprotected_items(
-    db: AsyncSession, branch_id: int, date_start: date, date_end: date, protected_item_ids: set[int]
+    db: AsyncSession, branch_id: int, date_start: date, date_end: date, protected_item_ids: set[int], payment_mode: str
 ) -> int:
     q = (
         select(func.count(TicketItem.id))
@@ -56,7 +56,7 @@ async def _count_eligible_unprotected_items(
             Ticket.ticket_date <= date_end,
             Ticket.is_cancelled == False,
             TicketItem.is_cancelled == False,
-            func.upper(PaymentMode.description) == "CASH",
+            func.upper(PaymentMode.description) == payment_mode,
         )
     )
     if protected_item_ids:
@@ -64,8 +64,8 @@ async def _count_eligible_unprotected_items(
     return (await db.execute(q)).scalar_one()
 
 
-async def _fetch_cash_total(
-    db: AsyncSession, branch_id: int, date_start: date, date_end: date
+async def _fetch_eligible_total(
+    db: AsyncSession, branch_id: int, date_start: date, date_end: date, payment_mode: str
 ) -> Decimal:
     q = (
         select(func.coalesce(func.sum(Ticket.net_amount), 0))
@@ -76,7 +76,7 @@ async def _fetch_cash_total(
             Ticket.ticket_date >= date_start,
             Ticket.ticket_date <= date_end,
             Ticket.is_cancelled == False,
-            func.upper(PaymentMode.description) == "CASH",
+            func.upper(PaymentMode.description) == payment_mode,
         )
     )
     return Decimal(str((await db.execute(q)).scalar_one()))
@@ -101,6 +101,7 @@ async def _build_deletion_plan(
     date_end: date,
     target_amount: Decimal,
     protected_item_ids: set[int],
+    payment_mode: str,
 ) -> tuple[list[int], Decimal, dict[int, list[dict]]]:
     """
     Build a deletion plan that deletes items until cumulative value reaches target_amount
@@ -139,7 +140,7 @@ async def _build_deletion_plan(
         priority_order=999999,
         branch_scope=None,
         item_id=None,
-        payment_mode="CASH",
+        payment_mode=payment_mode,
         ticket_conditions={},
         item_conditions={},
         ticket_selection_order="FIFO",
@@ -190,7 +191,7 @@ async def _build_deletion_plan(
                 Ticket.ticket_date <= date_end,
                 Ticket.is_cancelled == False,
                 TicketItem.is_cancelled == False,
-                func.upper(PaymentMode.description) == "CASH",
+                func.upper(PaymentMode.description) == payment_mode,
             )
             .order_by(*_order_clause(rule))
         )
@@ -333,12 +334,13 @@ async def _find_roundoff_target(
     date_end: date,
     remaining: Decimal,
     excluded_ticket_item_ids: set[int],
+    payment_mode: str,
 ) -> dict | None:
     """
     Find a round-off transformation target for a small remainder.
-    Strategy: last CASH ticket in date range -> pick a ticket_item with sufficient
-    value (prefer PASSENGER items) -> transform to a luggage-type item with
-    rate=1, levy=0, adjusted quantity.
+    Strategy: last in-scope ticket (CASH or UPI) in date range -> pick a ticket_item
+    with sufficient value (prefer PASSENGER items) -> transform to a luggage-type
+    item with rate=1, levy=0, adjusted quantity.
 
     Returns a dict describing the transformation, or None if no suitable target.
     """
@@ -355,7 +357,7 @@ async def _find_roundoff_target(
     if to_item is None:
         return None  # no luggage-type item available; skip round-off
 
-    # Find candidate tickets: last CASH ticket first, walking backward
+    # Find candidate tickets: last in-scope ticket first, walking backward
     # Use ticket_id DESC as the "last ticket" proxy (tickets are issued sequentially)
     tickets_q = (
         select(Ticket.id, Ticket.ticket_date, Ticket.ticket_no)
@@ -365,7 +367,7 @@ async def _find_roundoff_target(
             Ticket.ticket_date >= date_start,
             Ticket.ticket_date <= date_end,
             Ticket.is_cancelled == False,
-            func.upper(PaymentMode.description) == "CASH",
+            func.upper(PaymentMode.description) == payment_mode,
         )
         .order_by(Ticket.ticket_date.desc(), Ticket.id.desc())
         .limit(20)  # at most 20 candidates; usually the first one works
@@ -447,10 +449,15 @@ async def dry_run(
     date_end: date,
     adjustment_amount: float,
     created_by: uuid.UUID,
+    payment_mode: str = "CASH",
 ) -> dict:
     requested = Decimal(str(adjustment_amount)).quantize(Decimal("0.01"))
     if requested <= 0:
         raise HTTPException(status_code=400, detail="Adjustment amount must be positive")
+
+    payment_mode = (payment_mode or "CASH").upper()
+    if payment_mode not in ("CASH", "UPI"):
+        raise HTTPException(status_code=400, detail="payment_mode must be 'CASH' or 'UPI'")
 
     # Load protected item IDs from protected rules
     from sqlalchemy import or_ as _or_pr
@@ -465,17 +472,17 @@ async def dry_run(
     protected_item_ids = {row[0] for row in protected_result.all() if row[0] is not None}
 
     # Guard 1: row count (count BEFORE heavy loads)
-    item_count = await _count_eligible_unprotected_items(db, branch_id, date_start, date_end, protected_item_ids)
+    item_count = await _count_eligible_unprotected_items(db, branch_id, date_start, date_end, protected_item_ids, payment_mode)
     if item_count > MAX_ITEM_ROWS:
         raise HTTPException(status_code=400, detail=f"Too many eligible ticket items ({item_count}). Reduce the date range. Max: {MAX_ITEM_ROWS}")
     if item_count == 0:
-        raise HTTPException(status_code=400, detail="No unprotected items available for deletion in this branch / date range")
+        raise HTTPException(status_code=400, detail=f"No unprotected items available for deletion in this branch / date range ({payment_mode} mode)")
 
-    cash_total = await _fetch_cash_total(db, branch_id, date_start, date_end)
+    cash_total = await _fetch_eligible_total(db, branch_id, date_start, date_end, payment_mode)
 
-    # Compute deletable vs protected cash breakdown for admin clarity.
-    # deletable_cash_total = sum of (rate+levy)*qty for items NOT protected
-    # protected_cash_total = sum of (rate+levy)*qty for items that ARE protected
+    # Compute deletable vs protected breakdown for admin clarity (scoped to the selected payment_mode).
+    # deletable_total = sum of (rate+levy)*qty for items NOT protected
+    # protected_total = sum of (rate+levy)*qty for items that ARE protected
     deletable_cash_q = (
         select(func.coalesce(func.sum((TicketItem.rate + TicketItem.levy) * TicketItem.quantity), 0))
         .select_from(TicketItem)
@@ -487,7 +494,7 @@ async def dry_run(
             Ticket.ticket_date <= date_end,
             Ticket.is_cancelled == False,
             TicketItem.is_cancelled == False,
-            func.upper(PaymentMode.description) == "CASH",
+            func.upper(PaymentMode.description) == payment_mode,
         )
     )
     if protected_item_ids:
@@ -507,7 +514,7 @@ async def dry_run(
                 Ticket.ticket_date <= date_end,
                 Ticket.is_cancelled == False,
                 TicketItem.is_cancelled == False,
-                func.upper(PaymentMode.description) == "CASH",
+                func.upper(PaymentMode.description) == payment_mode,
                 TicketItem.item_id.in_(protected_item_ids),
             )
         )
@@ -516,7 +523,7 @@ async def dry_run(
     # Step 1: Build the REQUESTED plan first — target the exact amount admin entered.
     # achievable_amount = what this plan actually delivers (discrete items may fall short).
     req_ids, achievable_amount, req_detail = await _build_deletion_plan(
-        db, branch_id, date_start, date_end, requested, protected_item_ids
+        db, branch_id, date_start, date_end, requested, protected_item_ids, payment_mode
     )
 
     if achievable_amount <= 0:
@@ -557,7 +564,7 @@ async def dry_run(
                 Ticket.ticket_date <= date_end,
                 Ticket.is_cancelled == False,
                 TicketItem.is_cancelled == False,
-                func.upper(PaymentMode.description) == "CASH",
+                func.upper(PaymentMode.description) == payment_mode,
             )
             .order_by(Ticket.id.asc(), TicketItem.id.asc())
         )
@@ -616,6 +623,7 @@ async def dry_run(
         roundoff = await _find_roundoff_target(
             db, branch_id, date_start, date_end,
             pre_roundoff_remaining, excluded_ticket_item_ids=set(closest_ids),
+            payment_mode=payment_mode,
         )
 
     # Update closest_applied to reflect the round-off absorption (for UI display)
@@ -630,7 +638,7 @@ async def dry_run(
     # Step 3: Build the RECOMMENDED plan targeting the rounded-down amount.
     # This typically matches exactly (since recommended <= achievable).
     rec_ids, rec_applied, rec_detail = await _build_deletion_plan(
-        db, branch_id, date_start, date_end, recommended_amount, protected_item_ids
+        db, branch_id, date_start, date_end, recommended_amount, protected_item_ids, payment_mode
     )
 
     # Unapplied = shortfall between what admin wanted and what items can deliver.
@@ -667,6 +675,7 @@ async def dry_run(
 
     execution_plan = {
         "branch_id": branch_id,
+        "payment_mode": payment_mode,
         "date_start": str(date_start),
         "date_end": str(date_end),
         "requested_adjustment": str(requested),
@@ -705,6 +714,7 @@ async def dry_run(
         total_items_affected=len(req_ids),
         row_count_checked=item_count,
         status="DRY_RUN",
+        payment_mode=payment_mode,
         created_by=created_by,
     )
     db.add(log)
@@ -718,6 +728,7 @@ async def dry_run(
 
     return {
         "batch_id": str(log.id),
+        "payment_mode": payment_mode,
         "cash_total_before": float(cash_total),
         "requested_adjustment": float(requested),
         "closest_applied": float(closest_applied),

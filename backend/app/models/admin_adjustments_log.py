@@ -17,6 +17,10 @@ class AdminAdjustmentsLog(Base):
             "plan_choice IS NULL OR plan_choice IN ('recommended','requested','transfer','closest')",
             name="ck_adj_log_plan_choice",
         ),
+        CheckConstraint(
+            "payment_mode IN ('CASH','UPI')",
+            name="ck_adj_log_payment_mode",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -29,6 +33,7 @@ class AdminAdjustmentsLog(Base):
     total_items_affected: Mapped[int | None] = mapped_column(Integer, nullable=True)
     row_count_checked: Mapped[int | None] = mapped_column(Integer, nullable=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="DRY_RUN")
+    payment_mode: Mapped[str] = mapped_column(String(10), nullable=False, server_default="CASH")
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     plan_choice: Mapped[str | None] = mapped_column(String(15), nullable=True)
     executed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

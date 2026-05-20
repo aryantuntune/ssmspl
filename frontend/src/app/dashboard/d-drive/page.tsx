@@ -206,6 +206,7 @@ export default function DDrivePage() {
               summaries={summaries}
               loading={summaryLoading}
               showTransferButton={false}
+              paymentMode={filters.paymentMode as "CASH" | "UPI"}
               onReconcile={(branchId, branchName, cashTotal) =>
                 setReconcileTarget({ branchId, branchName, cashTotal })
               }
@@ -264,6 +265,7 @@ export default function DDrivePage() {
               summaries={summaries}
               loading={summaryLoading}
               showTransferButton={false}
+              paymentMode={filters.paymentMode as "CASH" | "UPI"}
               onReconcile={() => {}}
               onTransfer={() => {}}
             />
@@ -291,6 +293,7 @@ export default function DDrivePage() {
           branchId={reconcileTarget.branchId}
           branchName={reconcileTarget.branchName}
           cashTotal={reconcileTarget.cashTotal}
+          paymentMode={filters.paymentMode as "CASH" | "UPI"}
           dateStart={filters.dateStart}
           dateEnd={filters.dateEnd}
           onClose={() => setReconcileTarget(null)}
@@ -304,6 +307,7 @@ export default function DDrivePage() {
           mode="route"
           routeId={transferTarget.routeId}
           routeLabel={transferTarget.routeLabel}
+          paymentMode={filters.paymentMode as "CASH" | "UPI"}
           dateStart={filters.dateStart}
           dateEnd={filters.dateEnd}
           onClose={() => setTransferTarget(null)}

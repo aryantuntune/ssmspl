@@ -12,6 +12,7 @@ interface Props {
   branchId: number;
   branchName: string;
   cashTotal: number;
+  paymentMode: "CASH" | "UPI";
   dateStart: string;
   dateEnd: string;
   onClose: () => void;
@@ -19,7 +20,7 @@ interface Props {
 }
 
 export default function AdjustmentModal({
-  open, branchId, branchName, cashTotal, dateStart, dateEnd, onClose, onCommitted,
+  open, branchId, branchName, cashTotal, paymentMode, dateStart, dateEnd, onClose, onCommitted,
 }: Props) {
   const [amount, setAmount] = useState("");
   const [dryRunResult, setDryRunResult] = useState<DryRunResult | null>(null);
@@ -37,6 +38,7 @@ export default function AdjustmentModal({
         date_start: dateStart,
         date_end: dateEnd,
         adjustment_amount: amt,
+        payment_mode: paymentMode,
       });
       setDryRunResult(res.data);
     } catch (e) {
@@ -67,9 +69,9 @@ export default function AdjustmentModal({
     <Dialog open={open} onOpenChange={v => !v && handleClose()}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>Process Reconciliation — {branchName}</DialogTitle>
+          <DialogTitle>Process Reconciliation — {branchName} ({paymentMode})</DialogTitle>
           <p className="text-sm text-muted-foreground">
-            Cash eligible: ₹{cashTotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+            {paymentMode} eligible: ₹{cashTotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
           </p>
         </DialogHeader>
 
@@ -85,7 +87,7 @@ export default function AdjustmentModal({
             className="text-xl font-semibold"
           />
           <p className="text-xs text-muted-foreground">
-            The system will delete unprotected line items from CASH tickets to reach this amount.
+            The system will delete unprotected line items from {paymentMode} tickets to reach this amount.
           </p>
           {error && <p className="text-sm text-destructive">{error}</p>}
         </div>

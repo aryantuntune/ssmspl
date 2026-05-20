@@ -114,6 +114,7 @@ async def _get_scope_data(
     date_start: date,
     date_end: date,
     from_item_id: int,
+    payment_mode: str,
 ):
     """Ordered list of FROM ticket_items with their ticket context. FIFO by created_at.
 
@@ -147,7 +148,7 @@ async def _get_scope_data(
             TicketItem.item_id == from_item_id,
             Ticket.is_cancelled == False,
             TicketItem.is_cancelled == False,
-            func.upper(PaymentMode.description) == "CASH",
+            func.upper(PaymentMode.description) == payment_mode,
         )
         .order_by(Ticket.created_at.asc(), Ticket.id.asc(), TicketItem.id.asc())
     )
@@ -238,22 +239,27 @@ async def dry_run(
     input_value: float,
     created_by: uuid.UUID,
     route_id: int | None = None,
+    payment_mode: str = "CASH",
 ) -> dict:
     if input_mode not in ("percentage", "quantity"):
         raise HTTPException(status_code=400, detail="input_mode must be 'percentage' or 'quantity'")
+
+    payment_mode = (payment_mode or "CASH").upper()
+    if payment_mode not in ("CASH", "UPI"):
+        raise HTTPException(status_code=400, detail="payment_mode must be 'CASH' or 'UPI'")
 
     await _check_transfer_allowed(db, from_item_id, to_item_id)
 
     branch_ids, resolved_route_id = await _resolve_branch_ids(db, branch_id, route_id)
 
-    scope = await _get_scope_data(db, branch_ids, date_start, date_end, from_item_id)
+    scope = await _get_scope_data(db, branch_ids, date_start, date_end, from_item_id, payment_mode)
     if not scope:
         scope_label = (
             f"route {resolved_route_id}" if resolved_route_id is not None else f"branch {branch_ids[0]}"
         )
         raise HTTPException(
             status_code=400,
-            detail=f"No eligible CASH ticket items found for FROM item in {scope_label} / date range.",
+            detail=f"No eligible {payment_mode} ticket items found for FROM item in {scope_label} / date range.",
         )
     if len(scope) > MAX_ITEM_ROWS:
         raise HTTPException(
@@ -556,6 +562,7 @@ async def dry_run(
 
     execution_plan = {
         "branch_id": log_branch_id,
+        "payment_mode": payment_mode,
         "scope_branch_ids": branch_ids,
         "route_id": resolved_route_id,
         "scope_mode": "route" if resolved_route_id is not None else "branch",
@@ -596,6 +603,7 @@ async def dry_run(
         total_items_affected=len(operations),
         row_count_checked=len(scope),
         status="DRY_RUN",
+        payment_mode=payment_mode,
         created_by=created_by,
     )
     db.add(log)
@@ -604,6 +612,7 @@ async def dry_run(
 
     return {
         "batch_id": str(log.id),
+        "payment_mode": payment_mode,
         "scope_mode": "route" if resolved_route_id is not None else "branch",
         "scope_branch_ids": branch_ids,
         "route_id": resolved_route_id,

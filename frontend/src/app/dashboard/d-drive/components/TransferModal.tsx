@@ -14,6 +14,7 @@ type Props =
       mode: "branch";
       branchId: number;
       branchName: string;
+      paymentMode: "CASH" | "UPI";
       dateStart: string;
       dateEnd: string;
       onClose: () => void;
@@ -24,6 +25,7 @@ type Props =
       mode: "route";
       routeId: number;
       routeLabel: string;
+      paymentMode: "CASH" | "UPI";
       dateStart: string;
       dateEnd: string;
       onClose: () => void;
@@ -46,7 +48,7 @@ interface ScopeData {
 }
 
 export default function TransferModal(props: Props) {
-  const { open, dateStart, dateEnd, onClose, onCommitted } = props;
+  const { open, dateStart, dateEnd, onClose, onCommitted, paymentMode } = props;
   const isRouteMode = props.mode === "route";
   const titleScope = isRouteMode ? props.routeLabel : props.branchName;
   const subtitleScope = isRouteMode
@@ -71,8 +73,8 @@ export default function TransferModal(props: Props) {
   // Build the scope query params once per render so the dependencies on the
   // useEffect below match the actual call shape.
   const scopeParamsBase: Record<string, string | number> = isRouteMode
-    ? { route_id: props.routeId, date_start: dateStart, date_end: dateEnd }
-    : { branch_id: props.branchId, date_start: dateStart, date_end: dateEnd };
+    ? { route_id: props.routeId, date_start: dateStart, date_end: dateEnd, payment_mode: paymentMode }
+    : { branch_id: props.branchId, date_start: dateStart, date_end: dateEnd, payment_mode: paymentMode };
 
   useEffect(() => {
     api.get<AllowItem[]>("/api/admin/parameter-master/items/transfer")
@@ -87,7 +89,7 @@ export default function TransferModal(props: Props) {
       params: { ...scopeParamsBase, from_item_id: fromItemId },
     }).then(r => setScope(r.data)).catch(() => setScope(null));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fromItemId, isRouteMode ? props.routeId : props.branchId, dateStart, dateEnd]);
+  }, [fromItemId, isRouteMode ? props.routeId : props.branchId, dateStart, dateEnd, paymentMode]);
 
   // Fetch TO master (rate + levy) from first route in scope
   useEffect(() => {
@@ -124,6 +126,7 @@ export default function TransferModal(props: Props) {
         to_item_id: parseInt(toItemId),
         input_mode: inputMode,
         input_value: parseFloat(inputValue),
+        payment_mode: paymentMode,
       };
       if (isRouteMode) body.route_id = props.routeId;
       else body.branch_id = props.branchId;
@@ -162,7 +165,7 @@ export default function TransferModal(props: Props) {
             Transfer Items {isRouteMode ? "— Route " : "— "}{titleScope}
           </DialogTitle>
           <p className="text-sm text-muted-foreground">
-            {subtitleScope} · {dateStart} → {dateEnd} · CASH tickets only
+            {subtitleScope} · {dateStart} → {dateEnd} · {paymentMode} tickets only
           </p>
           {isRouteMode && (
             <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">

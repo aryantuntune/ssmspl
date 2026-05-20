@@ -57,6 +57,7 @@ export interface TransferDryRunResult {
   tickets_to_split_count: number;
   skipped_tickets: SkippedTicket[];
   tickets: TicketView[];
+  payment_mode?: string;
 }
 
 interface Props {
@@ -93,8 +94,19 @@ export default function TransferDryRunPreview({ result, branchName, onCancel, on
     <Dialog open={true} onOpenChange={v => !v && onCancel()}>
       <DialogContent className="!max-w-[95vw] w-[95vw] !max-h-[90vh] overflow-hidden flex flex-col p-0">
         <DialogHeader className="px-6 pt-6 pb-3 border-b">
-          <DialogTitle>
-            Transfer Trial Preview — {branchName} · {result.from_item_name} → {result.to_item_name}
+          <DialogTitle className="flex items-center gap-2 flex-wrap">
+            <span>
+              Transfer Trial Preview — {branchName} · {result.from_item_name} → {result.to_item_name}
+            </span>
+            <span
+              className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide ${
+                (result.payment_mode ?? "CASH") === "UPI"
+                  ? "bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-200"
+                  : "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-200"
+              }`}
+            >
+              Mode: {result.payment_mode ?? "CASH"}
+            </span>
           </DialogTitle>
           <p className="text-xs text-muted-foreground mt-1">
             Quantity-preserving mode. Ticket totals stay identical (difference = 0 per ticket).

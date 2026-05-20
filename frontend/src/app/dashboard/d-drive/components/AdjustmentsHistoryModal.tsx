@@ -30,6 +30,7 @@ interface Adjustment {
   rolled_back_by_name: string | null;
   error_message: string | null;
   operation_kind: "TRANSFER" | "DELETE" | "UNKNOWN";
+  payment_mode: "CASH" | "UPI";
 }
 
 interface Props {
@@ -51,6 +52,11 @@ const KIND_COLORS: Record<string, string> = {
   DELETE: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
   TRANSFER: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
   UNKNOWN: "bg-muted text-muted-foreground",
+};
+
+const MODE_COLORS: Record<string, string> = {
+  CASH: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200",
+  UPI: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
 };
 
 const PAGE_SIZE = 50;
@@ -169,6 +175,7 @@ export default function AdjustmentsHistoryModal({ open, onClose, onRolledBack, b
             <div className="bg-muted/50 rounded p-3 space-y-1">
               <p><strong>Batch:</strong> <code className="text-xs">{confirmTarget.batch_id}</code></p>
               <p><strong>Type:</strong> {confirmTarget.operation_kind}</p>
+              <p><strong>Mode:</strong> {confirmTarget.payment_mode}</p>
               <p><strong>Branch:</strong> {confirmTarget.branch_name ?? `#${confirmTarget.branch_id}`}{confirmTarget.branch_name ? <span className="text-xs text-muted-foreground"> (#{confirmTarget.branch_id})</span> : null}</p>
               <p><strong>Affected dates:</strong> {confirmTarget.date_range_start === confirmTarget.date_range_end
                 ? fmtShortDate(confirmTarget.date_range_start)
@@ -282,6 +289,7 @@ export default function AdjustmentsHistoryModal({ open, onClose, onRolledBack, b
                   <th className="px-4 py-2.5 text-left font-medium">Performed</th>
                   <th className="px-4 py-2.5 text-left font-medium">By</th>
                   <th className="px-4 py-2.5 text-left font-medium">Action</th>
+                  <th className="px-4 py-2.5 text-left font-medium">Mode</th>
                   <th className="px-4 py-2.5 text-left font-medium">Branch</th>
                   <th className="px-4 py-2.5 text-left font-medium">Affected Dates</th>
                   <th className="px-4 py-2.5 text-right font-medium">Tickets</th>
@@ -311,6 +319,9 @@ export default function AdjustmentsHistoryModal({ open, onClose, onRolledBack, b
                         <div className="text-[11px] text-muted-foreground mt-0.5">
                           {a.operation_kind === "DELETE" ? "Items removed" : a.operation_kind === "TRANSFER" ? "Items reassigned" : ""}
                         </div>
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <Badge className={MODE_COLORS[a.payment_mode]}>{a.payment_mode}</Badge>
                       </td>
                       <td className="px-4 py-2.5 whitespace-nowrap">
                         <div>{a.branch_name ?? `#${a.branch_id}`}</div>

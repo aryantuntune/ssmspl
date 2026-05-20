@@ -50,6 +50,7 @@ export interface DryRunResult {
   unapplied_amount: number;
   plan: Plan;
   roundoff: RoundoffInfo | null;
+  payment_mode?: string;
 }
 
 interface Props {
@@ -93,6 +94,7 @@ export default function DryRunPreview({ result, branchName, onCancel, onCommitte
     };
   }, [plan, skippedTickets, result.roundoff]);
 
+  const modeLabel = result.payment_mode ?? "CASH";
   const cashAfter = result.cash_total_before - effective.applied;
   const unappliedFromRequest = Math.max(0, result.requested_adjustment - effective.applied);
   const emptyTicketCount = plan.tickets.filter(t => t.final_items.length === 0).length;
@@ -134,13 +136,24 @@ export default function DryRunPreview({ result, branchName, onCancel, onCommitte
     <Dialog open={true} onOpenChange={v => !v && onCancel()}>
       <DialogContent className="!max-w-[95vw] w-[95vw] !max-h-[90vh] overflow-hidden flex flex-col p-0">
         <DialogHeader className="px-6 pt-6 pb-3 border-b">
-          <DialogTitle>Trial Preview — {branchName}</DialogTitle>
+          <DialogTitle className="flex items-center gap-2 flex-wrap">
+            <span>Trial Preview — {branchName}</span>
+            <span
+              className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide ${
+                (result.payment_mode ?? "CASH") === "UPI"
+                  ? "bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-200"
+                  : "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-200"
+              }`}
+            >
+              Mode: {result.payment_mode ?? "CASH"}
+            </span>
+          </DialogTitle>
         </DialogHeader>
 
         {/* Primary summary — 4 cards */}
         <div className="px-6 py-4 border-b grid grid-cols-2 md:grid-cols-4 gap-4">
           <div className="bg-muted/50 rounded p-3">
-            <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Cash Before</p>
+            <p className="text-[11px] text-muted-foreground uppercase tracking-wide">{modeLabel} Before</p>
             <p className="font-bold text-lg mt-1">{fmt(result.cash_total_before)}</p>
           </div>
           <div className="bg-muted/50 rounded p-3">
@@ -152,7 +165,7 @@ export default function DryRunPreview({ result, branchName, onCancel, onCommitte
             <p className="font-bold text-lg mt-1 text-destructive">{fmt(effective.applied)}</p>
           </div>
           <div className="bg-emerald-50 dark:bg-emerald-950/30 rounded p-3 border border-emerald-200 dark:border-emerald-900">
-            <p className="text-[11px] text-emerald-800 dark:text-emerald-300 uppercase tracking-wide">Cash After</p>
+            <p className="text-[11px] text-emerald-800 dark:text-emerald-300 uppercase tracking-wide">{modeLabel} After</p>
             <p className="font-bold text-lg mt-1 text-emerald-700 dark:text-emerald-400">{fmt(cashAfter)}</p>
           </div>
         </div>
@@ -166,7 +179,7 @@ export default function DryRunPreview({ result, branchName, onCancel, onCommitte
             </div>
             <p className="text-xs text-muted-foreground">
               {result.cash_total_before > 0
-                ? `${Math.min(100, (result.deletable_cash_total / result.cash_total_before) * 100).toFixed(1)}% of cash`
+                ? `${Math.min(100, (result.deletable_cash_total / result.cash_total_before) * 100).toFixed(1)}% of ${modeLabel.toLowerCase()}`
                 : ""}
             </p>
           </div>
@@ -177,7 +190,7 @@ export default function DryRunPreview({ result, branchName, onCancel, onCommitte
             </div>
             <p className="text-xs text-muted-foreground">
               {result.cash_total_before > 0
-                ? `${Math.min(100, (result.protected_cash_total / result.cash_total_before) * 100).toFixed(1)}% of cash`
+                ? `${Math.min(100, (result.protected_cash_total / result.cash_total_before) * 100).toFixed(1)}% of ${modeLabel.toLowerCase()}`
                 : ""}
             </p>
           </div>
@@ -203,7 +216,7 @@ export default function DryRunPreview({ result, branchName, onCancel, onCommitte
               {fmt(unappliedFromRequest)} of your requested {fmt(result.requested_adjustment)} could not be applied.
             </p>
             <p className="mb-1">
-              <strong>Why?</strong> Only {fmt(result.deletable_cash_total)} of deletable cash items exist in <strong>{branchName}</strong> for the selected date range.
+              <strong>Why?</strong> Only {fmt(result.deletable_cash_total)} of deletable {modeLabel.toLowerCase()} items exist in <strong>{branchName}</strong> for the selected date range.
               The remaining {fmt(result.protected_cash_total)} is in protected items (passengers, monthly passes, luggage, etc.) which cannot be deleted.
             </p>
             <p>
