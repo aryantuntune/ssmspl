@@ -1,15 +1,22 @@
-"""Airpay payment gateway — classic redirect kit (hosted checkout via checksum).
+"""Airpay payment gateway — v3 "Simple Transaction" redirect kit (hosted checkout).
+
+Scheme (from Airpay's current API docs, sanctum.airpay.co.in):
+  privatekey      = SHA256(secret + "@" + username + ":|:" + password)
+  checksum_key    = SHA256(username + "~:~" + password)
+  request checksum= SHA256(checksum_key + "@" + alldata)
+      alldata     = buyerEmail+buyerFirstName+buyerLastName+buyerAddress+buyerCity
+                    +buyerState+buyerCountry+amount+orderid+UID+siindexvar+date
+                    (siindexvar empty for non-subscription; date = YYYY-MM-DD, IST)
+  response hash   = crc32(TRANSACTIONID:APTRANSACTIONID:AMOUNT:TRANSACTIONSTATUS:
+                          MESSAGE:MID:USERNAME[:CUSTOMERVPA if channel is UPI])
 
 Flow:
-  1. build_payment_request() -> form fields (privatekey + checksum + order data)
-  2. Frontend auto-submits the form to payments.airpay.co.in/pay/index.php
-  3. Airpay POSTs the result back to our return URL (verify_response)
-  4. confirm_order() does an authoritative server-side PULL against verify.php
+  1. build_payment_request() -> form fields, auto-submitted to pay/index.php
+  2. Airpay redirects back / IPN-POSTs the result (JSON or form) -> verify_response()
+  3. confirm_order() PULLs the authoritative status from verify.php (LIVE MID only)
 
-Crypto (from Airpay's official integration kit):
-  privatekey = SHA256(secret_key + "@" + username + ":|:" + password)
-  checksum   = MD5(alldata + date("Y-m-d", IST) + privatekey)
-  response   = crc32(TRANSACTIONID:APTRANSACTIONID:AMOUNT:TRANSACTIONSTATUS:MESSAGE:mercid:username)
+Note: return_url / IPN url are configured with Airpay at onboarding (not POSTed).
+verify.php works on LIVE merchant IDs only — not on sandbox.
 """
 
 import hashlib
@@ -27,10 +34,12 @@ from app.core.timezone import today_ist
 
 logger = logging.getLogger("ssmspl.airpay")
 
-# Characters Airpay's kit strips from each parameter before hashing/submitting.
-_SANITIZE_CHARS = ",#(){}<>`!$%^=+|\\:'\";~[]*&"
+# Characters Airpay rejects in parameters — strip them so values pass validation
+# (the checksum is computed over the SAME values that are submitted).
+_SANITIZE_CHARS = "<>`!^|\\\"'"
 
-# Airpay numeric status codes (see webhook/order-confirmation glossary).
+_VERIFY_URL = "https://kraken.airpay.co.in/airpay/order/verify.php"
+
 _STATUS_MAP = {
     "200": "SUCCESS",
     "400": "FAILED",
@@ -67,24 +76,38 @@ def _compute_privatekey() -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
-def _compute_checksum(alldata: str, txn_date: str, privatekey: str) -> str:
-    return hashlib.md5(f"{alldata}{txn_date}{privatekey}".encode("utf-8")).hexdigest()
+def _compute_checksum_key() -> str:
+    raw = f"{settings.AIRPAY_USERNAME}~:~{settings.AIRPAY_PASSWORD}"
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _compute_request_checksum(alldata: str) -> str:
+    raw = f"{_compute_checksum_key()}@{alldata}"
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
 def compute_response_hash(
-    *, transaction_id: str, ap_transaction_id: str, amount: str, status: str, message: str
+    *,
+    transaction_id: str,
+    ap_transaction_id: str,
+    amount: str,
+    status: str,
+    message: str,
+    chmod: str = "",
+    customer_vpa: str = "",
 ) -> str:
-    raw = ":".join(
-        [
-            str(transaction_id),
-            str(ap_transaction_id),
-            str(amount),
-            str(status),
-            str(message),
-            str(settings.AIRPAY_MERCHANT_ID),
-            str(settings.AIRPAY_USERNAME),
-        ]
-    )
+    parts = [
+        str(transaction_id),
+        str(ap_transaction_id),
+        str(amount),
+        str(status),
+        str(message),
+        str(settings.AIRPAY_MERCHANT_ID),
+        str(settings.AIRPAY_USERNAME),
+    ]
+    if str(chmod).lower() == "upi" and customer_vpa:
+        parts.append(str(customer_vpa))
+    raw = ":".join(parts)
     return str(zlib.crc32(raw.encode("utf-8")) & 0xFFFFFFFF)
 
 
@@ -92,6 +115,7 @@ def build_payment_request(
     *,
     order_id: str,
     amount: float,
+    uid: str,
     buyer_email: str,
     buyer_first_name: str,
     buyer_last_name: str,
@@ -101,10 +125,10 @@ def build_payment_request(
     buyer_country: str,
     buyer_pincode: str,
     buyer_phone: str,
-    return_url: str,
+    kittype: str = "server_side_sdk",
     txn_date: str | None = None,
 ) -> dict:
-    """Build the encrypted/checksummed form fields for Airpay hosted checkout."""
+    """Build the v3 Simple-Transaction form fields for Airpay hosted checkout."""
     if not is_configured():
         raise RuntimeError("Airpay not configured")
 
@@ -119,19 +143,19 @@ def build_payment_request(
     s_city = _sanitize(buyer_city)
     s_state = _sanitize(buyer_state)
     s_country = _sanitize(buyer_country)
+    s_uid = _sanitize(uid)
+    siindexvar = ""  # subscriptions not used
 
     alldata = (
         s_email + s_first + s_last + s_addr + s_city + s_state + s_country
-        + _sanitize(amount_str) + order_id
+        + amount_str + order_id + s_uid + siindexvar + txn_date
     )
-    privatekey = _compute_privatekey()
-    checksum = _compute_checksum(alldata, txn_date, privatekey)
+    checksum = _compute_request_checksum(alldata)
 
     fields = {
-        "merchantIdentifier": settings.AIRPAY_MERCHANT_ID,
         "mercid": settings.AIRPAY_MERCHANT_ID,
-        "orderId": order_id,
         "orderid": order_id,
+        "amount": amount_str,
         "buyerEmail": s_email,
         "buyerFirstName": s_first,
         "buyerLastName": s_last,
@@ -139,30 +163,22 @@ def build_payment_request(
         "buyerCity": s_city,
         "buyerState": s_state,
         "buyerCountry": s_country,
-        "buyerPincode": _sanitize(buyer_pincode),
+        "buyerPinCode": _sanitize(buyer_pincode),
         "buyerPhone": _sanitize(buyer_phone),
-        "txnType": "1",
-        "purpose": "1",
-        "productDescription": "Ferry Ticket",
-        "txnDate": txn_date,
+        "UID": s_uid,
+        "kittype": kittype,
         "currency": "356",
         "isocurrency": "INR",
-        "amount": amount_str,
-        "privatekey": privatekey,
+        "privatekey": _compute_privatekey(),
         "checksum": checksum,
-        "returnUrl": return_url,
     }
 
     base = settings.AIRPAY_BASE_URL.rstrip("/")
-    return {
-        "airpay_url": f"{base}/pay/index.php",
-        "fields": fields,
-        "order_id": order_id,
-    }
+    return {"airpay_url": f"{base}/pay/index.php", "fields": fields, "order_id": order_id}
 
 
 def verify_response(form: dict) -> bool:
-    """Verify the ap_SecureHash returned by Airpay on the callback POST."""
+    """Verify the ap_SecureHash on an Airpay redirect/IPN response."""
     received = str(form.get("ap_SecureHash", "")).strip()
     if not received:
         return False
@@ -172,6 +188,8 @@ def verify_response(form: dict) -> bool:
         amount=form.get("AMOUNT", ""),
         status=form.get("TRANSACTIONSTATUS", ""),
         message=form.get("MESSAGE", ""),
+        chmod=form.get("CHMOD", ""),
+        customer_vpa=form.get("CUSTOMERVPA", ""),
     )
     return received == expected
 
@@ -185,18 +203,16 @@ def is_payment_successful(code: str) -> bool:
 
 
 def _parse_verify_response(text: str) -> dict:
-    """Parse Airpay's verify.php response, which may be JSON or key=value pairs.
-
-    Returns a dict with UPPERCASE keys. Unparseable text is returned under '_RAW'
-    so the regex fallback in _extract_status can still find the status.
-    """
+    """Parse verify.php output, which may be JSON or key=value pairs."""
     text = (text or "").strip()
     if not text:
         return {}
     try:
         data = json.loads(text)
         if isinstance(data, dict):
-            return {str(k).upper(): v for k, v in data.items()}
+            # status APIs sometimes nest the payload under "message"
+            inner = data.get("message") if isinstance(data.get("message"), dict) else data
+            return {str(k).upper(): v for k, v in inner.items()}
     except (json.JSONDecodeError, ValueError):
         pass
     if "=" in text:
@@ -221,25 +237,28 @@ def _extract_status(parsed: dict) -> str | None:
 
 
 async def confirm_order(order_id: str) -> dict:
-    """Authoritative server-side PULL against Airpay's verify endpoint.
+    """Authoritative server-side PULL against Airpay's verify.php.
 
-    This is the SOURCE OF TRUTH for a payment: the redirect callback's hash is
-    not secret-keyed, so a SUCCESS must be confirmed here before a booking is
-    marked paid. Returns {"status": <code|None>, "parsed": {...}} or {"error": ...}.
+    This is the SOURCE OF TRUTH for a LIVE payment — the redirect/IPN hash is a
+    plain crc32 (not secret-keyed) and could be forged, so a LIVE success must be
+    confirmed here. NOTE: verify.php works on LIVE merchant IDs only, not sandbox.
+    Returns {"status": <code|None>, "parsed": {...}} or {"error": ...}.
     """
-    base = settings.AIRPAY_BASE_URL.rstrip("/")
-    url = f"{base}/order/verify.php"
+    txn_date = today_ist().strftime("%Y-%m-%d")
+    # alldata = merchant_id + merchant_txn_id + processor_id + rrn + terminal_id + txn_type + date
+    alldata = f"{settings.AIRPAY_MERCHANT_ID}{order_id}{txn_date}"
     payload = {
-        "Mercid": settings.AIRPAY_MERCHANT_ID,
-        "merchant_txnId": order_id,
-        "Privatekey": _compute_privatekey(),
+        "merchant_id": settings.AIRPAY_MERCHANT_ID,
+        "merchant_txn_id": order_id,
+        "private_key": _compute_privatekey(),
+        "checksum": _compute_request_checksum(alldata),
     }
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
-            resp = await client.post(url, data=payload)
+            resp = await client.post(_VERIFY_URL, data=payload)
             resp.raise_for_status()
             parsed = _parse_verify_response(resp.text)
             return {"status": _extract_status(parsed), "parsed": parsed, "raw": resp.text}
-    except Exception as exc:  # noqa: BLE001 — network errors must not crash callback
+    except Exception as exc:  # noqa: BLE001 — network errors must not crash the callback
         logger.error("Airpay order verify failed for %s: %s", order_id, exc)
         return {"error": str(exc)}

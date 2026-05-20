@@ -25,58 +25,74 @@ final, decided gateway). Remove all CCAvenue code. SabPaisa was never implemente
 Airpay's classic kit is also a **redirect/hosted-checkout with checksum**, structurally
 identical to CCAvenue — so this is a *service swap*, not a flow rewrite.
 
-## Airpay classic-kit scheme (authoritative)
+## Airpay v3 "Simple Transaction" scheme (authoritative)
 
-Source: Airpay's official WordPress integration kit (`checksum.php` + `index.php`).
-Credential set used: `merchant_id`, `username`, `password`, `secret_key`.
-(`api_key` / `client_id` are not used by the classic kit; stored in config for record.)
+Source: Airpay's **current** API docs (sanctum.airpay.co.in `api_data.json`) — the
+same spec the official Server-Side SDK implements. The 2018 WordPress kit used an
+OUTDATED scheme (MD5 checksum); this v3 scheme supersedes it. Key reference content
+saved at `docs/airpay-sdk/extract.txt`.
+
+Credentials: `merchant_id`, `username`, `password`, `secret_key` are all used.
+(`api_key` / `client_id` are not used by this redirect kit; kept in config.)
 
 ### Endpoints
 - Pay (form POST):  `https://payments.airpay.co.in/pay/index.php`
-- Server-side verify (PULL): `https://payments.airpay.co.in/order/verify.php` (port 443)
+- Server-side verify (PULL): `https://kraken.airpay.co.in/airpay/order/verify.php`
+  — **LIVE merchant IDs only; does NOT work on sandbox.**
+- Return URL + IPN URL are **configured with Airpay at onboarding** (emailed to
+  techsupport@airpay.co.in), NOT sent per transaction.
 
 ### Key derivation
 ```
-privatekey = SHA256( secret_key + "@" + username + ":|:" + password )
+privatekey   = SHA256( secret + "@" + username + ":|:" + password )   # POSTed as a field
+checksum_key = SHA256( username + "~:~" + password )
 ```
-(PHP: `encrypt($data,$salt) = hash('SHA256', $salt.'@'.$data)`, data=`username:|:password`, salt=`secret_key`.)
 
 ### Request checksum
 ```
-alldata  = sanitize(buyerEmail) + sanitize(buyerFirstName) + sanitize(buyerLastName)
-         + sanitize(buyerAddress) + sanitize(buyerCity) + sanitize(buyerState)
-         + sanitize(buyerCountry) + sanitize(amount) + orderId
-checksum = MD5( alldata + date("Y-m-d") + privatekey )
+date     = YYYY-MM-DD (Asia/Kolkata)
+siindexvar = "" (empty unless subscription)
+alldata  = buyerEmail + buyerFirstName + buyerLastName + buyerAddress + buyerCity
+         + buyerState + buyerCountry + amount + orderid + UID + siindexvar + date
+checksum = SHA256( checksum_key + "@" + alldata )
 ```
-- `date("Y-m-d")` is in **Asia/Kolkata** timezone.
 - `amount` formatted to 2 decimals, e.g. `"150.00"`.
-- `orderId` is appended raw (not sanitized) in the kit.
+- `UID` = merchant's unique user identifier (we use the portal user id).
+- Airpay recomputes the checksum from the submitted field values, so we hash exactly
+  the (sanitized) values we POST.
 
-### Form fields POSTed to pay/index.php
-`merchantIdentifier`, `mercid`, `orderId`, `orderid`, `buyerEmail`, `buyerFirstName`,
-`buyerLastName`, `buyerAddress`, `buyerCity`, `buyerState`, `buyerCountry`,
-`buyerPincode`, `buyerPhone`, `txnType=1`, `purpose=1`, `productDescription`,
-`txnDate=Y-m-d`, `currency=356`, `isocurrency=INR`, `amount`, `privatekey`,
-`checksum`, `returnUrl` (our callback).
+### Required form fields POSTed to pay/index.php
+`mercid`, `orderid`, `amount`, `buyerEmail`, `buyerFirstName`, `buyerLastName`,
+`buyerAddress`, `buyerCity`, `buyerState`, `buyerCountry`, `buyerPinCode`,
+`buyerPhone`, `UID`, `kittype` (= `server_side_sdk`), `currency=356`,
+`isocurrency=INR`, `privatekey`, `checksum`.
 
-### sanitize() — strip these characters before hashing AND before submitting
-`, # ( ) { } < > ` ! $ % ^ = + | \ : ' " ; ~ [ ] * &`
+### Response (redirect + IPN) — JSON or form-encoded
+Fields: `TRANSACTIONID` (our orderid), `APTRANSACTIONID`, `AMOUNT`,
+`TRANSACTIONSTATUS`, `MESSAGE`, `MERCID`, `ap_SecureHash`, `CHMOD`, `TXN_MODE`
+(`LIVE`/`TEST`), `CUSTOMERVPA` (UPI), `BANKNAME`, `CARDISSUER`, ...
 
-### Response (Airpay POSTs to returnUrl)
-Fields: `TRANSACTIONID` (our orderid), `APTRANSACTIONID` (airpay id), `AMOUNT`,
-`TRANSACTIONSTATUS`, `MESSAGE`, `ap_SecureHash`, `CHMOD`, `CUSTOMVAR`, `BANKNAME`,
-`CARDISSUER`, `TRANSACTIONPAYMENTSTATUS`, `CURRENCYCODE`, `TRANSACTIONTIME`, ...
-
-Verification (all three must hold for success):
+Response hash (confirmed from docs):
 ```
-ap_SecureHash == str(crc32( TRANSACTIONID + ":" + APTRANSACTIONID + ":" + AMOUNT
-                            + ":" + TRANSACTIONSTATUS + ":" + MESSAGE
-                            + ":" + mercid + ":" + username ) as unsigned 32-bit)
-AMOUNT matches the stored transaction amount
-TRANSACTIONSTATUS == "200"
+ap_SecureHash = crc32( TRANSACTIONID : APTRANSACTIONID : AMOUNT : TRANSACTIONSTATUS
+                       : MESSAGE : MID : USERNAME [ : CUSTOMERVPA if channel is UPI ] )
 ```
-Then **additionally** call `order/verify.php` server-side (Airpay best practice: do
-not trust the redirect alone) before marking SUCCESS.
+(`MID` = merchant id, as unsigned 32-bit int string.)
+
+### Verify.php (PULL) checksum
+```
+alldata  = merchant_id + merchant_txn_id + processor_id + rrn + terminal_id + txn_type + date
+           (unused parts empty)
+checksum = SHA256( checksum_key + "@" + alldata )
+fields: merchant_id, merchant_txn_id, private_key, checksum
+```
+
+### Success gating (SECURITY)
+The response hash is a plain `crc32` (NOT secret-keyed) and is therefore forgeable.
+- **LIVE** (`TXN_MODE != TEST`): mark SUCCESS only if verify.php also returns `200`
+  (fail-closed; unconfirmed stays pending for a webhook/manual retry).
+- **TEST/sandbox**: verify.php is unavailable, so trust the hash-verified callback
+  (no real money). Plus amount-match and idempotency in all cases.
 
 ### Status codes
 | Code | Meaning | Our status |
@@ -128,6 +144,12 @@ not trust the redirect alone) before marking SUCCESS.
 - Merchant must register Domain `carferry.online`, Return URL
   `https://api.carferry.online/api/portal/payment/callback`, and IPN URL
   `https://api.carferry.online/api/portal/payment/webhook` with techsupport@airpay.co.in.
-- Confirm whether a separate sandbox host was issued (classic kit normally reuses
-  `payments.airpay.co.in` with a test merchant account).
-- Exact byte-level checksum to be validated against a live sandbox transaction before go-live.
+  (v3 does not POST these per-transaction — they must be whitelisted server-side.)
+- Crypto formulas are now taken from Airpay's current official API docs (not guessed),
+  so the request checksum / response hash should be correct. Still: run one sandbox
+  transaction end-to-end to confirm before pointing live traffic at it.
+- The official Server-Side SDK (`airpay_python_v3.zip`) and React Native SDK
+  (`airpay_react_native_v3.zip`) live behind the merchant login at `ma.airpay.co.in`.
+  We implement the documented scheme natively rather than vendoring the zip; if a
+  sandbox transaction reveals any field/format mismatch, cross-check against that SDK.
+- verify.php is LIVE-MID only — sandbox success relies on the hash-verified callback.

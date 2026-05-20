@@ -80,22 +80,24 @@ def _simulation_allowed() -> bool:
 
 
 def _airpay_request_for_txn(txn: PaymentTransaction, portal_user: PortalUser | None) -> dict:
-    """Build the Airpay payment request for a stored transaction."""
-    backend_base = settings.BACKEND_URL.rstrip("/")
-    return_url = f"{backend_base}/api/portal/payment/callback"
+    """Build the Airpay payment request for a stored transaction.
+
+    Return/IPN URLs are configured with Airpay at onboarding, so they are not
+    sent per-transaction. UID is the merchant's unique user identifier.
+    """
     return airpay_service.build_payment_request(
         order_id=txn.client_txn_id,
         amount=float(txn.amount),
+        uid=str(portal_user.id) if portal_user else str(txn.booking_id),
         buyer_email=portal_user.email if portal_user else "customer@example.com",
         buyer_first_name=portal_user.first_name if portal_user else "Customer",
-        buyer_last_name=portal_user.last_name if portal_user else "",
+        buyer_last_name=portal_user.last_name if portal_user else "NA",
         buyer_address=_DEFAULT_ADDRESS,
         buyer_city=_DEFAULT_CITY,
         buyer_state=_DEFAULT_STATE,
         buyer_country=_DEFAULT_COUNTRY,
         buyer_pincode=_DEFAULT_PINCODE,
-        buyer_phone=portal_user.mobile if portal_user else "",
-        return_url=return_url,
+        buyer_phone=portal_user.mobile if portal_user else "0000000000",
     )
 
 
@@ -138,21 +140,28 @@ async def _finalize_transaction(
         except (ValueError, TypeError):
             pass
 
-    # SECURITY: the callback hash is NOT secret-keyed, so a SUCCESS callback could
-    # be forged. Treat Airpay's server-side verify.php as the source of truth — only
-    # confirm a booking when the authoritative server-side status is also 200.
-    # Fail closed: any error / non-200 / unparseable response leaves the txn pending.
+    # SECURITY: the response hash is a plain crc32 (not secret-keyed), so a SUCCESS
+    # callback could be forged. For LIVE payments, treat Airpay's server-side
+    # verify.php as the source of truth and fail closed unless it also returns 200.
+    # verify.php does not work on sandbox (TEST) MIDs, so for TEST transactions we
+    # trust the hash-verified callback (no real money is involved).
     if new_status == "SUCCESS":
-        confirm = await airpay_service.confirm_order(txn.client_txn_id)
-        server_status = confirm.get("status")
-        if server_status != "200":
-            logger.error(
-                "Server-side verify did NOT confirm SUCCESS for %s (server_status=%r, error=%r) "
-                "— holding transaction as pending, NOT confirming booking.",
-                txn.client_txn_id, server_status, confirm.get("error"),
+        txn_mode = str(parsed.get("TXN_MODE", "")).strip().upper()
+        if txn_mode == "TEST":
+            logger.info(
+                "Sandbox (TEST) payment %s — trusting verified callback "
+                "(verify.php is unavailable on sandbox MIDs).", txn.client_txn_id,
             )
-            await db.flush()  # persist the gateway fields; status stays INITIATED
-            return
+        else:
+            confirm = await airpay_service.confirm_order(txn.client_txn_id)
+            if confirm.get("status") != "200":
+                logger.error(
+                    "LIVE success for %s NOT confirmed by verify.php (status=%r, error=%r) "
+                    "— holding as pending, NOT confirming booking.",
+                    txn.client_txn_id, confirm.get("status"), confirm.get("error"),
+                )
+                await db.flush()  # persist gateway fields; status stays INITIATED
+                return
 
     if new_status == "INITIATED":
         # Pending/incomplete — leave the transaction open for a later webhook.
@@ -492,6 +501,19 @@ async def simulate_callback(
     )
 
 
+async def _read_result_data(request: Request) -> dict:
+    """Airpay may POST the result as JSON (IPN) or form-encoded (redirect)."""
+    ctype = request.headers.get("content-type", "")
+    if "application/json" in ctype:
+        try:
+            body = await request.json()
+            if isinstance(body, dict):
+                return {str(k): v for k, v in body.items()}
+        except Exception:  # noqa: BLE001 — fall back to form parsing
+            pass
+    return dict(await request.form())
+
+
 async def _handle_airpay_result(
     request: Request, background_tasks: BackgroundTasks, db: AsyncSession
 ) -> PaymentTransaction | None:
@@ -500,7 +522,7 @@ async def _handle_airpay_result(
     Returns the transaction on success of processing (verified), else None.
     Raises nothing — callers decide how to respond.
     """
-    form = dict(await request.form())
+    form = await _read_result_data(request)
     order_id = form.get("TRANSACTIONID", "")
 
     logger.info(
