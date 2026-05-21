@@ -8,7 +8,9 @@ Crypto:
   AES key   = MD5(username + "~:~" + password)  (32 hex chars -> AES-256-CBC)
   AES iv    = first 16 chars of the payload (we emit a fixed iv, prepended)
   encdata   = iv + base64( AES-CBC( PKCS7(json) ) )
-  privatekey= SHA256(secret + "@" + username + ":|:" + password)
+  privatekey= SHA256(API_KEY + "@" + username + ":|:" + password)
+              (the kit's "secret" = Airpay API key (16-char), NOT the 32-hex
+               Secret key; the Secret key is the OAuth client_secret)
   v4 checksum = SHA256( concat(values of dict sorted by key) + date )   (date YYYY-MM-DD)
   response hash = crc32(TRANSACTIONID:APTRANSACTIONID:AMOUNT:TRANSACTIONSTATUS:
                         MESSAGE:MID:USERNAME[:CUSTOMERVPA if channel is UPI])
@@ -107,7 +109,11 @@ def _aes_decrypt(data: str) -> str:
 
 
 def _compute_privatekey() -> str:
-    raw = f"{settings.AIRPAY_SECRET_KEY}@{settings.AIRPAY_USERNAME}:|:{settings.AIRPAY_PASSWORD}"
+    # privatekey = SHA256(secret @ username:|:password), where the kit's "secret"
+    # is Airpay's API KEY (16-char), NOT the 32-hex Secret key. The 32-hex Secret
+    # key is the OAuth client_secret (AIRPAY_CLIENT_SECRET). Using the secret key
+    # here fails with "Merchant Key Authentication Failed".
+    raw = f"{settings.AIRPAY_API_KEY}@{settings.AIRPAY_USERNAME}:|:{settings.AIRPAY_PASSWORD}"
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
@@ -223,8 +229,10 @@ async def build_payment_request(
     access_token = await fetch_access_token(txn_date)
     mer_dom = base64.b64encode(settings.AIRPAY_MERCHANT_DOMAIN.encode("utf-8")).decode("utf-8")
 
-    # OAuth uses the plain numeric MID; the pay/v4 step needs the "M"-prefixed MID.
-    pay_mid = settings.AIRPAY_PAY_MERCHANT_ID or f"M{settings.AIRPAY_MERCHANT_ID}"
+    # Both OAuth and pay/v4 use the plain numeric MID. (An "M"-prefixed MID is a
+    # different/foreign merchant whose responses don't decrypt with our key —
+    # numeric is correct once the privatekey uses the API key.)
+    pay_mid = settings.AIRPAY_PAY_MERCHANT_ID or settings.AIRPAY_MERCHANT_ID
 
     post_data = {
         "buyer_email": _sanitize(buyer_email),
