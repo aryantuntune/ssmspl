@@ -79,13 +79,14 @@ def _simulation_allowed() -> bool:
     return not airpay_service.is_configured() and settings.DEBUG
 
 
-def _airpay_request_for_txn(txn: PaymentTransaction, portal_user: PortalUser | None) -> dict:
+async def _airpay_request_for_txn(txn: PaymentTransaction, portal_user: PortalUser | None) -> dict:
     """Build the Airpay payment request for a stored transaction.
 
     Return/IPN URLs are configured with Airpay at onboarding, so they are not
-    sent per-transaction. UID is the merchant's unique user identifier.
+    sent per-transaction. v4 build_payment_request is async (fetches an OAuth2
+    token), so this is async too.
     """
-    return airpay_service.build_payment_request(
+    return await airpay_service.build_payment_request(
         order_id=txn.client_txn_id,
         amount=float(txn.amount),
         uid=str(portal_user.id) if portal_user else str(txn.booking_id),
@@ -270,7 +271,7 @@ async def create_order(
             "simulated": True,
         }
 
-    result = _airpay_request_for_txn(txn, current_user)
+    result = await _airpay_request_for_txn(txn, current_user)
     logger.info("Payment order created — booking_id=%s order_id=%s", body.booking_id, order_id)
     return {
         "airpay_url": result["airpay_url"],
@@ -312,7 +313,7 @@ async def initiate_checkout(order_id: str, db: AsyncSession = Depends(get_db)):
     )
     portal_user = portal_user_result.scalar_one_or_none()
 
-    result = _airpay_request_for_txn(txn, portal_user)
+    result = await _airpay_request_for_txn(txn, portal_user)
     airpay_url = html_mod.escape(result["airpay_url"])
     inputs = "".join(
         f'<input type="hidden" name="{html_mod.escape(k)}" value="{html_mod.escape(str(v))}">'
@@ -523,6 +524,9 @@ async def _handle_airpay_result(
     Raises nothing — callers decide how to respond.
     """
     form = await _read_result_data(request)
+    # v4 sends one AES-encrypted `response` field — decrypt + map to standard keys.
+    # (v3-style plaintext callbacks pass through unchanged.)
+    form = airpay_service.normalize_response(form)
     order_id = form.get("TRANSACTIONID", "")
 
     logger.info(

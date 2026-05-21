@@ -67,11 +67,16 @@ class Settings(BaseSettings):
     AIRPAY_USERNAME: str = ""
     AIRPAY_PASSWORD: str = ""
     AIRPAY_SECRET_KEY: str = ""
-    # api_key / client_id are issued by Airpay but unused by the classic kit;
-    # kept for the record and for a possible future Sanctum-API migration.
+    # client_id + client_secret drive the v4 OAuth2 token exchange.
+    # AIRPAY_API_KEY is the most likely value for client_secret (confirm at test).
     AIRPAY_API_KEY: str = ""
     AIRPAY_CLIENT_ID: str = ""
+    AIRPAY_CLIENT_SECRET: str = ""
     AIRPAY_BASE_URL: str = "https://payments.airpay.co.in"
+    # OAuth2 token endpoint for the v4 server-side SDK flow.
+    AIRPAY_OAUTH_URL: str = "https://kraken.airpay.co.in/airpay/pay/v4/api/oauth2/"
+    # Domain registered with Airpay (sent base64 as mer_dom in the v4 payload).
+    AIRPAY_MERCHANT_DOMAIN: str = "https://carferry.online"
 
     @field_validator("SECRET_KEY")
     @classmethod
