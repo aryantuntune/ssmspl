@@ -223,6 +223,9 @@ async def build_payment_request(
     access_token = await fetch_access_token(txn_date)
     mer_dom = base64.b64encode(settings.AIRPAY_MERCHANT_DOMAIN.encode("utf-8")).decode("utf-8")
 
+    # OAuth uses the plain numeric MID; the pay/v4 step needs the "M"-prefixed MID.
+    pay_mid = settings.AIRPAY_PAY_MERCHANT_ID or f"M{settings.AIRPAY_MERCHANT_ID}"
+
     post_data = {
         "buyer_email": _sanitize(buyer_email),
         "buyer_firstname": _sanitize(buyer_first_name),
@@ -237,13 +240,13 @@ async def build_payment_request(
         "buyer_pincode": _sanitize(buyer_pincode),
         "iso_currency": "INR",
         "currency_code": "356",
-        "merchant_id": settings.AIRPAY_MERCHANT_ID,
+        "merchant_id": pay_mid,
         "mer_dom": mer_dom,
     }
 
     fields = {
         "privatekey": _compute_privatekey(),
-        "merchant_id": settings.AIRPAY_MERCHANT_ID,
+        "merchant_id": pay_mid,
         "encdata": _aes_encrypt(json.dumps(post_data)),
         "checksum": _v4_checksum(post_data, txn_date),
         "chmod": "",
