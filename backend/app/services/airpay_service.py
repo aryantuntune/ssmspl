@@ -79,6 +79,27 @@ def _sanitize(value: str) -> str:
     return "".join(c for c in str(value) if c not in _SANITIZE_CHARS)
 
 
+def _normalize_phone(value: str) -> str:
+    """Return a clean 10-digit Indian mobile (starts 6-9) for Airpay, else "".
+
+    Airpay rejects phones with +91, spaces, leading 0, or country code. Strip to
+    digits, drop a leading 91/0, take the last 10 digits, and validate. If it
+    isn't a plausible Indian mobile, return "" — Airpay accepts buyerEmail OR
+    buyerPhone, and we always send a valid email.
+    """
+    if not value:
+        return ""
+    digits = "".join(c for c in str(value) if c.isdigit())
+    if len(digits) == 12 and digits.startswith("91"):
+        digits = digits[2:]
+    elif len(digits) == 11 and digits.startswith("0"):
+        digits = digits[1:]
+    digits = digits[-10:]
+    if len(digits) == 10 and digits[0] in "6789":
+        return digits
+    return ""
+
+
 # ── Crypto primitives ───────────────────────────────────────────────────────
 
 
@@ -244,7 +265,7 @@ async def build_payment_request(
         "buyer_country": _sanitize(buyer_country),
         "amount": amount_str,
         "orderid": order_id,
-        "buyer_phone": _sanitize(buyer_phone),
+        "buyer_phone": _normalize_phone(buyer_phone),
         "buyer_pincode": _sanitize(buyer_pincode),
         "iso_currency": "INR",
         "currency_code": "356",
