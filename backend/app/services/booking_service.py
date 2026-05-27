@@ -479,7 +479,11 @@ async def create_booking(
     id_result = await db.execute(select(func.coalesce(func.max(Booking.id), 0)))
     next_booking_id = id_result.scalar() + 1
 
-    # 11. Look up "Online" payment mode (or first active)
+    # 11. Look up "Online" payment mode — REQUIRED for portal bookings.
+    # No fallback: the Online row (id=4 in seed_data.sql) is what tags portal/Airpay
+    # revenue so it is reported separately from cashier (Cash/UPI/Card) tickets. A
+    # silent fallback to "first active payment mode" would route portal money into
+    # Cash and corrupt reconciliation. Fail loudly so ops notices.
     pm_result = await db.execute(
         select(PaymentMode)
         .where(PaymentMode.is_active == True, PaymentMode.description == "Online")
@@ -487,19 +491,14 @@ async def create_booking(
     )
     payment_mode = pm_result.scalar_one_or_none()
     if not payment_mode:
-        # Fallback: first active payment mode
-        pm_fallback = await db.execute(
-            select(PaymentMode)
-            .where(PaymentMode.is_active == True)
-            .order_by(PaymentMode.id)
-            .limit(1)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=(
+                "Portal booking misconfigured: the 'Online' payment mode is missing or "
+                "inactive in payment_modes. Restore the row (id=4, description='Online', "
+                "is_active=TRUE) before accepting portal bookings."
+            ),
         )
-        payment_mode = pm_fallback.scalar_one_or_none()
-        if not payment_mode:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="No active payment mode available",
-            )
 
     # 12. Create Booking
     booking = Booking(

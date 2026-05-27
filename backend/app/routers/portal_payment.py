@@ -173,21 +173,52 @@ async def _finalize_transaction(
     await db.flush()
 
     if txn.status == "SUCCESS":
-        booking_result = await db.execute(select(Booking).where(Booking.id == txn.booking_id))
+        # Lock the booking row so we serialise with the expiry sweeper and any
+        # other concurrent confirmation. The transaction is already locked above
+        # in _handle_airpay_result; we add this to also pin the booking.
+        booking_result = await db.execute(
+            select(Booking)
+            .where(Booking.id == txn.booking_id)
+            .with_for_update()
+        )
         booking = booking_result.scalar_one_or_none()
-        if booking and booking.status == "PENDING":
-            booking.status = "CONFIRMED"
-            await db.flush()
-            await db.refresh(booking)
-            logger.info("Booking %s confirmed via Airpay payment", booking.id)
-
-            enriched = await booking_service._enrich_booking(db, booking, include_items=True)
-            portal_user_result = await db.execute(
-                select(PortalUser).where(PortalUser.id == booking.portal_user_id)
+        if not booking:
+            logger.error(
+                "Booking %s missing for SUCCESS txn %s — cannot confirm",
+                txn.booking_id, txn.client_txn_id,
             )
-            portal_user = portal_user_result.scalar_one_or_none()
-            if portal_user:
-                background_tasks.add_task(send_booking_confirmation, enriched, portal_user.email)
+            return
+        if booking.status == "CONFIRMED":
+            # Already confirmed (duplicate callback). No-op — do not re-send email.
+            logger.info(
+                "Booking %s already CONFIRMED (duplicate callback for %s)",
+                booking.id, txn.client_txn_id,
+            )
+            return
+        if booking.status != "PENDING":
+            # Race: most likely the expiry loop cancelled this booking before
+            # the callback landed. The money is taken but the seat is gone.
+            # Log loudly so ops can either refund or manually restore.
+            logger.error(
+                "PAYMENT/EXPIRY RACE — successful Airpay payment for booking %s "
+                "but booking.status=%s (txn=%s, amount=%s). Manual reconciliation "
+                "required (refund or restore + reconfirm).",
+                booking.id, booking.status, txn.client_txn_id, txn.amount,
+            )
+            return
+
+        booking.status = "CONFIRMED"
+        await db.flush()
+        await db.refresh(booking)
+        logger.info("Booking %s confirmed via Airpay payment", booking.id)
+
+        enriched = await booking_service._enrich_booking(db, booking, include_items=True)
+        portal_user_result = await db.execute(
+            select(PortalUser).where(PortalUser.id == booking.portal_user_id)
+        )
+        portal_user = portal_user_result.scalar_one_or_none()
+        if portal_user:
+            background_tasks.add_task(send_booking_confirmation, enriched, portal_user.email)
 
 
 # ── Endpoints ────────────────────────────────────────────────────────────────
@@ -455,7 +486,9 @@ async def simulate_callback(
         return _redirect_to_frontend(success=False, error="Missing order_id")
 
     result = await db.execute(
-        select(PaymentTransaction).where(PaymentTransaction.client_txn_id == order_id)
+        select(PaymentTransaction)
+        .where(PaymentTransaction.client_txn_id == order_id)
+        .with_for_update()
     )
     txn = result.scalar_one_or_none()
     if not txn:
@@ -482,7 +515,9 @@ async def simulate_callback(
     await db.flush()
 
     if txn.status == "SUCCESS":
-        booking_result = await db.execute(select(Booking).where(Booking.id == txn.booking_id))
+        booking_result = await db.execute(
+            select(Booking).where(Booking.id == txn.booking_id).with_for_update()
+        )
         booking = booking_result.scalar_one_or_none()
         if booking and booking.status == "PENDING":
             booking.status = "CONFIRMED"
@@ -496,6 +531,11 @@ async def simulate_callback(
             portal_user = portal_user_result.scalar_one_or_none()
             if portal_user:
                 background_tasks.add_task(send_booking_confirmation, enriched, portal_user.email)
+        elif booking and booking.status == "CONFIRMED":
+            logger.info(
+                "Simulated callback for booking %s ignored — already CONFIRMED",
+                booking.id,
+            )
 
     return _redirect_to_frontend(
         success=(txn.status == "SUCCESS"), booking_id=txn.booking_id, platform=txn.platform
@@ -542,8 +582,16 @@ async def _handle_airpay_result(
         logger.error("Airpay result hash verification FAILED for order_id=%s", order_id)
         return None
 
+    # SELECT ... FOR UPDATE: Airpay can hit /callback and /webhook concurrently
+    # (real-world: redirect arrives at the same time as the IPN retry). Without
+    # this lock, both requests would read status="INITIATED", both would pass the
+    # terminal-state guard in _finalize_transaction, and we'd double-call
+    # verify.php AND double-fire the confirmation email. The lock serialises
+    # them; the loser re-reads SUCCESS/FAILED and short-circuits.
     result = await db.execute(
-        select(PaymentTransaction).where(PaymentTransaction.client_txn_id == order_id)
+        select(PaymentTransaction)
+        .where(PaymentTransaction.client_txn_id == order_id)
+        .with_for_update()
     )
     txn = result.scalar_one_or_none()
     if not txn:
