@@ -10,6 +10,7 @@ interface BranchSummary {
   cash: number;
   upi: number;
   online: number;
+  other?: number;
 }
 
 interface Props {
@@ -59,6 +60,9 @@ export default function BranchSummaryCards({ summaries, onReconcile, onTransfer,
                 { label: "Cash", value: s.cash, className: "text-emerald-600 dark:text-emerald-400" },
                 { label: "UPI", value: s.upi, className: "text-blue-600 dark:text-blue-400" },
                 { label: "Online", value: s.online, className: "text-amber-600 dark:text-amber-400" },
+                ...((s.other ?? 0) > 0
+                  ? [{ label: "Other", value: s.other ?? 0, className: "text-slate-600 dark:text-slate-400" }]
+                  : []),
               ].map(({ label, value, className }) => (
                 <div key={label} className="bg-muted/50 rounded p-2">
                   <p className="text-xs text-muted-foreground">{label}</p>
