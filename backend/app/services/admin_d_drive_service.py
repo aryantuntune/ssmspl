@@ -53,7 +53,9 @@ async def get_branch_summary(
 
     rows = (await db.execute(q)).all()
 
-    # Pivot by branch: aggregate cash/upi/online columns
+    # Pivot by branch: aggregate cash/upi/online columns. Only ONLINE goes in
+    # the Online bucket (portal/Airpay payments). Any other mode (e.g. Card)
+    # falls into "other" so it isn't misreported as Online.
     branches: dict[int, dict] = {}
     for row in rows:
         bid = row.branch_id
@@ -66,6 +68,7 @@ async def get_branch_summary(
                 "cash": 0.0,
                 "upi": 0.0,
                 "online": 0.0,
+                "other": 0.0,
             }
         branches[bid]["total"] += float(row.total or 0)
         branches[bid]["ticket_count"] += row.ticket_count or 0
@@ -74,8 +77,10 @@ async def get_branch_summary(
             branches[bid]["cash"] += float(row.total or 0)
         elif mode == "UPI":
             branches[bid]["upi"] += float(row.total or 0)
-        else:
+        elif mode == "ONLINE":
             branches[bid]["online"] += float(row.total or 0)
+        else:
+            branches[bid]["other"] += float(row.total or 0)
 
     return list(branches.values())
 

@@ -10,6 +10,7 @@ interface BranchSummary {
   cash: number;
   upi: number;
   online: number;
+  other?: number;
 }
 
 interface Props {
@@ -78,6 +79,9 @@ export default function BranchSummaryCards({
                 { label: "Cash", value: s.cash, className: "text-emerald-600 dark:text-emerald-400", mode: "CASH" },
                 { label: "UPI", value: s.upi, className: "text-blue-600 dark:text-blue-400", mode: "UPI" },
                 { label: "Online", value: s.online, className: "text-amber-600 dark:text-amber-400", mode: null },
+                ...((s.other ?? 0) > 0
+                  ? [{ label: "Other", value: s.other ?? 0, className: "text-slate-600 dark:text-slate-400", mode: null }]
+                  : []),
               ].map(({ label, value, className, mode }) => {
                 const active = mode !== null && mode === paymentMode;
                 return (
