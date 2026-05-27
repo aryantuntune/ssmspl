@@ -94,9 +94,22 @@ async def get_all_payment_modes(
 
 
 async def create_payment_mode(db: AsyncSession, payment_mode_in: PaymentModeCreate) -> PaymentMode:
-    # Check uniqueness of description
+    # POS gate integrity guard: prevent creating a second "Online" row, and prevent
+    # creating any case-variant of "Online" with show_at_pos=True. The portal
+    # looks up the Online payment mode by description (booking_service.py:489),
+    # so a POS-visible alias would silently let cashiers tag tickets as portal
+    # payments. See migration a3c5d8e91f02 and ticket_service.py:171.
+    incoming_desc_norm = (payment_mode_in.description or "").strip().lower()
+    if incoming_desc_norm == "online" and payment_mode_in.show_at_pos is True:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot create an 'Online' payment mode with show_at_pos=True — Online is reserved for the customer-portal flow and must be hidden from POS.",
+        )
+
+    # Case-insensitive uniqueness on description (DB column is case-sensitive,
+    # but "Online" vs "online" vs "ONLINE" must all collide for this gate to hold).
     existing = await db.execute(
-        select(PaymentMode).where(PaymentMode.description == payment_mode_in.description)
+        select(PaymentMode).where(func.lower(PaymentMode.description) == incoming_desc_norm)
     )
     if existing.scalar_one_or_none():
         raise HTTPException(
@@ -124,10 +137,55 @@ async def update_payment_mode(db: AsyncSession, payment_mode_id: int, payment_mo
     payment_mode = await get_payment_mode_by_id(db, payment_mode_id)
     update_data = payment_mode_in.model_dump(exclude_unset=True)
 
-    # Check uniqueness if description is being updated
+    # POS gate integrity guard: "Online" is the reserved customer-portal / Airpay
+    # payment mode (seed id=4, show_at_pos=False). It MUST remain hidden from POS;
+    # otherwise cashiers could tag counter sales as portal payments, which
+    # silently bypasses ticket_service._validate_references and update_ticket's
+    # show_at_pos check. We also block renaming Online or any rename that would
+    # collide with the reserved "Online" description on a different row.
+    # See migration a3c5d8e91f02 and ticket_service.py:171.
+    current_desc = (payment_mode.description or "").strip().lower()
+    new_desc = update_data.get("description")
+    new_desc_norm = new_desc.strip().lower() if isinstance(new_desc, str) else None
+
+    if current_desc == "online":
+        if "show_at_pos" in update_data and update_data["show_at_pos"] is True:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="The 'Online' payment mode is reserved for the customer portal / Airpay flow and cannot be exposed at POS.",
+            )
+        if new_desc_norm is not None and new_desc_norm != "online":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="The 'Online' payment mode cannot be renamed — it is referenced by the customer-portal payment flow.",
+            )
+        if "is_active" in update_data and update_data["is_active"] is False:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="The 'Online' payment mode cannot be deactivated — it is required by the customer-portal payment flow.",
+            )
+
+    # Block renaming a different payment mode TO "Online" with show_at_pos=True,
+    # which would otherwise create a second POS-visible 'Online'-aliased row that
+    # bypasses the gate. (Uniqueness on description is also checked below.)
+    if current_desc != "online" and new_desc_norm == "online":
+        # Force the new row to inherit the hidden-from-POS contract.
+        effective_show = update_data.get("show_at_pos", payment_mode.show_at_pos)
+        if effective_show is True:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Renaming a payment mode to 'Online' requires show_at_pos=False (reserved for the customer portal).",
+            )
+
+    # Check uniqueness if description is being updated (case-insensitive — so
+    # "Online" / "online" / "ONLINE" all collide and cannot be used to bypass
+    # the reserved-name guard above).
     if "description" in update_data:
         existing = await db.execute(
-            select(PaymentMode).where(PaymentMode.description == update_data["description"], PaymentMode.id != payment_mode_id)
+            select(PaymentMode).where(
+                func.lower(PaymentMode.description) == (update_data["description"] or "").strip().lower(),
+                PaymentMode.id != payment_mode_id,
+            )
         )
         if existing.scalar_one_or_none():
             raise HTTPException(
