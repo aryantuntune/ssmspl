@@ -168,9 +168,24 @@ async def _validate_references(db: AsyncSession, branch_id: int, route_id: int, 
     if not result.scalar_one_or_none():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Route ID {route_id} not found")
 
-    result = await db.execute(select(PaymentMode.id).where(PaymentMode.id == payment_mode_id))
-    if not result.scalar_one_or_none():
+    # POS guard: only payment modes flagged show_at_pos=True may be assigned to
+    # cashier-created tickets. Online (portal/Airpay) is intentionally hidden
+    # from POS — accepting it here would let a stale or tampered client mis-tag
+    # a counter sale as a portal payment. See migration a3c5d8e91f02.
+    pm_row = await db.execute(
+        select(PaymentMode.id, PaymentMode.show_at_pos, PaymentMode.is_active)
+        .where(PaymentMode.id == payment_mode_id)
+    )
+    pm = pm_row.one_or_none()
+    if pm is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Payment Mode ID {payment_mode_id} not found")
+    if not pm.is_active:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Payment Mode ID {payment_mode_id} is inactive")
+    if not pm.show_at_pos:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Payment Mode ID {payment_mode_id} is not allowed at POS (portal-only)",
+        )
 
 
 async def _validate_items(db: AsyncSession, items: list) -> None:
@@ -1065,9 +1080,22 @@ async def update_ticket(db: AsyncSession, ticket_id: int, data: TicketUpdate) ->
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Route ID {update_data['route_id']} not found")
 
     if "payment_mode_id" in update_data:
-        r = await db.execute(select(PaymentMode.id).where(PaymentMode.id == update_data["payment_mode_id"]))
-        if not r.scalar_one_or_none():
+        # POS guard: cashier-side ticket edits may only set show_at_pos=True modes.
+        # Mirrors _validate_references on create. See migration a3c5d8e91f02.
+        r = await db.execute(
+            select(PaymentMode.id, PaymentMode.show_at_pos, PaymentMode.is_active)
+            .where(PaymentMode.id == update_data["payment_mode_id"])
+        )
+        pm = r.one_or_none()
+        if pm is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Payment Mode ID {update_data['payment_mode_id']} not found")
+        if not pm.is_active:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Payment Mode ID {update_data['payment_mode_id']} is inactive")
+        if not pm.show_at_pos:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Payment Mode ID {update_data['payment_mode_id']} is not allowed at POS (portal-only)",
+            )
 
     if "departure" in update_data and update_data["departure"] is not None:
         ticket.departure = _parse_time(update_data["departure"])
