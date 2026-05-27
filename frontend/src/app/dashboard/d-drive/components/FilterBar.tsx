@@ -1,11 +1,13 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import api from "@/lib/api";
+import { PaymentMode } from "@/types";
 
 export interface Filters {
   dateStart: string;
@@ -28,6 +30,16 @@ export default function FilterBar({ branches, items, onApply }: Props) {
   const [branchId, setBranchId] = useState("all");
   const [paymentMode, setPaymentMode] = useState("all");
   const [itemId, setItemId] = useState("all");
+  const [paymentModes, setPaymentModes] = useState<PaymentMode[]>([]);
+
+  // D-Drive filter shows ALL modes (including Online) so admins can filter
+  // portal-originated tickets too. The d-drive list is a reconciliation view,
+  // not a POS entry form.
+  useEffect(() => {
+    api.get<PaymentMode[]>("/api/payment-modes?limit=200&status=active")
+      .then(r => setPaymentModes(r.data))
+      .catch(() => setPaymentModes([]));
+  }, []);
 
   return (
     <div className="flex flex-wrap gap-4 items-end p-4 bg-card border rounded-lg">
@@ -55,9 +67,11 @@ export default function FilterBar({ branches, items, onApply }: Props) {
           <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Modes</SelectItem>
-            <SelectItem value="CASH">Cash</SelectItem>
-            <SelectItem value="UPI">UPI</SelectItem>
-            <SelectItem value="ONLINE">Online</SelectItem>
+            {paymentModes.map(pm => (
+              <SelectItem key={pm.id} value={pm.description.toUpperCase()}>
+                {pm.description}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>

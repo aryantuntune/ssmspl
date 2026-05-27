@@ -88,6 +88,7 @@ function fmtQty(quantity: number | string): string {
  * Normalize payment mode names to their canonical thermal-print labels.
  *   Cash / CASH   → CASH MEMO
  *   UPI / GPay    → GPAY
+ *   Card          → CARD
  *   Online        → ONLINE
  * Falls back to the raw uppercased name for any unrecognised mode.
  */
@@ -100,6 +101,7 @@ const PAYMENT_LABEL_MAP: Record<string, string> = {
   "UPI / GPAY": "GPAY",
   PHONEPE: "GPAY",
   PAYTM: "GPAY",
+  CARD: "CARD",
   ONLINE: "ONLINE",
 };
 
@@ -114,6 +116,7 @@ function normalizePaymentLabel(name: string): string {
     upper.includes("PAYTM")
   )
     return "GPAY";
+  if (upper.includes("CARD")) return "CARD";
   if (upper.includes("ONLINE")) return "ONLINE";
   return upper;
 }
