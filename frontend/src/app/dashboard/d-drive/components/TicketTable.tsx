@@ -23,7 +23,8 @@ interface Props {
 const modeClass: Record<string, string> = {
   CASH: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200",
   UPI: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
-  ONLINE: "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200",
+  CARD: "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200",
+  ONLINE: "bg-violet-100 text-violet-800 dark:bg-violet-900 dark:text-violet-200",
 };
 
 export default function TicketTable({ tickets, total, page, totalPages, loading, onPageChange }: Props) {

@@ -40,7 +40,7 @@ const BRANCH_ORDER = [
   "Virar", "Safale",
 ];
 
-const PAYMENT_MODE_ORDER = ["Cash", "UPI", "Online"];
+const PAYMENT_MODE_ORDER = ["Cash", "UPI", "Card", "Online"];
 
 function sortByOrder<T>(items: T[], key: keyof T, order: string[]): T[] {
   return [...items].sort((a, b) => {
@@ -787,7 +787,7 @@ export default function DashboardPage() {
                             {(() => {
                               const rows = sortByOrder(todaySummary.payment_mode_breakdown, "payment_mode", PAYMENT_MODE_ORDER);
                               const maxRev = Math.max(...rows.map((r) => r.total_revenue), 1);
-                              const pmColors: Record<string, string> = { Cash: "bg-emerald-400", UPI: "bg-blue-400", Online: "bg-violet-400" };
+                              const pmColors: Record<string, string> = { Cash: "bg-emerald-400", UPI: "bg-blue-400", Card: "bg-amber-400", Online: "bg-violet-400" };
                               return rows.map((row) => (
                                 <tr key={row.payment_mode} className="border-b border-border last:border-0">
                                   <td className="py-2 px-3">{row.payment_mode}</td>
@@ -913,6 +913,7 @@ export default function DashboardPage() {
                     const colors: Record<string, string> = {
                       Cash: "bg-emerald-500",
                       UPI: "bg-blue-500",
+                      Card: "bg-amber-500",
                       Online: "bg-violet-500",
                     };
                     return sortByOrder(
