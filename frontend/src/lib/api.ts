@@ -43,7 +43,12 @@ function isProtectedPath(pathname: string): boolean {
       !pathname.startsWith("/customer/register") &&
       !pathname.startsWith("/customer/forgot-password") &&
       !pathname.startsWith("/customer/reset-password") &&
-      !pathname.startsWith("/customer/verify-email")
+      !pathname.startsWith("/customer/verify-email") &&
+      // Payment result screen: reached via Airpay's cross-site redirect. A probe
+      // 401 here (e.g. CustomerLayout's /me) must NOT force-navigate to login —
+      // the customer needs to see their success/failure confirmation. Mirrors
+      // the public allowlist in middleware.ts.
+      !pathname.startsWith("/customer/payment/callback")
     );
   }
   return false;

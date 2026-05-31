@@ -6,6 +6,13 @@ const CUSTOMER_PUBLIC = [
   "/customer/verify-email",
   "/customer/forgot-password",
   "/customer/reset-password",
+  // The payment result screen is reached via a redirect back from Airpay. It
+  // only reads query params (status/booking_id) and shows success/failure, so
+  // it must render even if the auth cookie is momentarily unavailable on the
+  // cross-site return — otherwise the customer gets bounced to login instead of
+  // seeing their confirmation. Links from here (View Booking) go to protected
+  // routes that re-check auth normally.
+  "/customer/payment/callback",
 ];
 
 const ADMIN_PORTAL_ALLOWED = [
