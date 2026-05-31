@@ -144,14 +144,18 @@ async def _finalize_transaction(
     # SECURITY: the response hash is a plain crc32 (not secret-keyed), so a SUCCESS
     # callback could be forged. For LIVE payments, treat Airpay's server-side
     # verify.php as the source of truth and fail closed unless it also returns 200.
-    # verify.php does not work on sandbox (TEST) MIDs, so for TEST transactions we
-    # trust the hash-verified callback (no real money is involved).
+    # verify.php does not work on sandbox MIDs, so when AIRPAY_TEST_MODE is on we
+    # trust the hash-verified callback (no real money is involved). The sandbox
+    # decision comes from server config (settings.AIRPAY_TEST_MODE) — NOT from the
+    # gateway payload's TXN_MODE field, which is attacker-forgeable. Airpay's
+    # sandbox sends TXN_MODE=SANDBOX; we log it for observability only.
     if new_status == "SUCCESS":
-        txn_mode = str(parsed.get("TXN_MODE", "")).strip().upper()
-        if txn_mode == "TEST":
+        gateway_mode = str(parsed.get("TXN_MODE", "")).strip().upper() or "?"
+        if settings.AIRPAY_TEST_MODE:
             logger.info(
-                "Sandbox (TEST) payment %s — trusting verified callback "
-                "(verify.php is unavailable on sandbox MIDs).", txn.client_txn_id,
+                "Sandbox payment %s (gateway TXN_MODE=%s) — trusting verified "
+                "callback (AIRPAY_TEST_MODE on; verify.php is live-only).",
+                txn.client_txn_id, gateway_mode,
             )
         else:
             confirm = await airpay_service.confirm_order(txn.client_txn_id)

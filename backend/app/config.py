@@ -80,6 +80,15 @@ class Settings(BaseSettings):
     AIRPAY_OAUTH_URL: str = "https://kraken.airpay.co.in/airpay/pay/v4/api/oauth2/"
     # Domain registered with Airpay (sent base64 as mer_dom in the v4 payload).
     AIRPAY_MERCHANT_DOMAIN: str = "https://carferry.online"
+    # Sandbox vs live decision for the payment-confirmation gate. When TRUE, the
+    # (already hash-verified) callback is trusted directly and the booking is
+    # confirmed — Airpay's server-side verify.php only works on LIVE MIDs, so it
+    # cannot validate sandbox transactions. When FALSE (production/live), a
+    # SUCCESS callback confirms the booking ONLY if verify.php also returns 200
+    # (fail closed). Decided HERE in server config, NEVER from the gateway
+    # payload's TXN_MODE field (which is attacker-forgeable). MUST be false for
+    # real-money go-live.
+    AIRPAY_TEST_MODE: bool = False
 
     @field_validator("SECRET_KEY")
     @classmethod
