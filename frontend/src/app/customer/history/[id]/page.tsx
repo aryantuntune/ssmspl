@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import CustomerLayout from "@/components/customer/CustomerLayout";
 import api from "@/lib/api";
+import { bookingStatusLabel } from "@/lib/bookingStatus";
 import {
   Calendar,
   Clock,
@@ -90,9 +91,7 @@ const StatusBadge = ({ status }: { status?: string }) => {
       className={`inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm font-semibold border ${style}`}
     >
       <Icon className="w-4 h-4" />
-      {status
-        ? status.charAt(0).toUpperCase() + status.slice(1).toLowerCase()
-        : "Unknown"}
+      {bookingStatusLabel(status)}
     </span>
   );
 };

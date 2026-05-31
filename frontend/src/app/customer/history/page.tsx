@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import CustomerLayout from "@/components/customer/CustomerLayout";
 import api from "@/lib/api";
+import { bookingStatusLabel } from "@/lib/bookingStatus";
 import {
   Calendar,
   MapPin,
@@ -50,9 +51,7 @@ const StatusBadge = ({ status }: { status?: string }) => {
         "bg-slate-100 text-slate-800"
       }`}
     >
-      {status
-        ? status.charAt(0).toUpperCase() + status.slice(1).toLowerCase()
-        : "Unknown"}
+      {bookingStatusLabel(status)}
     </span>
   );
 };
