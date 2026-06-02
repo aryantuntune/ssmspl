@@ -615,12 +615,12 @@ async def dry_run(
                 "matched_rule_id": None,
             })
 
-    # Round-off completion: absorb a small remainder by transforming one CASH ticket_item
-    # into a luggage-type stub. This mechanism is CASH-specific — the ₹1-stub pattern
-    # only makes sense for CASH reconciliation. Never fire for UPI or other modes.
+    # Round-off completion: absorb a small remainder by transforming one ticket_item
+    # into a luggage-type stub. Applies to both CASH and UPI — the mechanism is
+    # payment-mode-agnostic. The backup and audit trail are written in all cases.
     roundoff = None
     pre_roundoff_remaining = requested - closest_applied
-    if Decimal("0") < pre_roundoff_remaining <= SMALL_REMAINDER_THRESHOLD and payment_mode == "CASH":
+    if Decimal("0") < pre_roundoff_remaining <= SMALL_REMAINDER_THRESHOLD:
         roundoff = await _find_roundoff_target(
             db, branch_id, date_start, date_end,
             pre_roundoff_remaining, excluded_ticket_item_ids=set(closest_ids),
