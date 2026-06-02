@@ -1,26 +1,23 @@
 """
-Item Transfer engine — quantity-preserving transformation.
+Item Transfer engine — re-categorisation transformation.
 
-Converts N units of FROM item into Q2 units of TO item on CASH tickets while
-preserving the total value of each affected ticket. Rate and levy for the TO
-portion come from the TO item's master (item_rates, with historical fallback
-via item_rate_history). The FROM portion's rate+levy on the ticket_item is
-unchanged for any leftover; only its quantity may be reduced.
+Swaps item_id and levy on affected ticket_items while keeping the original
+rate (what was charged per unit) and quantity unchanged. Only the levy is
+updated to the TO item's master levy; the fare (rate) is preserved as-is.
 
-Math per ticket:
-    T1 = FROM.rate + FROM.levy      (from the ticket_item — what was charged)
-    T2 = TO.master_rate + TO.master_levy   (from item_rates for ticket.route_id at ticket.ticket_date)
-    transferred_qty = FROM units removed from this ticket
-    Q2 = floor(transferred_qty * T1 / T2)
-    applied = Q2 * T2
-    unapplied = transferred_qty * T1 - applied  (remainder from floor)
+Effect per ticket_item:
+    item_id  -> TO item id
+    rate     -> unchanged (FROM charged rate)
+    levy     -> TO.master_levy   (from item_rates for route_id at ticket_date)
+    quantity -> unchanged
 
+This is a clean re-categorisation: no division, no floor-rounding, no value leakage.
 FIFO by ticket.created_at, deterministic.
 """
 import hashlib
 import uuid
 from datetime import date, datetime, timezone
-from decimal import Decimal, ROUND_DOWN
+from decimal import Decimal
 from sqlalchemy import delete as sa_delete, func, insert as sa_insert, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException
@@ -301,25 +298,17 @@ async def dry_run(
     if from_item_id not in item_map or to_item_id not in item_map:
         raise HTTPException(status_code=404, detail="FROM or TO item not found.")
 
-    # Count other items per ticket for "will-ticket-become-empty" guard
-    all_scope_ticket_ids = list({r["ticket_id"] for r in scope})
-    other_counts = await _count_other_items_per_ticket(db, all_scope_ticket_ids, from_item_id)
-
     # Cache TO master per (route, ticket_date)
     to_master_cache: dict[tuple[int, date], tuple[Decimal | None, Decimal | None]] = {}
 
     operations: list[dict] = []
     affected_ticket_ids: set[int] = set()
     split_ticket_ids: set[int] = set()
-    skipped_tickets: list[dict] = []  # tickets skipped because they'd become empty or Q2=0
+    skipped_tickets: list[dict] = []  # kept for response schema compat; always empty with swap approach
 
     remaining = requested_transfer_qty
-    total_from_value_applied = Decimal("0")  # sum of transferred_qty * T1 actually converted
-    total_from_value_skipped = Decimal("0")  # sum of transferred_qty * T1 skipped (unapplied at ticket level)
-    total_unapplied_rounding = Decimal("0")  # sum of per-ticket floor remainder
-    total_q2 = 0
-    levy_before = Decimal("0")  # levy contribution removed from FROM (per transferred qty)
-    levy_after = Decimal("0")   # levy contribution added by TO
+    levy_before = Decimal("0")  # levy removed from FROM items (per transferred qty)
+    levy_after = Decimal("0")   # levy added by TO items (per transferred qty)
 
     for r in scope:
         if remaining <= 0:
@@ -341,40 +330,9 @@ async def dry_run(
                     "Configure item_rates for this route or restrict the transfer date range."
                 ),
             )
-        t2 = x2 + y2
-        if t2 <= 0:
-            raise HTTPException(
-                status_code=409,
-                detail=f"TO item master total value is zero on route {r['route_id']} — cannot transfer.",
-            )
-
-        t1 = r["rate"] + r["levy"]  # FROM per-unit value
-        from_value_this = transferred_qty * t1
-
-        # Compute Q2 (floor, integer)
-        q2_dec = from_value_this / t2
-        q2_int = int(q2_dec.to_integral_value(rounding=ROUND_DOWN))
-        applied_value_this = Decimal(q2_int) * t2
-        unapplied_this = from_value_this - applied_value_this
-
-        # Will this ticket become empty?
+        # Swap approach: keep FROM rate and quantity; only update item_id and levy.
+        # No division → no floor-rounding → no value leakage.
         would_remove_entire_row = (transferred_qty == r["quantity"])
-        other_on_ticket = other_counts.get(r["ticket_id"], 0)
-        would_become_empty = (would_remove_entire_row and q2_int == 0 and other_on_ticket == 0)
-
-        if would_become_empty or q2_int == 0:
-            # Skip this ticket entirely — per spec: ticket empty not allowed;
-            # if Q2=0 on a ticket with other items, we also skip to keep the math clean.
-            # The transferred_qty becomes unapplied at the ticket level.
-            total_from_value_skipped += from_value_this
-            skipped_tickets.append({
-                "ticket_id": r["ticket_id"],
-                "reason": "would_empty" if would_become_empty else "q2_zero",
-                "transferred_qty_not_applied": transferred_qty,
-                "value_not_applied": float(from_value_this),
-            })
-            remaining -= transferred_qty
-            continue
 
         # Plan:
         affected_ticket_ids.add(r["ticket_id"])
@@ -394,14 +352,11 @@ async def dry_run(
                 },
                 "new": {
                     "item_id": to_item_id,
-                    "rate": str(x2),
-                    "levy": str(y2),
-                    "quantity": q2_int,
+                    "rate": str(r["rate"]),  # keep FROM rate (what was charged)
+                    "levy": str(y2),          # TO master levy
+                    "quantity": transferred_qty,
                 },
                 "transferred_qty": transferred_qty,
-                "from_value": str(from_value_this),
-                "applied_value": str(applied_value_this),
-                "unapplied": str(unapplied_this),
             })
         else:
             # Partial: UPDATE FROM row to reduce quantity, INSERT new TO row
@@ -425,9 +380,6 @@ async def dry_run(
                     "quantity": r["quantity"] - transferred_qty,
                 },
                 "transferred_qty": transferred_qty,
-                "from_value": str(from_value_this),
-                "applied_value": str(applied_value_this),
-                "unapplied": str(unapplied_this),
             })
             operations.append({
                 "type": "INSERT",  # INSERT new TO row
@@ -436,19 +388,16 @@ async def dry_run(
                 "ticket_date": str(r["ticket_date"]),
                 "new_row": {
                     "item_id": to_item_id,
-                    "rate": str(x2),
-                    "levy": str(y2),
-                    "quantity": q2_int,
+                    "rate": str(r["rate"]),  # keep FROM rate (what was charged)
+                    "levy": str(y2),          # TO master levy
+                    "quantity": transferred_qty,
                     "vehicle_no": None,
                     "vehicle_name": None,
                 },
             })
 
-        total_from_value_applied += from_value_this
-        total_unapplied_rounding += unapplied_this
-        total_q2 += q2_int
         levy_before += r["levy"] * transferred_qty
-        levy_after += y2 * q2_int
+        levy_after += y2 * transferred_qty
 
         remaining -= transferred_qty
 
@@ -537,7 +486,7 @@ async def dry_run(
                     "is_inserted": True,
                 })
 
-        # Remove zero-quantity rows (CONVERT might leave row with q2_int=0 — shouldn't happen since we skip such tickets, but defensive)
+        # Remove zero-quantity rows (defensive; should never occur with the swap approach)
         final_items = [fi for fi in final_items if int(fi["quantity"]) > 0]
 
         original_total = sum(i["line_value"] for i in snap["original_items"])
@@ -578,10 +527,10 @@ async def dry_run(
         "achieved_transfer_qty": int(achieved_qty),
         "unapplied_transfer_qty": int(unapplied_qty),
         "total_from_qty_in_scope": int(total_quantity),
-        "total_from_value_applied": str(total_from_value_applied),
-        "total_from_value_skipped": str(total_from_value_skipped),
-        "total_unapplied_rounding": str(total_unapplied_rounding),
-        "total_q2_created": int(total_q2),
+        "total_from_value_applied": str(Decimal("0")),
+        "total_from_value_skipped": str(Decimal("0")),
+        "total_unapplied_rounding": str(Decimal("0")),
+        "total_q2_created": int(achieved_qty),
         "levy_before": str(levy_before),
         "levy_after": str(levy_after),
         "levy_saved": str(levy_before - levy_after),
@@ -626,10 +575,10 @@ async def dry_run(
         "achieved_transfer_qty": int(achieved_qty),
         "unapplied_transfer_qty": int(unapplied_qty),
         "total_from_qty_in_scope": int(total_quantity),
-        "total_from_value_applied": float(total_from_value_applied),
-        "total_from_value_skipped": float(total_from_value_skipped),
-        "total_unapplied_rounding": float(total_unapplied_rounding),
-        "total_q2_created": int(total_q2),
+        "total_from_value_applied": 0.0,
+        "total_from_value_skipped": 0.0,
+        "total_unapplied_rounding": 0.0,
+        "total_q2_created": int(achieved_qty),
         "levy_before": float(levy_before),
         "levy_after": float(levy_after),
         "levy_saved": float(levy_before - levy_after),
