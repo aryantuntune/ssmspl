@@ -1,17 +1,17 @@
 """
-Item Transfer engine — re-categorisation transformation.
+Item Transfer engine — value-preserving re-categorisation.
 
-Swaps item_id and levy on affected ticket_items while keeping the original
-rate (what was charged per unit) and quantity unchanged. Only the levy is
-updated to the TO item's master levy; the fare (rate) is preserved as-is.
+Changes the item_id on affected ticket_items while keeping rate, levy, and
+quantity exactly as charged. The ticket total (net_amount) is therefore
+preserved — no money is added or removed, only the item classification changes.
 
 Effect per ticket_item:
     item_id  -> TO item id
     rate     -> unchanged (FROM charged rate)
-    levy     -> TO.master_levy   (from item_rates for route_id at ticket_date)
+    levy     -> unchanged (FROM charged levy)
     quantity -> unchanged
 
-This is a clean re-categorisation: no division, no floor-rounding, no value leakage.
+This is a pure re-categorisation: no arithmetic, no floor-rounding, zero value leakage.
 FIFO by ticket.created_at, deterministic.
 """
 import hashlib
@@ -330,8 +330,8 @@ async def dry_run(
                     "Configure item_rates for this route or restrict the transfer date range."
                 ),
             )
-        # Swap approach: keep FROM rate and quantity; only update item_id and levy.
-        # No division → no floor-rounding → no value leakage.
+        # Pure re-categorisation: keep rate, levy, and quantity unchanged.
+        # Only item_id changes. Ticket total is preserved exactly. No arithmetic needed.
         would_remove_entire_row = (transferred_qty == r["quantity"])
 
         # Plan:
@@ -353,7 +353,7 @@ async def dry_run(
                 "new": {
                     "item_id": to_item_id,
                     "rate": str(r["rate"]),  # keep FROM rate (what was charged)
-                    "levy": str(y2),          # TO master levy
+                    "levy": str(r["levy"]),  # keep FROM levy — preserves ticket total exactly
                     "quantity": transferred_qty,
                 },
                 "transferred_qty": transferred_qty,
@@ -389,7 +389,7 @@ async def dry_run(
                 "new_row": {
                     "item_id": to_item_id,
                     "rate": str(r["rate"]),  # keep FROM rate (what was charged)
-                    "levy": str(y2),          # TO master levy
+                    "levy": str(r["levy"]),  # keep FROM levy — preserves ticket total exactly
                     "quantity": transferred_qty,
                     "vehicle_no": None,
                     "vehicle_name": None,
@@ -397,7 +397,7 @@ async def dry_run(
             })
 
         levy_before += r["levy"] * transferred_qty
-        levy_after += y2 * transferred_qty
+        levy_after += r["levy"] * transferred_qty  # same as levy_before — total preserved
 
         remaining -= transferred_qty
 
