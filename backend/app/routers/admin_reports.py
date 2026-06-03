@@ -146,7 +146,7 @@ async def itemwise_levy_summary_xlsx(
 @router.get(
     "/date-branch-summary",
     response_model=DateBranchSummaryReport,
-    summary="Date-Wise Branch Summary (Cash + GPay)",
+    summary="Date-Wise Branch Summary (Cash & UPI)",
 )
 async def date_branch_summary(
     request: Request,

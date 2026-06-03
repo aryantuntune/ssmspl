@@ -158,7 +158,7 @@ const REPORTS: ReportConfig[] = [
   },
   {
     key: "date-branch",
-    label: "Date-Wise Branch Summary (Cash + GPay)",
+    label: "Date-Wise Branch Summary (Cash & UPI)",
     endpoint: "/api/reports/admin/date-branch-summary",
     pdf: "/api/reports/admin/date-branch-summary/pdf",
     xlsx: "/api/reports/admin/date-branch-summary/xlsx",

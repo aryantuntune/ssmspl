@@ -1,5 +1,5 @@
 """
-Admin Report B — Date-Wise Branch Summary (Cash + GPay only).
+Admin Report B — Date-Wise Branch Summary (Cash & UPI only).
 
 POS-only. Grid of net_amount totals: rows = dates, columns = {branch}-{mode}.
 
@@ -11,7 +11,7 @@ Query scope (always):
     - payment_mode_id IN (1, 2)   # Cash + UPI only — the PDF excludes Card/Online
 
 Output columns are built in a stable order: for each branch on the route
-(branch_one then branch_two), append CASH column then GPay column.
+(branch_one then branch_two), append CASH column then UPI column.
 """
 from __future__ import annotations
 
@@ -118,7 +118,7 @@ async def _query_date_branch_mode(
 
 
 def _build_columns(branches: list[Branch]) -> list[dict]:
-    """For each branch, append a CASH column then a GPay column."""
+    """For each branch, append a CASH column then a UPI column."""
     cols: list[dict] = []
     for b in branches:
         cols.append(
@@ -131,10 +131,10 @@ def _build_columns(branches: list[Branch]) -> list[dict]:
         )
         cols.append(
             {
-                "key": f"{b.id}-GPay",
-                "label": f"{b.name}-GPay",
+                "key": f"{b.id}-UPI",
+                "label": f"{b.name}-UPI",
                 "branch_id": b.id,
-                "mode": "GPay",
+                "mode": "UPI",
             }
         )
     return cols

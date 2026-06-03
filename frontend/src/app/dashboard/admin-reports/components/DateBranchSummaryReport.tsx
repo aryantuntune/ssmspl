@@ -39,7 +39,7 @@ export default function DateBranchSummaryReport({ data }: { data: DateBranchData
           <p className="text-sm font-semibold">{data.route_label}</p>
           <p className="text-xs text-gray-600">
             Date Wise Branch Summary From Date : {data.date_from} To {data.date_to} — Payment
-            Mode: Cash Memo &amp; GPay
+            Mode: Cash Memo &amp; UPI
           </p>
         </div>
 

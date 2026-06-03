@@ -87,7 +87,7 @@ function fmtQty(quantity: number | string): string {
 /**
  * Normalize payment mode names to their canonical thermal-print labels.
  *   Cash / CASH   → CASH MEMO
- *   UPI / GPay    → GPAY
+ *   UPI           → GPAY
  *   Card          → CARD
  *   Online        → ONLINE
  * Falls back to the raw uppercased name for any unrecognised mode.
