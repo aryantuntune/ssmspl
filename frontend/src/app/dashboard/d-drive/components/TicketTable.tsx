@@ -9,6 +9,7 @@ interface Ticket {
   net_amount: number;
   operator_name: string;
   item_summary: string;
+  is_modified: boolean;
 }
 
 interface Props {
@@ -43,7 +44,14 @@ export default function TicketTable({ tickets, total, page, totalPages, loading,
         <tbody>
           {tickets.map((t, i) => (
             <tr key={t.id} className={`border-t ${i % 2 === 1 ? "bg-muted/20" : ""} hover:bg-muted/30`}>
-              <td className="px-4 py-2.5 font-mono text-primary">#{t.id}</td>
+              <td className="px-4 py-2.5 font-mono text-primary">
+                <span>#{t.id}</span>
+                {t.is_modified && (
+                  <span className="ml-2 inline-flex px-1.5 py-0.5 rounded text-xs font-semibold bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200">
+                    Modified
+                  </span>
+                )}
+              </td>
               <td className="px-4 py-2.5">{t.ticket_date}</td>
               <td className="px-4 py-2.5">{t.branch_name}</td>
               <td className="px-4 py-2.5">

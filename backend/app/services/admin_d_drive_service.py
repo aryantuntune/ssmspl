@@ -155,6 +155,21 @@ async def list_tickets(
         for ir in item_rows:
             items_by_ticket.setdefault(ir.ticket_id, []).append(f"{ir.quantity}x {ir.name}")
 
+    # Detect which tickets have been modified via adjustments
+    modified_ticket_ids: set[int] = set()
+    if ticket_ids:
+        mod_q = (
+            select(TicketItem.ticket_id)
+            .where(
+                TicketItem.ticket_id.in_(ticket_ids),
+                TicketItem.is_cancelled == False,
+                TicketItem.last_adjustment_id.is_not(None),
+            )
+            .distinct()
+        )
+        mod_rows = (await db.execute(mod_q)).scalars().all()
+        modified_ticket_ids = set(mod_rows)
+
     tickets = [
         {
             "id": r.id,
@@ -164,6 +179,7 @@ async def list_tickets(
             "net_amount": float(r.net_amount),
             "operator_name": r.operator_name,
             "item_summary": ", ".join(items_by_ticket.get(r.id, [])),
+            "is_modified": r.id in modified_ticket_ids,
         }
         for r in rows
     ]
