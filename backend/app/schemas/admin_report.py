@@ -145,3 +145,20 @@ class MonthBranchSummaryReport(BaseModel):
     column_totals: dict[str, str]
     grand_total: str
     integrity_warning: IntegrityWarning | None = None
+
+
+# ── Report E: Branch Vehicle Traffic (cross-route) ────────────────────────────
+
+
+class VehicleTrafficRow(BaseModel):
+    branch_id: int
+    branch_name: str
+    total_vehicles: int
+    rank: int
+
+
+class BranchVehicleTrafficReport(BaseModel):
+    date_from: datetime.date
+    date_to: datetime.date
+    rows: list[VehicleTrafficRow]
+    grand_total: int

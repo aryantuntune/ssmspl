@@ -131,9 +131,23 @@ export interface MonthBranchData {
   integrity_warning?: IntegrityWarning | null;
 }
 
+export interface VehicleTrafficRow {
+  branch_id: number;
+  branch_name: string;
+  total_vehicles: number;
+  rank: number;
+}
+
+export interface VehicleTrafficData {
+  date_from: string;
+  date_to: string;
+  rows: VehicleTrafficRow[];
+  grand_total: number;
+}
+
 // ── Config ──
 
-type TabKey = "itemwise-levy" | "date-branch" | "daily-charges" | "month-branch";
+type TabKey = "itemwise-levy" | "date-branch" | "daily-charges" | "month-branch" | "vehicle-traffic";
 
 interface ReportConfig {
   key: TabKey;
@@ -179,6 +193,14 @@ const REPORTS: ReportConfig[] = [
     xlsx: "/api/reports/admin/month-branch-summary/xlsx",
     filterMode: "branches",
   },
+  {
+    key: "vehicle-traffic",
+    label: "Branch Vehicle Traffic",
+    endpoint: "/api/reports/admin/branch-vehicle-traffic",
+    pdf: "",
+    xlsx: "",
+    filterMode: "branches",
+  },
 ];
 
 function today(): string {
@@ -216,7 +238,7 @@ export default function AdminReportsPage() {
   const [downloadingXlsx, setDownloadingXlsx] = useState(false);
   const [error, setError] = useState("");
   const [data, setData] = useState<
-    ItemwiseLevyData | DateBranchData | DailyChargesData | MonthBranchData | null
+    ItemwiseLevyData | DateBranchData | DailyChargesData | MonthBranchData | VehicleTrafficData | null
   >(null);
   const [generated, setGenerated] = useState(false);
 
@@ -361,7 +383,7 @@ export default function AdminReportsPage() {
       </div>
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as TabKey)}>
-        <TabsList className="grid grid-cols-4">
+        <TabsList className="grid grid-cols-5">
           {REPORTS.map((r) => (
             <TabsTrigger key={r.key} value={r.key}>
               {r.label}
@@ -427,7 +449,7 @@ export default function AdminReportsPage() {
                 <Button
                   variant="outline"
                   onClick={() => download("pdf")}
-                  disabled={downloading || !generated}
+                  disabled={downloading || !generated || !current.pdf}
                 >
                   {downloading ? (
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
@@ -439,7 +461,7 @@ export default function AdminReportsPage() {
                 <Button
                   variant="outline"
                   onClick={() => download("xlsx")}
-                  disabled={downloadingXlsx || !generated}
+                  disabled={downloadingXlsx || !generated || !current.xlsx}
                 >
                   {downloadingXlsx ? (
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
@@ -476,6 +498,11 @@ export default function AdminReportsPage() {
         <TabsContent value="month-branch" className="mt-4">
           {generated && tab === "month-branch" && data && (
             <MonthBranchSummaryReport data={data as MonthBranchData} />
+          )}
+        </TabsContent>
+        <TabsContent value="vehicle-traffic" className="mt-4">
+          {generated && tab === "vehicle-traffic" && data && (
+            <BranchVehicleTrafficReport data={data as VehicleTrafficData} />
           )}
         </TabsContent>
       </Tabs>
@@ -577,6 +604,70 @@ function BranchMultiSelect({
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+
+// ── Branch Vehicle Traffic report ────────────────────────────────────────────
+
+function BranchVehicleTrafficReport({ data }: { data: VehicleTrafficData }) {
+  const hasData = data.rows.length > 0;
+  return (
+    <div className="rounded-md border bg-card p-6">
+      <div className="text-center mb-4">
+        <h2 className="text-base font-bold">
+          SUVARNADURGA SHIPPING &amp; MARINE SERVICES PVT.LTD.
+        </h2>
+        <p className="text-xs text-gray-600">
+          Branch Vehicle Traffic — Cash &amp; UPI
+        </p>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b-2">
+              <th className="text-left p-2 w-16">Rank</th>
+              <th className="text-left p-2">Branch</th>
+              <th className="text-right p-2">Total Vehicles</th>
+            </tr>
+          </thead>
+          <tbody>
+            {!hasData ? (
+              <tr>
+                <td colSpan={3} className="text-center text-gray-500 p-4">
+                  No vehicle data for the selected range.
+                </td>
+              </tr>
+            ) : (
+              data.rows.map((r, idx) => (
+                <tr
+                  key={r.branch_id}
+                  className={`border-b ${idx % 2 === 0 ? "" : "bg-muted/40"}`}
+                >
+                  <td className="p-2 text-gray-500">{r.rank}</td>
+                  <td className="p-2">{r.branch_name}</td>
+                  <td className="p-2 text-right font-medium">
+                    {r.total_vehicles.toLocaleString("en-IN")}
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+          {hasData && (
+            <tfoot>
+              <tr className="font-semibold border-t-2">
+                <td className="p-2" colSpan={2}>
+                  Grand Total
+                </td>
+                <td className="p-2 text-right">
+                  {data.grand_total.toLocaleString("en-IN")}
+                </td>
+              </tr>
+            </tfoot>
+          )}
+        </table>
+      </div>
     </div>
   );
 }

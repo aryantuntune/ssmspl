@@ -21,6 +21,7 @@ from app.dependencies import require_roles
 from app.middleware.rate_limit import limiter
 from app.models.user import User
 from app.schemas.admin_report import (
+    BranchVehicleTrafficReport,
     DateBranchSummaryReport,
     ItemwiseDailyChargesReport,
     ItemwiseLevyReport,
@@ -428,4 +429,32 @@ async def month_branch_summary_xlsx(
         admin_xlsx_service.generate_month_branch_summary_xlsx(data),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
+
+
+# ── Report E: Branch Vehicle Traffic (cross-route) ────────────────────────────
+
+
+@limiter.limit("10/minute")
+@router.get(
+    "/branch-vehicle-traffic",
+    response_model=BranchVehicleTrafficReport,
+    summary="Branch Vehicle Traffic (all branches, ranked)",
+)
+async def branch_vehicle_traffic(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    date_from: datetime.date = Query(...),
+    date_to: datetime.date = Query(...),
+    branch_ids: list[int] | None = Query(None,
+        description="Filter to a subset of branches. Omit to include all active branches."),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(_admin_roles),
+):
+    _validate_range(date_from, date_to)
+    _log(background_tasks, current_user, "branch_vehicle_traffic", "json",
+         date_from=date_from, date_to=date_to,
+         branch_ids=",".join(str(i) for i in (branch_ids or [])))
+    return await admin_report_service.run_branch_vehicle_traffic(
+        db, date_from, date_to, branch_ids
     )

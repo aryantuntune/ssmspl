@@ -52,6 +52,9 @@ from app.reporting.reports.admin_itemwise_daily_charges import (
     get_itemwise_daily_charges,
 )
 from app.reporting.reports.admin_itemwise_levy import get_itemwise_levy_summary
+from app.reporting.reports.admin_branch_vehicle_traffic import (
+    get_branch_vehicle_traffic,
+)
 from app.reporting.reports.admin_month_branch_summary import (
     get_month_branch_summary,
 )
@@ -125,6 +128,17 @@ async def run_month_branch_summary(
     if warning:
         data["integrity_warning"] = warning
     return data
+
+
+async def run_branch_vehicle_traffic(
+    db: AsyncSession,
+    date_from: datetime.date,
+    date_to: datetime.date,
+    branch_ids: list[int] | None = None,
+) -> dict:
+    """Cross-route vehicle quantity count per branch, ranked highest first.
+    No integrity check — this is a simple quantity count, not a monetary sum."""
+    return await get_branch_vehicle_traffic(db, date_from, date_to, branch_ids)
 
 
 # ── Integrity check ───────────────────────────────────────────────────────────
