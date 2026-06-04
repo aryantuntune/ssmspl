@@ -1,20 +1,22 @@
 """
 Admin Report A — Itemwise Levy Summary.
 
-POS-only. Groups ticket_items by (item_id, levy) and pivots branch quantities
-into columns. ``amount = levy * total_quantity`` per row.
+POS-only. Groups ticket_items by (item_id) and pivots branch quantities
+into columns. ``amount = canonical_levy * total_quantity`` per row.
 
 Query scope (always):
     - tickets.is_cancelled = false
     - ticket_items.is_cancelled = false
     - ticket_items.quantity > 0
-    - ticket_items.levy > 0      # exclude zero-levy items (ambulance, luggage, etc.)
+    - item_rates.levy > 0      # exclude zero-levy items (ambulance, luggage, etc.)
     - ticket_date BETWEEN :date_from AND :date_to
     - route_id = :route_id
     - payment_mode_id IN (1, 2, 3)   # Cash, UPI, Card — POS modes
 
-The per-row levy is read directly from ticket_items — never from the item
-master — so historical rate changes and admin adjustments are respected.
+The levy is read from item_rates (canonical per item+route) rather than
+ticket_items.levy. This ensures D-Drive re-categorised tickets are grouped
+under the correct item at its correct levy — not scattered across multiple
+rows due to the original item's levy being preserved in the ticket record.
 """
 from __future__ import annotations
 
@@ -26,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.branch import Branch
 from app.models.item import Item
+from app.models.item_rate import ItemRate
 from app.models.route import Route
 from app.models.ticket import Ticket, TicketItem
 
@@ -44,17 +47,14 @@ async def get_itemwise_levy_summary(
 
     rows_raw = await _query_items_by_branch(db, date_from, date_to, route_id)
 
-    # Pivot into {(item_id, item_name, levy): {branch_id: qty}}
+    # Pivot into {(item_id, item_name, canonical_levy): {branch_id: qty}}
     pivot: dict[tuple[int, str, Decimal], dict[int, int]] = {}
     for r in rows_raw:
-        key = (r.item_id, r.item_name, Decimal(str(r.levy)))
+        key = (r.item_id, r.item_name, Decimal(str(r.canonical_levy)))
         pivot.setdefault(key, {})[r.branch_id] = int(r.quantity)
 
-    # Build rows in item-master order (items.id ASC), with levy as tie-break
-    # for the rare case of the same item at multiple levies in the same
-    # range. This matches the canonical business order used across every
-    # report on both admin.carferry.online and the main site.
-    sorted_keys = sorted(pivot.keys(), key=lambda k: (k[0], k[2]))
+    # Build rows in item-master order (items.id ASC).
+    sorted_keys = sorted(pivot.keys(), key=lambda k: k[0])
     branch_ids = [b.id for b in branches]
 
     result_rows: list[dict] = []
@@ -116,28 +116,34 @@ async def _query_items_by_branch(
     date_to: datetime.date,
     route_id: int,
 ) -> list:
-    """One row per (item, levy, branch) with summed quantity."""
+    """One row per (item, branch) with summed quantity and canonical levy from item_rates."""
     q = (
         select(
             Item.id.label("item_id"),
             Item.name.label("item_name"),
-            TicketItem.levy.label("levy"),
+            ItemRate.levy.label("canonical_levy"),
             Branch.id.label("branch_id"),
             Branch.name.label("branch_name"),
             func.sum(TicketItem.quantity).label("quantity"),
         )
         .join(Ticket, TicketItem.ticket_id == Ticket.id)
         .join(Item, TicketItem.item_id == Item.id)
+        .join(
+            ItemRate,
+            (ItemRate.item_id == Item.id)
+            & (ItemRate.route_id == route_id)
+            & (ItemRate.is_active == True),  # noqa: E712
+        )
         .join(Branch, Ticket.branch_id == Branch.id)
         .where(Ticket.is_cancelled == False)  # noqa: E712
         .where(TicketItem.is_cancelled == False)  # noqa: E712
         .where(TicketItem.quantity > 0)
-        .where(TicketItem.levy > 0)
+        .where(ItemRate.levy > 0)
         .where(Ticket.ticket_date >= date_from)
         .where(Ticket.ticket_date <= date_to)
         .where(Ticket.route_id == route_id)
         .where(Ticket.payment_mode_id.in_(POS_MODE_IDS))
-        .group_by(Item.id, Item.name, TicketItem.levy, Branch.id, Branch.name)
+        .group_by(Item.id, Item.name, ItemRate.levy, Branch.id, Branch.name)
     )
     return (await db.execute(q)).all()
 
