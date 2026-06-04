@@ -138,7 +138,8 @@ async def _query_items_by_branch(
         .where(Ticket.is_cancelled == False)  # noqa: E712
         .where(TicketItem.is_cancelled == False)  # noqa: E712
         .where(TicketItem.quantity > 0)
-        .where(ItemRate.levy > 0)
+        .where(TicketItem.levy > 0)   # exclude zero-levy individual entries (online/nominal)
+        .where(ItemRate.levy > 0)     # exclude items whose canonical levy is zero (e.g. PASS LUG)
         .where(Ticket.ticket_date >= date_from)
         .where(Ticket.ticket_date <= date_to)
         .where(Ticket.route_id == route_id)
